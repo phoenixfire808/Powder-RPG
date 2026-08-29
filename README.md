@@ -7,7 +7,8 @@ entirely on the simulation, ~60 new elements covering real chemistry, nuclear ph
 electronics, and an AI colony sandbox that MCP tooling can drive directly. Everything below
 is running code in this repository, not a design doc.
 
-**[Download the latest build](../../releases/latest)** — unzip, run `Play.bat`, you're in.
+**[Download the latest build](https://github.com/phoenixfire808/The-Powder-Toy/releases/latest)**
+— unzip, run `Play.bat`, you're in.
 
 Table of contents
 ---------------------------------------------------------------------------
