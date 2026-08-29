@@ -383,6 +383,30 @@ void OptionsModel::SetPerfectCircle(bool perfectCircle)
 	notifySettingsChanged();
 }
 
+int OptionsModel::GetBrushRotationStep()
+{
+	return gModel->GetBrushRotationStep();
+}
+
+void OptionsModel::SetBrushRotationStep(int step)
+{
+	GlobalPrefs::Ref().Set("Brush.RotationStep", step);
+	gModel->SetBrushRotationStep(step);
+	notifySettingsChanged();
+}
+
+int OptionsModel::GetBrushResizeDivisor()
+{
+	return gModel->GetBrushResizeDivisor();
+}
+
+void OptionsModel::SetBrushResizeDivisor(int divisor)
+{
+	GlobalPrefs::Ref().Set("Brush.ResizeDivisor", divisor);
+	gModel->SetBrushResizeDivisor(divisor);
+	notifySettingsChanged();
+}
+
 bool OptionsModel::GetMomentumScroll()
 {
 	return ui::Engine::Ref().MomentumScroll;

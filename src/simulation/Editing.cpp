@@ -876,6 +876,56 @@ void Simulation::CreateBox(int p, int x1, int y1, int x2, int y2, int c, int fla
 			CreateParts(p, i, j, 0, 0, c, flags);
 }
 
+void Simulation::CreateEllipse(int p, int x1, int y1, int x2, int y2, int c, int flags, bool perfectCircle)
+{
+	if (perfectCircle)
+	{
+		// Keep (x1,y1) -- the exact point the drag started from -- fixed as
+		// a true corner of the circle's bounding box, growing toward
+		// wherever the drag ended, sized by whichever of the two drag
+		// distances is larger. Has to happen before the corner-order
+		// normalisation below, which would otherwise lose which point was
+		// actually the anchor: recentring on the drag box's midpoint
+		// instead (i.e. adjusting after normalising) would move the shape
+		// out from under the corner that was actually clicked.
+		int dx = x2 - x1;
+		int dy = y2 - y1;
+		int r = std::max(std::abs(dx), std::abs(dy));
+		if (r < 1) r = 1;
+		x2 = x1 + (dx < 0 ? -r : r);
+		y2 = y1 + (dy < 0 ? -r : r);
+	}
+	if (x1 > x2)
+	{
+		int t = x1; x1 = x2; x2 = t;
+	}
+	if (y1 > y2)
+	{
+		int t = y1; y1 = y2; y2 = t;
+	}
+	// Centre and radii of the ellipse inscribed in the (x1,y1)-(x2,y2)
+	// bounding box -- same box a rectangle fill would use, just filled with
+	// the standard ellipse membership test instead of unconditionally.
+	float cx = (x1 + x2) / 2.0f;
+	float cy = (y1 + y2) / 2.0f;
+	float rx = (x2 - x1) / 2.0f;
+	float ry = (y2 - y1) / 2.0f;
+	if (rx < 0.5f) rx = 0.5f;
+	if (ry < 0.5f) ry = 0.5f;
+	for (int j = y2; j >= y1; j--)
+	{
+		float dy = (j - cy) / ry;
+		for (int i = x1; i <= x2; i++)
+		{
+			float dx = (i - cx) / rx;
+			if (dx * dx + dy * dy <= 1.0f)
+			{
+				CreateParts(p, i, j, 0, 0, c, flags);
+			}
+		}
+	}
+}
+
 int Simulation::FloodParts(int x, int y, int fullc, int cm, int flags)
 {
 	int c = TYP(fullc);

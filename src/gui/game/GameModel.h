@@ -76,6 +76,7 @@ private:
 	std::vector<std::unique_ptr<Menu>> menuList;
 	std::vector<QuickOption*> quickOptions;
 	int activeMenu;
+	int activeSubCategory = -1; // -1 = no subcategory filter, show the whole section
 	int currentBrush;
 	std::vector<std::unique_ptr<Brush>> brushList;
 	struct SaveInfoWrapper
@@ -99,6 +100,9 @@ private:
 	bool mouseClickRequired;
 	bool includePressure;
 	bool perfectCircle = true;
+	int brushRotationStep = 15;
+	int brushResizeDivisor = 5;
+	bool zoomWindowManuallyPlaced = false;
 	TempScale temperatureScale;
 
 	size_t activeColourPreset;
@@ -269,11 +273,15 @@ public:
 	bool GetGravityGrid();
 	void ShowGridCheckerboard(bool enableCheckerboard);
 	bool GetGridCheckerboard();
+	void SetBackgroundColour(uint32_t colour);
+	uint32_t GetBackgroundColour();
 	void ClearSimulation();
 	std::vector<Menu*> GetMenuList();
 	std::vector<QuickOption*> GetQuickOptions();
 	void SetActiveMenu(int menuID);
 	int GetActiveMenu();
+	void SetActiveSubCategory(int subCategoryIndex);
+	int GetActiveSubCategory();
 	void FrameStep(int frames);
 	const std::optional<User> &GetUser() const;
 	void SetUser(std::optional<User> user);
@@ -285,6 +293,7 @@ public:
 	}
 	void SetZoomEnabled(bool enabled);
 	bool GetZoomEnabled();
+	void SetZoomWindowVisible(bool visible);
 	void SetZoomSize(int size);
 	int GetZoomSize();
 	void SetZoomFactor(int factor);
@@ -295,6 +304,16 @@ public:
 	ui::Point AdjustZoomCoords(ui::Point position);
 	void SetZoomWindowPosition(ui::Point position);
 	ui::Point GetZoomWindowPosition();
+	ui::Point GetZoomWindowSize();
+	bool GetZoomWindowManuallyPlaced() const
+	{
+		return zoomWindowManuallyPlaced;
+	}
+	// Called once a drag-move/drag-resize of the zoom window finishes: persists
+	// its current position/factor and flips on "manually placed", which stops
+	// GameController::SetZoomPosition's automatic left/right screen-edge snap
+	// from overwriting it on every subsequent mouse move.
+	void CommitZoomWindowPlacement();
 	void SetClipboard(std::unique_ptr<GameSave> save);
 	void SetPlaceSave(std::unique_ptr<GameSave> save);
 	void TransformPlaceSave(Mat2<int> transform, Vec2<int> nudge);
@@ -314,6 +333,16 @@ public:
 	inline bool GetPerfectCircle() const
 	{
 		return perfectCircle;
+	}
+	void SetBrushRotationStep(int step);
+	inline int GetBrushRotationStep() const
+	{
+		return brushRotationStep;
+	}
+	void SetBrushResizeDivisor(int divisor);
+	inline int GetBrushResizeDivisor() const
+	{
+		return brushResizeDivisor;
 	}
 
 	std::vector<Notification*> GetNotifications();

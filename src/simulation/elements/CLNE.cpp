@@ -47,6 +47,15 @@ void Element::Element_CLNE()
 	CtypeDraw = &Element::ctypeDrawVInTmp;
 }
 
+// Also true for our 4 state carriers (PWCR/LQCR/GSCR/SDCR), not just LAVA --
+// all of them use ctype the same way LAVA does (which real element this
+// particle represents), so cloning "molten gold" etc should reproduce that
+// specific material, not a plain, untagged carrier particle.
+static bool CarriesSubMaterial(int t)
+{
+	return t == PT_LAVA || t == PT_PWCR || t == PT_LQCR || t == PT_GSCR || t == PT_SDCR;
+}
+
 static int update(UPDATE_FUNC_ARGS)
 {
 	auto &sd = SimulationData::CRef();
@@ -69,8 +78,16 @@ static int update(UPDATE_FUNC_ARGS)
 				    rt<PT_NUM)
 				{
 					parts[i].ctype = rt;
-					if (rt==PT_LIFE || rt==PT_LAVA)
+					if (rt==PT_LIFE || CarriesSubMaterial(rt))
 						parts[i].tmp = parts[ID(r)].ctype;
+					// Drew asked for this specifically: a clone that
+					// touched something molten/liquefied should reproduce
+					// it at the same heat, not room temperature -- which
+					// for a state carrier especially matters since cold
+					// enough can revert it straight back to the real solid
+					// (see Simulation.cpp's carrier cooling transition).
+					if (CarriesSubMaterial(rt))
+						parts[i].tmp2 = int(parts[ID(r)].temp);
 				}
 			}
 		}
@@ -85,6 +102,10 @@ static int update(UPDATE_FUNC_ARGS)
 			{
 				if (parts[i].ctype==PT_LAVA && parts[i].tmp>0 && parts[i].tmp<PT_NUM && elements[parts[i].tmp].HighTemperatureTransition==PT_LAVA)
 					parts[np].ctype = parts[i].tmp;
+				else if (CarriesSubMaterial(parts[i].ctype) && parts[i].tmp>0 && parts[i].tmp<PT_NUM && elements[parts[i].tmp].Enabled)
+					parts[np].ctype = parts[i].tmp;
+				if (CarriesSubMaterial(parts[i].ctype) && parts[i].tmp2 > 0)
+					parts[np].temp = restrict_flt(float(parts[i].tmp2), MIN_TEMP, MAX_TEMP);
 			}
 		}
 	}

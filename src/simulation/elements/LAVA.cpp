@@ -73,4 +73,17 @@ static int graphics(GRAPHICS_FUNC_ARGS)
 static void create(ELEMENT_CREATE_FUNC_ARGS)
 {
 	sim->parts[i].life = sim->rng.between(240, 359);
+	// Same "spawn genuinely molten" fix as LQCR.cpp's create() -- a lava
+	// particle tagged (via ctype, see CarriesTypeIn above) to a real metal
+	// whose own melting point sits above lava's fixed ~1795K default (e.g.
+	// titanium at 1941K) would otherwise spawn already below that metal's
+	// real melting point and immediately solidify back via the generic
+	// cool-below-melting-point transition, before ever being seen molten.
+	if (v > 0 && v < PT_NUM)
+	{
+		auto &sd = SimulationData::CRef();
+		auto &elements = sd.elements;
+		if (elements[v].Enabled && elements[v].HighTemperatureTransition == PT_LAVA)
+			sim->parts[i].temp = restrict_flt(elements[v].HighTemperature + 450.0f, MIN_TEMP, MAX_TEMP);
+	}
 }

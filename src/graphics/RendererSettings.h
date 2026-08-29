@@ -38,6 +38,11 @@ struct RendererSettings
 	ui::Point mousePos = { 0, 0 };
 	int gridSize = 0;
 	bool gridCheckerboard = false;
+	// 0x000000 (pure black) by default -- matches the old hardcoded fill.
+	// Some near-black elements (carbon nanotube, graphene-family materials)
+	// are hard to make out against pure black; a lighter background makes
+	// dark elements visible without having to recolor every one of them.
+	uint32_t backgroundColour = 0;
 	float fireIntensity = 1;
 	HdispLimit wantHdispLimitMin = HdispLimitExplicit{ MIN_TEMP };
 	HdispLimit wantHdispLimitMax = HdispLimitExplicit{ MAX_TEMP };

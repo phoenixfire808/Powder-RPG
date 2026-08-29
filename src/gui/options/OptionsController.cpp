@@ -4,6 +4,8 @@
 #include "OptionsModel.h"
 
 #include "Controller.h"
+#include "gui/colourpicker/ColourPickerActivity.h"
+#include "gui/game/GameModel.h"
 
 OptionsController::OptionsController(GameModel * gModel_, std::function<void ()> onDone_):
 	gModel(gModel_),
@@ -180,6 +182,24 @@ void OptionsController::SetIncludePressure(bool includePressure)
 void OptionsController::SetPerfectCircle(bool perfectCircle)
 {
 	model->SetPerfectCircle(perfectCircle);
+}
+
+void OptionsController::SetBrushRotationStep(int step)
+{
+	model->SetBrushRotationStep(step);
+}
+
+void OptionsController::SetBrushResizeDivisor(int divisor)
+{
+	model->SetBrushResizeDivisor(divisor);
+}
+
+void OptionsController::OpenBackgroundColourPicker()
+{
+	auto initial = RGB::Unpack(gModel->GetBackgroundColour()).WithAlpha(0xFF);
+	new ColourPickerActivity(initial, [this](ui::Colour colour) {
+		gModel->SetBackgroundColour(colour.NoAlpha().Pack());
+	});
 }
 
 void OptionsController::SetMomentumScroll(bool momentumScroll)

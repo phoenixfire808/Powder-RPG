@@ -51,6 +51,8 @@ class OptionsView: public ui::Window
 	ui::Checkbox *mouseClickRequired{};
 	ui::Checkbox *includePressure{};
 	ui::Checkbox *perfectCircle{};
+	ui::Textbox *brushRotationStep{};
+	ui::Textbox *brushResizeDivisor{};
 	ui::Checkbox *graveExitsConsole{};
 	ui::Checkbox *nativeClipoard{};
 	ui::Checkbox *threadedRendering{};
@@ -68,6 +70,10 @@ class OptionsView: public ui::Window
 	void UpdateEdgePressure(String pres, bool isDefocus);
 	void VorticityCoeffToTextBox(float vorticity);
 	void UpdateVorticityCoeff(String cort, bool isDefocus);
+	void BrushRotationStepToTextBox(int step);
+	void UpdateBrushRotationStep(String step, bool isDefocus);
+	void BrushResizeDivisorToTextBox(int divisor);
+	void UpdateBrushResizeDivisor(String divisor, bool isDefocus);
 	void UpdateStartupRequestStatus();
 	void UpdateFpsLimit(bool isDefocus);
 	void FpsLimitToInterface(SimFpsLimit limit);

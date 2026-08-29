@@ -221,6 +221,13 @@ if enable_http and host_platform != 'emscripten'
 	curl_dep = dependency('libcurl', static: is_static)
 endif
 
+# For the net.listen Lua binding's raw TCP accept/bind/listen (LuaSocket.cpp)
+# -- curl above is outbound-only, it can't serve a listening socket.
+ws2_32_dep = []
+if host_platform == 'windows'
+	ws2_32_dep = cpp_compiler.find_library('ws2_32')
+endif
+
 project_link_args = []
 project_cpp_args = []
 
@@ -532,6 +539,7 @@ if get_option('build_powder')
 		threads_dep,
 		lua_dep,
 		curl_dep,
+		ws2_32_dep,
 		fftw_dep,
 		sta_libs['common'],
 		sta_libs['gui'],

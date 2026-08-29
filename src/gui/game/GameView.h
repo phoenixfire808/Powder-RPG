@@ -9,8 +9,10 @@
 #include <deque>
 #include <memory>
 #include <vector>
+#include <map>
 #include <optional>
 #include <thread>
+#include <functional>
 #include <mutex>
 #include <condition_variable>
 
@@ -40,6 +42,7 @@ class Renderer;
 struct RendererSettings;
 class VideoBuffer;
 class ToolButton;
+class Tool;
 class GameController;
 class Brush;
 class GameModel;
@@ -51,10 +54,35 @@ private:
 	bool zoomEnabled;
 	bool zoomCursorFixed;
 	bool mouseInZoom;
+	// Dragging/resizing the on-screen zoom window itself (its decorative
+	// frame, not its magnified content -- that's still MouseInZoom/
+	// AdjustZoomCoords, untouched, so precision-drawing inside the zoomed
+	// view keeps working exactly as before).
+	bool zoomWindowDragging = false;
+	bool zoomWindowResizing = false;
+	ui::Point zoomWindowDragOffset = ui::Point(0, 0);
+	ui::Point zoomWindowResizeAnchor = ui::Point(0, 0); // the corner NOT being dragged; stays fixed on screen
+	enum class ZoomFrameHit { None, Move, ResizeTL, ResizeTR, ResizeBL, ResizeBR };
+	ZoomFrameHit HitTestZoomWindowFrame(ui::Point mouse) const;
 	bool drawSnap;
+	// Wall-clock ms (SDL_GetTicks) of the last scroll-wheel notch, and how
+	// many notches have landed in a row while the gap between them stayed
+	// short -- lets a brisk flick of the wheel ramp the resize step up
+	// instead of every notch being the same size regardless of how fast
+	// they're coming in. Wall-clock rather than sim ticks deliberately --
+	// sim tick rate can be capped/paused/vary, and this needs to track real
+	// elapsed time between scroll events, not simulation progress. See
+	// OnMouseWheel.
+	unsigned int lastScrollTime = 0; // SDL_GetTicks() at the last wheel notch
+	int scrollStreak = 0;
 	bool shiftBehaviour;
 	bool ctrlBehaviour;
 	bool altBehaviour;
+	// Held while dragging a Ctrl+drag region fill (Rect or Ellipse, see
+	// ElementTool::DrawRect) to anchor it at its centre and grow outward in
+	// both directions instead of anchoring at the drag's start corner --
+	// RimWorld's Designator Shapes mod offers the same choice.
+	bool centerAnchorBehaviour = false;
 	bool showHud;
 	bool showBrush;
 	bool showDebug;
@@ -96,6 +124,85 @@ private:
 	std::vector<ui::Button*> quickOptionButtons;
 
 	std::vector<MenuButton*> menuButtons;
+	std::vector<ui::Button*> subCategoryButtons;
+	// The subcategory ladder is a hover-only popup, unlike the sticky
+	// activeMenu tool row -- it must vanish the instant the mouse leaves it,
+	// and while visible its screen rectangle must be excluded from sim
+	// click/draw handling (it can extend above YRES, over the sim view).
+	bool subCategoryLadderVisible = false;
+	int subCategoryLadderMenuID = -1;
+	ui::Point subCategoryLadderTopLeft = ui::Point(0, 0);
+	ui::Point subCategoryLadderSize = ui::Point(0, 0);
+	// Grace period (in ticks) before an unhovered ladder actually closes --
+	// without this, the ladder sits diagonally adjacent to its menu button
+	// (they only touch at one corner pixel) so any real mouse movement
+	// between them crosses a frame where neither hit-test matches, and the
+	// ladder was vanishing mid-transit. Reset to full on every hover, ticked
+	// down by DecaySubCategoryLadderHover(), only actually hides at 0.
+	int subCategoryLadderHideDelay = 0;
+	bool PointInSubCategoryLadder(ui::Point p) const
+	{
+		return subCategoryLadderVisible &&
+			p.X >= subCategoryLadderTopLeft.X && p.X < subCategoryLadderTopLeft.X + subCategoryLadderSize.X &&
+			p.Y >= subCategoryLadderTopLeft.Y && p.Y < subCategoryLadderTopLeft.Y + subCategoryLadderSize.Y;
+	}
+	void UpdateSubCategoryLadderHover(ui::Point mouse);
+	void DecaySubCategoryLadderHover();
+	void RebuildSubCategoryLadder();
+
+	// State picker: hovering an element's tool button pops a small chip list
+	// of the physical states it doesn't already natively have (Powder/
+	// Liquid/Gas/Solid, via GameController::SelectStateCarrierTool) --
+	// same hover/grace-period/rebuild shape as the subcategory ladder above,
+	// just anchored to a tool button instead of a menu button.
+	std::vector<ui::Button*> stateLadderButtons;
+	bool stateLadderVisible = false;
+	ToolButton *stateLadderButton = nullptr;
+	ui::Point stateLadderTopLeft = ui::Point(0, 0);
+	ui::Point stateLadderSize = ui::Point(0, 0);
+	int stateLadderHideDelay = 0;
+	bool PointInStateLadder(ui::Point p) const
+	{
+		return stateLadderVisible &&
+			p.X >= stateLadderTopLeft.X && p.X < stateLadderTopLeft.X + stateLadderSize.X &&
+			p.Y >= stateLadderTopLeft.Y && p.Y < stateLadderTopLeft.Y + stateLadderSize.Y;
+	}
+	void UpdateStateLadderHover(ui::Point mouse);
+	void DecayStateLadderHover();
+	void RebuildStateLadder();
+
+	// Favorites wheel: hold T to pop a radial "command wheel" (like
+	// RimWorld's Dubs Mint Menus mod) of Drew's current favorited
+	// elements, centered on the cursor -- click a slot to select it,
+	// release T to close. Reuses the existing Favorite list (already
+	// user-editable via the Shift+Ctrl-click toggle on any element button)
+	// as the wheel's contents rather than building a separate
+	// configuration UI, and the same click-to-pick/hold-to-show shape the
+	// Z zoom tool already uses in this file, instead of a hover trigger.
+	std::vector<ui::Button*> favoritesWheelButtons;
+	bool favoritesWheelVisible = false;
+	ui::Point favoritesWheelTopLeft = ui::Point(0, 0);
+	ui::Point favoritesWheelSize = ui::Point(0, 0);
+	bool PointInFavoritesWheel(ui::Point p) const
+	{
+		return favoritesWheelVisible &&
+			p.X >= favoritesWheelTopLeft.X && p.X < favoritesWheelTopLeft.X + favoritesWheelSize.X &&
+			p.Y >= favoritesWheelTopLeft.Y && p.Y < favoritesWheelTopLeft.Y + favoritesWheelSize.Y;
+	}
+	void OpenFavoritesWheel(ui::Point center);
+	// Layer 1 (shown when favorites span more than one menu category): one
+	// slot per category, click one to drill into layer 2.
+	void OpenFavoritesCategoryRing(ui::Point center, const std::map<int, std::vector<Tool *>> &byCategory);
+	// Layer 2 (or the only layer, if there's just one category): the actual
+	// tool slots, plus a Back slot to return to layer 1 when it came from
+	// a category (backToCategory >= 0).
+	void OpenFavoritesLeafRing(ui::Point center, std::vector<Tool *> tools, int backToCategory);
+	void SetFavoritesWheelBounds(ui::Point center, const std::vector<ui::Point> &positions, int itemSize);
+	// Copy/Paste slots, always on the wheel's outermost ring -- see
+	// GameView.cpp's AddFavoritesWheelCopyPasteSlots for why.
+	void AddFavoritesWheelActionSlot(ui::Point position, int itemSize, String label, std::function<void()> action);
+	void AddFavoritesWheelCopyPasteSlots(const std::vector<ui::Point> &positions, int firstIdx, int itemSize);
+	void CloseFavoritesWheel();
 
 	std::vector<ToolButton*> toolButtons;
 	std::vector<ui::Component*> notificationComponents;

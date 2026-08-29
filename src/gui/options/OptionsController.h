@@ -47,6 +47,9 @@ public:
 	void SetMouseClickrequired(bool mouseClickRequired);
 	void SetIncludePressure(bool includePressure);
 	void SetPerfectCircle(bool perfectCircle);
+	void SetBrushRotationStep(int step);
+	void SetBrushResizeDivisor(int divisor);
+	void OpenBackgroundColourPicker();
 	void SetMomentumScroll(bool momentumScroll);
 	void SetRedirectStd(bool newRedirectStd);
 	void SetAutoStartupRequest(bool newAutoStartupRequest);

@@ -250,6 +250,11 @@ public:
 	void CreateLine(int x1, int y1, int x2, int y2, int c, Brush const &cBrush, int flags);
 	void CreateLine(int x1, int y1, int x2, int y2, int c);
 	void CreateBox(int p, int x1, int y1, int x2, int y2, int c, int flags);
+	// Same shape RimWorld's Designator Shapes mod adds to its rectangle
+	// designator -- a solid fill within the ellipse inscribed in the (x1,y1)-
+	// (x2,y2) bounding box, picked automatically when the current brush is
+	// EllipseBrush (see ElementTool::DrawRect).
+	void CreateEllipse(int p, int x1, int y1, int x2, int y2, int c, int flags, bool perfectCircle = false);
 	int FloodParts(int x, int y, int c, int cm, int flags);
 
 	void GetGravityField(int x, int y, float particleGrav, float newtonGrav, float & pGravX, float & pGravY) const;

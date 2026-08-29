@@ -417,6 +417,24 @@ static int activeMenu(lua_State *L)
 	return 0;
 }
 
+// interface.activeSubCategory() -> current index (-1 = none/showing chips)
+// interface.activeSubCategory(n) -> select subcategory band n for the active
+// menu section (see SubCategory.h); pass -1 to go back to the chip selector.
+static int activeSubCategory(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	lsi->AssertInterfaceEvent();
+	int acount = lua_gettop(L);
+	if (acount == 0)
+	{
+		lua_pushinteger(L, lsi->gameModel->GetActiveSubCategory());
+		return 1;
+	}
+	int subIndex = luaL_checkint(L, 1);
+	lsi->gameController->SetActiveSubCategory(subIndex);
+	return 0;
+}
+
 static int menuEnabled(lua_State *L)
 {
 	auto *lsi = GetLSI();

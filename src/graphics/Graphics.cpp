@@ -467,13 +467,53 @@ void Graphics::RenderZoom()
 {
 	if(!zoomEnabled)
 		return;
+
+	// Source-scope outline: shows the NxN area of the canvas that will be
+	// magnified. Must stay visible for the whole time the zoom tool is held,
+	// independent of whether the magnified box itself has been placed yet --
+	// this used to be nested under the zoomWindowVisible-gated block below,
+	// so hiding the (deliberately pre-placement-hidden) magnified box also
+	// hid this outline, leaving no on-screen indication of the zoom area at
+	// all until after placing it.
+	for (int j = -1; j <= zoomScopeSize; j++)
+	{
+		XorPixel(zoomScopePosition + Vec2{ j, -1 });
+		XorPixel(zoomScopePosition + Vec2{ j, zoomScopeSize });
+	}
+	for (int j = 0; j < zoomScopeSize; j++)
+	{
+		XorPixel(zoomScopePosition + Vec2{ -1, j });
+		XorPixel(zoomScopePosition + Vec2{ zoomScopeSize, j });
+	}
+
+	if(!zoomWindowVisible)
+		return;
 	{
 		int x, y, i, j;
 		pixel pix;
 
-		DrawFilledRect(RectSized(zoomWindowPosition, { zoomScopeSize * ZFACTOR, zoomScopeSize * ZFACTOR }), 0x000000_rgb);
-		DrawRect(RectSized(zoomWindowPosition - Vec2{ 2, 2 }, Vec2{ zoomScopeSize*ZFACTOR+3, zoomScopeSize*ZFACTOR+3 }), 0xC0C0C0_rgb);
-		DrawRect(RectSized(zoomWindowPosition - Vec2{ 1, 1 }, Vec2{ zoomScopeSize*ZFACTOR+1, zoomScopeSize*ZFACTOR+1 }), 0x000000_rgb);
+		int boxSide = zoomScopeSize * ZFACTOR;
+		DrawFilledRect(RectSized(zoomWindowPosition, { boxSide, boxSide }), 0x000000_rgb);
+		// A 1-2px grey line here used to be the entire visual cue for where
+		// the window's edge was -- easy to miss entirely, especially against
+		// busy sim content right behind it. Bright, thick border plus a
+		// filled square at each corner (matching the widened drag/resize
+		// grab zone in GameView::HitTestZoomWindowFrame) so the whole thing
+		// visibly reads as "draggable object with corner handles", not just
+		// a faint outline you have to go hunting for.
+		constexpr int borderThickness = 3;
+		for (int t = 0; t < borderThickness; t++)
+		{
+			DrawRect(RectSized(zoomWindowPosition - Vec2{ 1 + t, 1 + t }, Vec2{ boxSide + 1 + t * 2, boxSide + 1 + t * 2 }), 0xFFC864_rgb);
+		}
+		constexpr int handleSize = 8;
+		auto drawHandle = [this](ui::Point corner) {
+			DrawFilledRect(RectSized(corner - Vec2{ handleSize / 2, handleSize / 2 }, Vec2{ handleSize, handleSize }), 0xFFC864_rgb);
+		};
+		drawHandle(zoomWindowPosition);
+		drawHandle(zoomWindowPosition + Vec2{ boxSide, 0 });
+		drawHandle(zoomWindowPosition + Vec2{ 0, boxSide });
+		drawHandle(zoomWindowPosition + Vec2{ boxSide, boxSide });
 		for (j=0; j<zoomScopeSize; j++)
 			for (i=0; i<zoomScopeSize; i++)
 			{
@@ -482,18 +522,9 @@ void Graphics::RenderZoom()
 					for (x=0; x<ZFACTOR-1; x++)
 						video[{ i * ZFACTOR + x + zoomWindowPosition.X, j * ZFACTOR + y + zoomWindowPosition.Y }] = pix;
 			}
-		if (zoomEnabled)
-		{
-			for (j=-1; j<=zoomScopeSize; j++)
-			{
-				XorPixel(zoomScopePosition + Vec2{ j, -1 });
-				XorPixel(zoomScopePosition + Vec2{ j, zoomScopeSize });
-			}
-			for (j=0; j<zoomScopeSize; j++)
-			{
-				XorPixel(zoomScopePosition + Vec2{ -1, j });
-				XorPixel(zoomScopePosition + Vec2{ zoomScopeSize, j });
-			}
-		}
+		// (Scope outline already drawn unconditionally above -- drawing it a
+		// second time here used to double-XOR those pixels back to their
+		// original value any time the magnified box was visible, silently
+		// erasing the outline again right after this block ran.)
 	}
 }

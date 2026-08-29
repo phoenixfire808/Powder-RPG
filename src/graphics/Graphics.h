@@ -48,6 +48,11 @@ public:
 	ui::Point zoomScopePosition = { 0, 0 };
 	int zoomScopeSize = 32;
 	bool zoomEnabled = false;
+	// Separate from zoomEnabled: true only once the user has clicked to fix
+	// the zoom window in place. While the zoom tool is active but not yet
+	// placed, the window tracks the cursor invisibly instead of drawing a
+	// big box that follows the mouse around the screen -- see RenderZoom.
+	bool zoomWindowVisible = false;
 	int ZFACTOR = 8;
 	void RenderZoom();
 };

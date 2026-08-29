@@ -19,6 +19,7 @@ luaconsole_files = files(
 	'LuaSimulation.cpp',
 	'LuaSlider.cpp',
 	'LuaSocket.cpp',
+	'LuaSocketNet.cpp',
 	'LuaSmartRef.cpp',
 	'LuaTextbox.cpp',
 	'LuaTools.cpp',

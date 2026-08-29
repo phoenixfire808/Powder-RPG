@@ -105,9 +105,22 @@ public:
 	void InvertAirSim();
 	void LoadRenderPreset(int presetNum);
 	void SetZoomEnabled(bool zoomEnable);
+	void SetZoomWindowVisible(bool visible);
 	void SetZoomPosition(ui::Point position);
+	ui::Point GetZoomWindowPosition();
+	void SetZoomWindowPosition(ui::Point position);
+	ui::Point GetZoomWindowSize();
+	int GetZoomFactor();
+	void SetZoomFactor(int factor);
+	int GetZoomSize();
+	bool GetZoomWindowManuallyPlaced();
+	void CommitZoomWindowPlacement();
 	void AdjustBrushSize(int direction, bool logarithmic = false, bool xAxis = false, bool yAxis = false);
 	void SetBrushSize(ui::Point newSize);
+	void AdjustBrushRotation(int direction); // +1 or -1; scaled by GameModel::GetBrushRotationStep()
+	void SelectStateCarrierTool(int toolSelection, Tool *sourceTool, ByteString carrierIdentifier);
+	// "" if unavailable (source is already that state natively, invalid tool/carrier, etc) -- callers use emptiness to decide whether to offer it at all.
+	String GetStateCarrierLabel(Tool *sourceTool, ByteString carrierIdentifier);
 	void AdjustZoomSize(int direction, bool logarithmic = false);
 	void ToolClick(int toolSelection, ui::Point point);
 	void ToolDrag(int toolSelection, ui::Point point1, ui::Point point2);
@@ -139,9 +152,11 @@ public:
 	void SetDebugFlags(unsigned int flags) { debugFlags = flags; }
 	unsigned int GetDebugFlags() const { return debugFlags; }
 	void SetActiveMenu(int menuID);
+	void SetActiveSubCategory(int subCategoryIndex);
 	std::vector<Menu*> GetMenuList();
 	int GetNumMenus(bool onlyEnabled);
 	void RebuildFavoritesMenu();
+	Tool *GetToolFromIdentifier(ByteString identifier);
 	Tool * GetActiveTool(int selection);
 	void SetActiveTool(int toolSelection, Tool * tool);
 	void SetActiveTool(int toolSelection, ByteString identifier);

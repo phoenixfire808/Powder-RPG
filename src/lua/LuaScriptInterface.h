@@ -302,6 +302,8 @@ namespace LuaSocket
 	void Timeout(double timeout);
 	void Open(lua_State *L);
 	void OpenTCP(lua_State *L);
+	void OpenNetTable(lua_State *L);
+	void Process(lua_State *L);
 }
 
 namespace LuaTools

@@ -404,6 +404,17 @@ OptionsView::OptionsView() : ui::Window(ui::Point(-1, -1), ui::Point(320, 340))
 	perfectCircle = addCheckbox(0, "Perfect circle brush", "Better circle brush, without incorrect points on edges", [this] {
 		c->SetPerfectCircle(perfectCircle->GetChecked());
 	});
+	brushRotationStep = addTextboxWithPreview("Brush rotation step (degrees)", false, [this](String value, bool defocus) {
+		UpdateBrushRotationStep(value, defocus);
+	}).first;
+	brushRotationStep->SetLimit(3);
+	brushResizeDivisor = addTextboxWithPreview("Brush resize speed \bg(lower = faster)", false, [this](String value, bool defocus) {
+		UpdateBrushResizeDivisor(value, defocus);
+	}).first;
+	brushResizeDivisor->SetLimit(2);
+	addButtonWithLabel("Change", " - Simulation background colour (default black)", [this] {
+		c->OpenBackgroundColourPicker();
+	});
 	graveExitsConsole = addCheckbox(0, "Key under Esc exits console", "Disable if that key is 0 on your keyboard", [this] {
 		c->SetGraveExitsConsole(graveExitsConsole->GetChecked());
 	});
@@ -749,6 +760,44 @@ void OptionsView::UpdateVorticityCoeff(String vort, bool isDefocus)
 	});
 }
 
+void OptionsView::BrushRotationStepToTextBox(int step)
+{
+	brushRotationStep->SetText(String::Build(step));
+}
+
+void OptionsView::UpdateBrushRotationStep(String step, bool isDefocus)
+{
+	UpdateSettingFromString(step, isDefocus, 1, 180, 15, [](const String &step) {
+		return step.ToNumber<int>();
+	}, [this](int step) {
+		BrushRotationStepToTextBox(step);
+	}, [this](int step, bool isValid) {
+		if (isValid)
+		{
+			c->SetBrushRotationStep(step);
+		}
+	});
+}
+
+void OptionsView::BrushResizeDivisorToTextBox(int divisor)
+{
+	brushResizeDivisor->SetText(String::Build(divisor));
+}
+
+void OptionsView::UpdateBrushResizeDivisor(String divisor, bool isDefocus)
+{
+	UpdateSettingFromString(divisor, isDefocus, 1, 50, 5, [](const String &divisor) {
+		return divisor.ToNumber<int>();
+	}, [this](int divisor) {
+		BrushResizeDivisorToTextBox(divisor);
+	}, [this](int divisor, bool isValid) {
+		if (isValid)
+		{
+			c->SetBrushResizeDivisor(divisor);
+		}
+	});
+}
+
 void OptionsView::NotifySettingsChanged(OptionsModel * sender)
 {
 	temperatureScale->SetOption(sender->GetTemperatureScale()); // has to happen before AmbientAirTempToTextBox is called
@@ -831,6 +880,14 @@ void OptionsView::NotifySettingsChanged(OptionsModel * sender)
 	mouseClickRequired->SetChecked(sender->GetMouseClickRequired());
 	includePressure->SetChecked(sender->GetIncludePressure());
 	perfectCircle->SetChecked(sender->GetPerfectCircle());
+	if (!brushRotationStep->IsFocused())
+	{
+		BrushRotationStepToTextBox(sender->GetBrushRotationStep());
+	}
+	if (!brushResizeDivisor->IsFocused())
+	{
+		BrushResizeDivisorToTextBox(sender->GetBrushResizeDivisor());
+	}
 	graveExitsConsole->SetChecked(sender->GetGraveExitsConsole());
 	threadedRendering->SetChecked(sender->GetThreadedRendering());
 	momentumScroll->SetChecked(sender->GetMomentumScroll());

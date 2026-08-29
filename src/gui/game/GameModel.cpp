@@ -9,8 +9,10 @@
 #include "GameView.h"
 #include "Menu.h"
 #include "Notification.h"
+#include "SubCategory.h"
 #include "RectangleBrush.h"
 #include "TriangleBrush.h"
+#include "PolygonBrush.h"
 #include "QuickOptions.h"
 #include "lua/CommandInterface.h"
 #include "prefs/GlobalPrefs.h"
@@ -112,6 +114,7 @@ GameModel::GameModel(GameView *newView):
 	rendererSettings.gravityFieldEnabled = prefs.Get("Renderer.GravityField", false);
 	rendererSettings.decorationLevel = prefs.Get("Renderer.Decorations", true) ? RendererSettings::decorationEnabled : RendererSettings::decorationDisabled;
 	rendererSettings.gridCheckerboard = prefs.Get("Renderer.GridCheckerboard", false);
+	rendererSettings.backgroundColour = prefs.Get("Renderer.BackgroundColour", UINT32_C(0));
 	threadedRendering = prefs.Get("Renderer.SeparateThread", true);
 
 	//Load config into simulation
@@ -182,7 +185,18 @@ GameModel::GameModel(GameView *newView):
 	currentUser = Client::Ref().GetAuthUser();
 
 	perfectCircle = prefs.Get("PerfectCircleBrush", true);
+	brushRotationStep = std::clamp(prefs.Get("Brush.RotationStep", 15), 1, 180);
+	brushResizeDivisor = std::clamp(prefs.Get("Brush.ResizeDivisor", 5), 1, 50);
 	BuildBrushList();
+
+	zoomWindowManuallyPlaced = prefs.Get("Zoom.WindowManuallyPlaced", false);
+	if (zoomWindowManuallyPlaced)
+	{
+		SetZoomFactor(std::clamp(prefs.Get("Zoom.Factor", 8), 1, 200));
+		SetZoomWindowPosition(ui::Point(
+			std::clamp(prefs.Get("Zoom.WindowX", 0), 0, XRES),
+			std::clamp(prefs.Get("Zoom.WindowY", 0), 0, YRES)));
+	}
 
 	InitTools();
 
@@ -226,6 +240,7 @@ GameModel::~GameModel()
 		prefs.Set("Renderer.RenderMode", rendererSettings.renderMode);
 		prefs.Set("Renderer.GravityField", rendererSettings.gravityFieldEnabled);
 		prefs.Set("Renderer.GridCheckerboard", rendererSettings.gridCheckerboard);
+		prefs.Set("Renderer.BackgroundColour", rendererSettings.backgroundColour);
 		prefs.Set("Renderer.Decorations", GetDecoration());
 		prefs.Set("Renderer.DebugMode", rendererSettings.debugLines); //These two should always be equivalent, even though they are different things
 		prefs.Set("Simulation.NewtonianGravity", bool(sim->grav));
@@ -281,6 +296,8 @@ void GameModel::BuildBrushList()
 	brushList.push_back(std::make_unique<EllipseBrush>(perfectCircle));
 	brushList.push_back(std::make_unique<RectangleBrush>());
 	brushList.push_back(std::make_unique<TriangleBrush>());
+	brushList.push_back(std::make_unique<PolygonBrush>(5)); // pentagon
+	brushList.push_back(std::make_unique<PolygonBrush>(6)); // hexagon
 
 	//Load more from brushes folder
 	for (ByteString brushFile : Platform::DirectorySearch(BRUSH_DIR, "", { ".ptb" }))
@@ -753,6 +770,7 @@ float GameModel::GetToolStrength()
 void GameModel::SetActiveMenu(int menuID)
 {
 	activeMenu = menuID;
+	activeSubCategory = -1;
 	notifyActiveMenuToolListChanged();
 
 	if(menuID == SC_DECO)
@@ -780,7 +798,35 @@ std::vector<Tool *> GameModel::GetActiveMenuToolList()
 	{
 		activeMenuToolList = menuList[activeMenu]->GetToolList();
 	}
+	if (activeSubCategory >= 0)
+	{
+		auto it = GetSubCategories().find(activeMenu);
+		if (it != GetSubCategories().end() && activeSubCategory < int(it->second.size()))
+		{
+			auto &band = it->second[activeSubCategory];
+			std::vector<Tool *> filtered;
+			for (auto *tool : activeMenuToolList)
+			{
+				if (tool->MenuSort >= band.sortMin && tool->MenuSort <= band.sortMax)
+				{
+					filtered.push_back(tool);
+				}
+			}
+			return filtered;
+		}
+	}
 	return activeMenuToolList;
+}
+
+void GameModel::SetActiveSubCategory(int subCategoryIndex)
+{
+	activeSubCategory = subCategoryIndex;
+	notifyActiveMenuToolListChanged();
+}
+
+int GameModel::GetActiveSubCategory()
+{
+	return activeSubCategory;
 }
 
 int GameModel::GetActiveMenu()
@@ -964,6 +1010,11 @@ void GameModel::SetZoomEnabled(bool enabled)
 	notifyZoomChanged();
 }
 
+void GameModel::SetZoomWindowVisible(bool visible)
+{
+	view->GetGraphics()->zoomWindowVisible = visible;
+}
+
 bool GameModel::GetZoomEnabled()
 {
 	return view->GetGraphics()->zoomEnabled;
@@ -980,14 +1031,19 @@ ui::Point GameModel::GetZoomPosition()
 	return view->GetGraphics()->zoomScopePosition;
 }
 
+ui::Point GameModel::GetZoomWindowSize()
+{
+	int side = GetZoomSize() * GetZoomFactor();
+	return ui::Point(side, side);
+}
+
 bool GameModel::MouseInZoom(ui::Point position)
 {
 	if (!GetZoomEnabled())
 		return false;
 
-	int zoomFactor = GetZoomFactor();
 	ui::Point zoomWindowPosition = GetZoomWindowPosition();
-	ui::Point zoomWindowSize = ui::Point(GetZoomSize()*zoomFactor, GetZoomSize()*zoomFactor);
+	ui::Point zoomWindowSize = GetZoomWindowSize();
 
 	if (position.X >= zoomWindowPosition.X && position.Y >= zoomWindowPosition.Y && position.X < zoomWindowPosition.X+zoomWindowSize.X && position.Y < zoomWindowPosition.Y+zoomWindowSize.Y)
 		return true;
@@ -999,9 +1055,8 @@ ui::Point GameModel::AdjustZoomCoords(ui::Point position)
 	if (!GetZoomEnabled())
 		return position;
 
-	int zoomFactor = GetZoomFactor();
 	ui::Point zoomWindowPosition = GetZoomWindowPosition();
-	ui::Point zoomWindowSize = ui::Point(GetZoomSize()*zoomFactor, GetZoomSize()*zoomFactor);
+	ui::Point zoomWindowSize = GetZoomWindowSize();
 
 	if (position.X >= zoomWindowPosition.X && position.Y >= zoomWindowPosition.Y && position.X < zoomWindowPosition.X+zoomWindowSize.X && position.Y < zoomWindowPosition.Y+zoomWindowSize.Y)
 		return ((position-zoomWindowPosition)/GetZoomFactor())+GetZoomPosition();
@@ -1012,6 +1067,17 @@ void GameModel::SetZoomWindowPosition(ui::Point position)
 {
 	view->GetGraphics()->zoomWindowPosition = position;
 	notifyZoomChanged();
+}
+
+void GameModel::CommitZoomWindowPlacement()
+{
+	zoomWindowManuallyPlaced = true;
+	auto &prefs = GlobalPrefs::Ref();
+	prefs.Set("Zoom.WindowManuallyPlaced", true);
+	prefs.Set("Zoom.Factor", GetZoomFactor());
+	auto pos = GetZoomWindowPosition();
+	prefs.Set("Zoom.WindowX", pos.X);
+	prefs.Set("Zoom.WindowY", pos.Y);
 }
 
 ui::Point GameModel::GetZoomWindowPosition()
@@ -1203,6 +1269,16 @@ bool GameModel::GetGravityGrid()
 void GameModel::ShowGridCheckerboard(bool enableCheckerboard)
 {
 	rendererSettings.gridCheckerboard = enableCheckerboard;
+}
+
+void GameModel::SetBackgroundColour(uint32_t colour)
+{
+	rendererSettings.backgroundColour = colour;
+}
+
+uint32_t GameModel::GetBackgroundColour()
+{
+	return rendererSettings.backgroundColour;
 }
 
 bool GameModel::GetGridCheckerboard()
@@ -1556,6 +1632,16 @@ void GameModel::SetPerfectCircle(bool perfectCircle)
 		this->perfectCircle = perfectCircle;
 		BuildBrushList();
 	}
+}
+
+void GameModel::SetBrushRotationStep(int step)
+{
+	brushRotationStep = std::clamp(step, 1, 180);
+}
+
+void GameModel::SetBrushResizeDivisor(int divisor)
+{
+	brushResizeDivisor = std::clamp(divisor, 1, 50);
 }
 
 bool GameModel::AddCustomGol(String ruleString, String nameString, RGB color1, RGB color2)

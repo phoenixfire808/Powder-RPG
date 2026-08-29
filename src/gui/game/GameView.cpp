@@ -1,5 +1,8 @@
 #include "GameView.h"
 
+#include <cmath>
+#include <map>
+
 #include "Brush.h"
 #include "tool/DecorationTool.h"
 #include "tool/PropertyTool.h"
@@ -12,6 +15,7 @@
 #include "MenuButton.h"
 #include "Misc.h"
 #include "Notification.h"
+#include "SubCategory.h"
 #include "ToolButton.h"
 #include "QuickOptions.h"
 #include "PowderToySDL.h"
@@ -435,6 +439,16 @@ void GameView::NotifyMenuListChanged(GameModel * sender)
 					c->SetActiveMenu(tempButton->menuID);
 				else
 					mouseEnterCallback();
+				// Opening the subcategory ladder is a click now, not a
+				// hover -- see UpdateSubCategoryLadderHover, which only
+				// keeps an already-open ladder alive, never opens one.
+				if (GetSubCategories().count(tempButton->menuID) != 0)
+				{
+					subCategoryLadderVisible = true;
+					subCategoryLadderMenuID = tempButton->menuID;
+					RebuildSubCategoryLadder();
+					subCategoryLadderHideDelay = 20;
+				}
 			};
 			tempButton->SetActionCallback({ actionCallback, nullptr, mouseEnterCallback });
 			currentY-=16;
@@ -537,6 +551,483 @@ void GameView::NotifyLastToolChanged(GameModel * sender)
 	}
 }
 
+void GameView::RebuildSubCategoryLadder()
+{
+	for (size_t i = 0; i < subCategoryButtons.size(); i++)
+	{
+		RemoveComponent(subCategoryButtons[i]);
+		delete subCategoryButtons[i];
+	}
+	subCategoryButtons.clear();
+	subCategoryLadderSize = ui::Point(0, 0);
+
+	if (!subCategoryLadderVisible)
+	{
+		return;
+	}
+	auto subCatIt = GetSubCategories().find(subCategoryLadderMenuID);
+	if (subCatIt == GetSubCategories().end())
+	{
+		return;
+	}
+
+	// Anchor the ladder to the active category's own button on the right
+	// edge and stack upward from it, so it reads as "this button's list"
+	// rather than competing with the tool-icon row for the same 40px of
+	// permanently-reserved bottom-bar space (there isn't room for both).
+	int anchorY = YRES - 16;
+	for (auto *mb : menuButtons)
+	{
+		if (mb->menuID == subCategoryLadderMenuID)
+		{
+			anchorY = mb->Position.Y;
+			break;
+		}
+	}
+	constexpr int chipWidth = 140;
+	constexpr int chipHeight = 17;
+	int chipX = WINDOWW - 16 - chipWidth;
+	int chipY = anchorY - chipHeight;
+	// A band with nothing in it renders as a dead button -- clicking it just
+	// shows an empty tool row, which reads as "the categorization is broken"
+	// even when every band definition is correct, since custom elements come
+	// and go (evicted, never restored, etc.) independent of these static
+	// band lists. So count live tools per band and skip anything at zero.
+	std::vector<Tool *> sectionTools;
+	auto menuList = c->GetMenuList();
+	if (subCategoryLadderMenuID >= 0 && subCategoryLadderMenuID < int(menuList.size()) && menuList[subCategoryLadderMenuID])
+	{
+		sectionTools = menuList[subCategoryLadderMenuID]->GetToolList();
+	}
+	std::vector<std::pair<int, const SubCategory *>> nonEmptyBands;
+	for (size_t i = 0; i < subCatIt->second.size(); i++)
+	{
+		auto &band = subCatIt->second[i];
+		bool hasTool = false;
+		for (auto *tool : sectionTools)
+		{
+			if (tool->MenuSort >= band.sortMin && tool->MenuSort <= band.sortMax)
+			{
+				hasTool = true;
+				break;
+			}
+		}
+		if (hasTool)
+		{
+			nonEmptyBands.push_back({ int(i), &band });
+		}
+	}
+
+	subCategoryLadderTopLeft = ui::Point(chipX, chipY - chipHeight * (int(nonEmptyBands.size()) - 1));
+	subCategoryLadderSize = ui::Point(chipWidth, chipHeight * int(nonEmptyBands.size()));
+	for (auto &entry : nonEmptyBands)
+	{
+		int subIndex = entry.first;
+		auto &band = *entry.second;
+		auto *chip = new ui::Button(ui::Point(chipX, chipY), ui::Point(chipWidth, chipHeight), band.label);
+		chip->Appearance.HorizontalAlign = ui::Appearance::AlignCentre;
+		chip->Appearance.VerticalAlign = ui::Appearance::AlignMiddle;
+		chip->SetActionCallback({ [this, subIndex] {
+			c->SetActiveSubCategory(subIndex);
+		} });
+		AddComponent(chip);
+		subCategoryButtons.push_back(chip);
+		chipY -= chipHeight;
+	}
+}
+
+void GameView::UpdateSubCategoryLadderHover(ui::Point mouse)
+{
+	// Opening the ladder is a click now (see the menu button's
+	// actionCallback), not a hover -- this function's only job once it's
+	// open is to keep it alive while the mouse is over it or its anchor
+	// button, so it doesn't vanish mid-transit between the two. It never
+	// opens a ladder on its own.
+	if (!subCategoryLadderVisible)
+	{
+		return;
+	}
+	bool overAnchorButton = false;
+	for (auto *mb : menuButtons)
+	{
+		auto pos = mb->Position;
+		auto size = mb->Size;
+		if (mb->menuID == subCategoryLadderMenuID &&
+			mouse.X >= pos.X && mouse.X < pos.X + size.X && mouse.Y >= pos.Y && mouse.Y < pos.Y + size.Y)
+		{
+			overAnchorButton = true;
+			break;
+		}
+	}
+	if (overAnchorButton || PointInSubCategoryLadder(mouse))
+	{
+		constexpr int kHoverGraceTicks = 20;
+		subCategoryLadderHideDelay = kHoverGraceTicks;
+	}
+	// else: don't hide here -- DecaySubCategoryLadderHover() (driven by
+	// OnTick) owns closing it, so a single frame with the mouse between the
+	// button and the ladder doesn't dismiss it mid-transit.
+}
+
+void GameView::DecaySubCategoryLadderHover()
+{
+	if (!subCategoryLadderVisible || subCategoryLadderHideDelay <= 0)
+	{
+		return;
+	}
+	subCategoryLadderHideDelay--;
+	if (subCategoryLadderHideDelay == 0)
+	{
+		subCategoryLadderVisible = false;
+		subCategoryLadderMenuID = -1;
+		RebuildSubCategoryLadder();
+	}
+}
+
+void GameView::RebuildStateLadder()
+{
+	for (auto *btn : stateLadderButtons)
+	{
+		RemoveComponent(btn);
+		delete btn;
+	}
+	stateLadderButtons.clear();
+	stateLadderSize = ui::Point(0, 0);
+
+	if (!stateLadderVisible || !stateLadderButton || !stateLadderButton->tool)
+	{
+		return;
+	}
+	Tool *sourceTool = stateLadderButton->tool;
+
+	static const char *const carrierIdentifiers[] = {
+		"DEFAULT_PT_PWCR", "DEFAULT_PT_LQCR", "DEFAULT_PT_GSCR", "DEFAULT_PT_SDCR",
+	};
+	std::vector<std::pair<ByteString, String>> available;
+	for (auto *identifier : carrierIdentifiers)
+	{
+		String label = c->GetStateCarrierLabel(sourceTool, identifier);
+		if (!label.empty())
+		{
+			available.push_back({ ByteString(identifier), label });
+		}
+	}
+	if (available.empty())
+	{
+		return;
+	}
+
+	// Reverted back to a stacked list -- Drew tried the radial "command
+	// wheel" layout and preferred the original list ("I liked how the
+	// menus were for the elements before"). The actual command-wheel ask
+	// turned out to be a bigger, separate feature (a customizable
+	// shortcut/action wheel modeled on a specific RimWorld mod), not just
+	// this picker's shape -- see TODO.md.
+	constexpr int chipWidth = 90;
+	constexpr int chipHeight = 17;
+	int chipX = stateLadderButton->Position.X;
+	int chipY = stateLadderButton->Position.Y - chipHeight;
+	stateLadderTopLeft = ui::Point(chipX, chipY - chipHeight * (int(available.size()) - 1));
+	stateLadderSize = ui::Point(chipWidth, chipHeight * int(available.size()));
+	for (auto &entry : available)
+	{
+		ByteString identifier = entry.first;
+		auto *chip = new ui::Button(ui::Point(chipX, chipY), ui::Point(chipWidth, chipHeight), entry.second);
+		chip->Appearance.HorizontalAlign = ui::Appearance::AlignCentre;
+		chip->Appearance.VerticalAlign = ui::Appearance::AlignMiddle;
+		chip->SetActionCallback({ [this, identifier] {
+			if (stateLadderButton && stateLadderButton->tool)
+			{
+				c->SelectStateCarrierTool(stateLadderButton->GetSelectionState(), stateLadderButton->tool, identifier);
+			}
+		} });
+		AddComponent(chip);
+		stateLadderButtons.push_back(chip);
+		chipY -= chipHeight;
+	}
+}
+
+// Ctrl+drag region fill (Rect or Ellipse, see ElementTool::DrawRect) anchors
+// at the drag's start point by default (a corner), or at its centre when
+// centerAnchorBehaviour is held (M), growing outward in both directions --
+// same choice RimWorld's Designator Shapes mod offers its designators.
+static void ComputeAnchoredRect(ui::Point anchor, ui::Point edge, bool centerAnchor, ui::Point &corner1, ui::Point &corner2)
+{
+	if (centerAnchor)
+	{
+		ui::Point delta = edge - anchor;
+		corner1 = anchor - delta;
+		corner2 = anchor + delta;
+	}
+	else
+	{
+		corner1 = anchor;
+		corner2 = edge;
+	}
+}
+
+// Full circle, not a semicircle -- this wheel opens wherever the cursor is,
+// not pinned to a toolbar button at the screen edge, so there's no edge to
+// avoid. Radius grows with item count so slots don't bunch together --
+// circumference has to grow with the slot count or neighbouring icons start
+// overlapping instead of just touching, same reason radial pickers like
+// RimWorld's Mint wheel visibly get bigger as more gets assigned rather than
+// shrinking the icons to fit a fixed ring.
+static std::vector<ui::Point> ComputeWheelSlotPositions(ui::Point center, int n, int itemSize)
+{
+	constexpr int minRadius = 65;
+	constexpr float spacingFactor = 1.15f; // a bit more than itemSize so icons don't touch edge-to-edge
+	int radius = int(std::max(float(minRadius), n * itemSize * spacingFactor / (2.0f * 3.14159265f)));
+	std::vector<ui::Point> positions(n, ui::Point(0, 0));
+	for (int idx = 0; idx < n; idx++)
+	{
+		float angle = -1.57079633f + 2.0f * 3.14159265f * float(idx) / float(n); // start pointing up, go clockwise
+		positions[idx] = ui::Point(
+			center.X + int(radius * std::cos(angle)) - itemSize / 2,
+			center.Y + int(radius * std::sin(angle)) - itemSize / 2
+		);
+	}
+	return positions;
+}
+
+void GameView::SetFavoritesWheelBounds(ui::Point center, const std::vector<ui::Point> &positions, int itemSize)
+{
+	int minX = center.X, maxX = center.X, minY = center.Y, maxY = center.Y;
+	for (auto &p : positions)
+	{
+		minX = std::min(minX, p.X);
+		maxX = std::max(maxX, p.X + itemSize);
+		minY = std::min(minY, p.Y);
+		maxY = std::max(maxY, p.Y + itemSize);
+	}
+	favoritesWheelTopLeft = ui::Point(minX, minY);
+	favoritesWheelSize = ui::Point(maxX - minX, maxY - minY);
+}
+
+void GameView::OpenFavoritesWheel(ui::Point center)
+{
+	CloseFavoritesWheel();
+
+	auto favorites = Favorite::Ref().GetFavoritesList();
+	std::vector<Tool *> tools;
+	for (auto &identifier : favorites)
+	{
+		if (auto *tool = c->GetToolFromIdentifier(identifier))
+		{
+			tools.push_back(tool);
+		}
+	}
+	if (tools.empty())
+	{
+		return;
+	}
+
+	// Layers: group favorites by the menu category their element already
+	// belongs to, same idea as RimWorld's architect menu grouping
+	// designators into named categories (Structure, Production, ...) that
+	// each open their own list, rather than one long flat menu. Reuses the
+	// category every tool already has instead of adding a separate
+	// per-favorite category-assignment UI. If everything favorited happens
+	// to share one category there's nothing to group, so skip straight to
+	// the flat ring.
+	std::map<int, std::vector<Tool *>> byCategory;
+	for (auto *tool : tools)
+	{
+		byCategory[tool->MenuSection].push_back(tool);
+	}
+
+	if (byCategory.size() <= 1)
+	{
+		OpenFavoritesLeafRing(center, tools, -1);
+	}
+	else
+	{
+		OpenFavoritesCategoryRing(center, byCategory);
+	}
+}
+
+// Copy/Paste live on the wheel's outermost ring (the category ring when
+// there is one, otherwise the flat leaf ring) since they're global actions,
+// not tied to any one material -- no reason to bury them inside a specific
+// category's drilled-down list. Just replicates the existing Ctrl+C/Ctrl+V
+// keyboard-shortcut state changes (GameView::OnKeyPress, SDL_SCANCODE_C/V)
+// so the same click-and-drag-to-copy / click-to-place-paste flow runs
+// afterward exactly as if the hotkey had been pressed.
+void GameView::AddFavoritesWheelActionSlot(ui::Point position, int itemSize, String label, std::function<void()> action)
+{
+	auto *slot = new ui::Button(position, ui::Point(itemSize, itemSize), label);
+	slot->Appearance.HorizontalAlign = ui::Appearance::AlignCentre;
+	slot->Appearance.VerticalAlign = ui::Appearance::AlignMiddle;
+	slot->SetActionCallback({ [this, action] {
+		action();
+		CloseFavoritesWheel();
+	} });
+	AddComponent(slot);
+	favoritesWheelButtons.push_back(slot);
+}
+
+void GameView::AddFavoritesWheelCopyPasteSlots(const std::vector<ui::Point> &positions, int firstIdx, int itemSize)
+{
+	AddFavoritesWheelActionSlot(positions[firstIdx], itemSize, "Copy", [this] {
+		selectMode = SelectCopy;
+		selectPoint1 = selectPoint2 = ui::Point(-1, -1);
+		isMouseDown = false;
+		buttonTip = "\x0F\xEF\xEF\020Click-and-drag to specify an area to copy (right click = cancel)";
+		buttonTipShow = 120;
+	});
+	AddFavoritesWheelActionSlot(positions[firstIdx + 1], itemSize, "Paste", [this] {
+		if (c->LoadClipboard())
+		{
+			selectPoint1 = selectPoint2 = mousePosition;
+			isMouseDown = false;
+		}
+	});
+}
+
+void GameView::OpenFavoritesCategoryRing(ui::Point center, const std::map<int, std::vector<Tool *>> &byCategory)
+{
+	auto &sd = SimulationData::CRef();
+	constexpr int itemSize = 44;
+	std::vector<int> categories;
+	for (auto &pair : byCategory)
+	{
+		categories.push_back(pair.first);
+	}
+	int categoryCount = int(categories.size());
+	int n = categoryCount + 2; // + Copy, Paste
+	auto positions = ComputeWheelSlotPositions(center, n, itemSize);
+	SetFavoritesWheelBounds(center, positions, itemSize);
+
+	for (int idx = 0; idx < categoryCount; idx++)
+	{
+		int category = categories[idx];
+		std::vector<Tool *> categoryTools = byCategory.at(category);
+		String label = (category >= 0 && category < int(sd.msections.size())) ? sd.msections[category].name : String("?");
+		auto *slot = new ui::Button(positions[idx], ui::Point(itemSize, itemSize), label);
+		slot->Appearance.HorizontalAlign = ui::Appearance::AlignCentre;
+		slot->Appearance.VerticalAlign = ui::Appearance::AlignMiddle;
+		slot->Appearance.BackgroundInactive = categoryTools.front()->Colour.WithAlpha(0xFF);
+		slot->SetActionCallback({ [this, center, categoryTools, category] {
+			OpenFavoritesLeafRing(center, categoryTools, category);
+		} });
+		AddComponent(slot);
+		favoritesWheelButtons.push_back(slot);
+	}
+	AddFavoritesWheelCopyPasteSlots(positions, categoryCount, itemSize);
+	favoritesWheelVisible = true;
+}
+
+void GameView::OpenFavoritesLeafRing(ui::Point center, std::vector<Tool *> tools, int backToCategory)
+{
+	CloseFavoritesWheel();
+
+	constexpr int itemSize = 44;
+	bool hasBack = backToCategory >= 0;
+	// Copy/Paste only belong on the outermost ring -- when this leaf ring is
+	// a drilled-down category (hasBack) they're already one Back-click away,
+	// no need to repeat them here.
+	int n = int(tools.size()) + (hasBack ? 1 : 2);
+	auto positions = ComputeWheelSlotPositions(center, n, itemSize);
+	SetFavoritesWheelBounds(center, positions, itemSize);
+
+	int idx = 0;
+	if (hasBack)
+	{
+		// Drilled into a category -- one slot dedicated to backing out to
+		// the category ring instead of picking a tool.
+		auto *back = new ui::Button(positions[idx], ui::Point(itemSize, itemSize), "Back");
+		back->Appearance.HorizontalAlign = ui::Appearance::AlignCentre;
+		back->Appearance.VerticalAlign = ui::Appearance::AlignMiddle;
+		back->SetActionCallback({ [this, center] { OpenFavoritesWheel(center); } });
+		AddComponent(back);
+		favoritesWheelButtons.push_back(back);
+		idx++;
+	}
+	for (auto *tool : tools)
+	{
+		// ToolButton, not a plain Button -- picking up its existing
+		// left/right/middle-click -> SetSelectionState(0/1/2) + DoAction
+		// dispatch is what lets a wheel slot go to whichever tool slot
+		// (primary/secondary/tertiary) matches the button you clicked it
+		// with, the same as clicking a real toolbar button does, instead
+		// of always landing on primary regardless of which button was used.
+		auto *slot = new ToolButton(positions[idx], ui::Point(itemSize, itemSize), tool->Name, tool->Identifier, tool->Description);
+		slot->tool = tool;
+		slot->Appearance.HorizontalAlign = ui::Appearance::AlignCentre;
+		slot->Appearance.VerticalAlign = ui::Appearance::AlignMiddle;
+		slot->Appearance.BackgroundInactive = tool->Colour.WithAlpha(0xFF);
+		slot->SetActionCallback({ [this, slot] {
+			// Read everything off slot BEFORE CloseFavoritesWheel() deletes
+			// it -- this callback is still on slot's own call stack.
+			int slotIndex = slot->GetSelectionState();
+			Tool *pickedTool = slot->tool;
+			if (slotIndex < 0 || slotIndex > 2)
+				slotIndex = 0;
+			if (pickedTool)
+			{
+				c->SetActiveTool(slotIndex, pickedTool);
+			}
+			CloseFavoritesWheel();
+		} });
+		AddComponent(slot);
+		favoritesWheelButtons.push_back(slot);
+		idx++;
+	}
+	if (!hasBack)
+	{
+		AddFavoritesWheelCopyPasteSlots(positions, idx, itemSize);
+	}
+	favoritesWheelVisible = true;
+}
+
+void GameView::CloseFavoritesWheel()
+{
+	for (auto *btn : favoritesWheelButtons)
+	{
+		RemoveComponent(btn);
+		delete btn;
+	}
+	favoritesWheelButtons.clear();
+	favoritesWheelVisible = false;
+	favoritesWheelSize = ui::Point(0, 0);
+}
+
+void GameView::UpdateStateLadderHover(ui::Point mouse)
+{
+	// Opening the ladder is a click now (see the tool button's
+	// actionCallback), not a hover -- same shape as
+	// UpdateSubCategoryLadderHover. Only keeps an already-open ladder alive
+	// while the mouse is over it or its anchor button; never opens one.
+	if (!stateLadderVisible || !stateLadderButton)
+	{
+		return;
+	}
+	auto pos = stateLadderButton->Position;
+	auto size = stateLadderButton->Size;
+	bool overAnchorButton = mouse.X >= pos.X && mouse.X < pos.X + size.X && mouse.Y >= pos.Y && mouse.Y < pos.Y + size.Y;
+	if (overAnchorButton || PointInStateLadder(mouse))
+	{
+		constexpr int kHoverGraceTicks = 20;
+		stateLadderHideDelay = kHoverGraceTicks;
+	}
+	// else: DecayStateLadderHover() (driven by OnTick) owns closing it.
+}
+
+void GameView::DecayStateLadderHover()
+{
+	if (!stateLadderVisible || stateLadderHideDelay <= 0)
+	{
+		return;
+	}
+	stateLadderHideDelay--;
+	if (stateLadderHideDelay == 0)
+	{
+		stateLadderVisible = false;
+		stateLadderButton = nullptr;
+		RebuildStateLadder();
+	}
+}
+
 void GameView::NotifyActiveMenuToolListChanged(GameModel * sender)
 {
 	for (size_t i = 0; i < menuButtons.size(); i++)
@@ -556,6 +1047,29 @@ void GameView::NotifyActiveMenuToolListChanged(GameModel * sender)
 		delete toolButtons[i];
 	}
 	toolButtons.clear();
+	// stateLadderButton points into the toolButtons vector just deleted --
+	// drop the ladder too, or its hover check / chip callbacks read a
+	// dangling ToolButton. Safe (unlike the subcategory ladder below) to
+	// tear down unconditionally here: picking a state carrier goes through
+	// SetActiveTool, not SetActiveSubCategory, so this notify never fires
+	// from inside one of these chips' own callback.
+	for (auto *btn : stateLadderButtons)
+	{
+		RemoveComponent(btn);
+		delete btn;
+	}
+	stateLadderButtons.clear();
+	stateLadderVisible = false;
+	stateLadderButton = nullptr;
+	stateLadderSize = ui::Point(0, 0);
+	// Deliberately NOT calling RebuildSubCategoryLadder() here: this notify
+	// also fires from inside a subcategory chip's own click callback (via
+	// SetActiveSubCategory -> notifyActiveMenuToolListChanged), and rebuild
+	// deletes/recreates every chip -- including the one whose callback is
+	// still on the stack. The chip set never needs to change just because
+	// the filtered tool list did; hover tracking (UpdateSubCategoryLadderHover)
+	// already owns rebuilding the ladder for every case that actually needs it.
+
 	std::vector<Tool*> toolList = sender->GetActiveMenuToolList();
 	int currentX = 0;
 	for (size_t i = 0; i < toolList.size(); i++)
@@ -580,6 +1094,31 @@ void GameView::NotifyActiveMenuToolListChanged(GameModel * sender)
 		tempButton->tool = tool;
 		tempButton->SetActionCallback({ [this, tempButton] {
 			auto *tool = tempButton->tool;
+			// Pick a different physical state for this element right at
+			// selection time -- e.g. Alt-click a solid to get a powder
+			// version of it -- instead of a separate tool/mode. Single
+			// modifiers only, so they don't collide with the double-modifier
+			// combos below (favorite toggle, force-decoration-slot).
+			if (AltBehaviour() && !ShiftBehaviour() && !CtrlBehaviour())
+			{
+				c->SelectStateCarrierTool(tempButton->GetSelectionState(), tool, "DEFAULT_PT_PWCR");
+				return;
+			}
+			if (ShiftBehaviour() && !AltBehaviour() && !CtrlBehaviour())
+			{
+				c->SelectStateCarrierTool(tempButton->GetSelectionState(), tool, "DEFAULT_PT_LQCR");
+				return;
+			}
+			if (CtrlBehaviour() && !ShiftBehaviour() && !AltBehaviour())
+			{
+				c->SelectStateCarrierTool(tempButton->GetSelectionState(), tool, "DEFAULT_PT_GSCR");
+				return;
+			}
+			if (ShiftBehaviour() && AltBehaviour() && !CtrlBehaviour())
+			{
+				c->SelectStateCarrierTool(tempButton->GetSelectionState(), tool, "DEFAULT_PT_SDCR");
+				return;
+			}
 			if (ShiftBehaviour() && CtrlBehaviour() && !AltBehaviour())
 			{
 				if (tempButton->GetSelectionState() == 0)
@@ -622,6 +1161,18 @@ void GameView::NotifyActiveMenuToolListChanged(GameModel * sender)
 
 				if (tempButton->GetSelectionState() >= 0 && tempButton->GetSelectionState() <= 3)
 					c->SetActiveTool(tempButton->GetSelectionState(), tool);
+				// Opening the state-picker ladder is a click now, not a
+				// hover -- see UpdateStateLadderHover, which only keeps an
+				// already-open ladder alive, never opens one. Drew wants it
+				// on every plain element selection regardless of which
+				// button did the selecting (left/right/middle all funnel
+				// through this `else` branch when no modifier is held), so
+				// unlike the subcategory ladder above, this one isn't gated
+				// to a specific selection state.
+				stateLadderVisible = true;
+				stateLadderButton = tempButton;
+				RebuildStateLadder();
+				stateLadderHideDelay = 20;
 			}
 		} });
 
@@ -1102,11 +1653,78 @@ void GameView::updateToolButtonScroll()
 	}
 }
 
+// Hit-tests the zoom window's decorative frame (the few pixels around its
+// magnified content, drawn by Graphics::RenderZoom but never previously
+// claimed by any interaction) so it can be dragged/resized like a normal
+// window without touching a single pixel of the interior, which stays
+// exactly as before: MouseInZoom/AdjustZoomCoords draw precisely into the
+// magnified view.
+GameView::ZoomFrameHit GameView::HitTestZoomWindowFrame(ui::Point mouse) const
+{
+	if (!zoomEnabled || !zoomCursorFixed)
+		return ZoomFrameHit::None; // only draggable once placed -- while still following the cursor, dragging makes no sense
+	ui::Point pos = c->GetZoomWindowPosition();
+	ui::Point size = c->GetZoomWindowSize();
+	// The visible decorative border is only a couple px, but the grabbable
+	// zone needs to be much more forgiving than that or it's practically
+	// impossible to actually land a click on it -- straddles the border
+	// (frameMargin px outside AND frameMargin px inside it) rather than
+	// only the outside, so there's a real target to aim for either way.
+	constexpr int frameMargin = 10;
+	constexpr int cornerSize = 16;
+	ui::Point outerTL = pos - ui::Point(frameMargin, frameMargin);
+	ui::Point outerBR = pos + size + ui::Point(frameMargin, frameMargin);
+	if (mouse.X < outerTL.X || mouse.Y < outerTL.Y || mouse.X >= outerBR.X || mouse.Y >= outerBR.Y)
+		return ZoomFrameHit::None;
+	ui::Point innerTL = pos + ui::Point(frameMargin, frameMargin);
+	ui::Point innerBR = pos + size - ui::Point(frameMargin, frameMargin);
+	bool trueInterior = mouse.X >= innerTL.X && mouse.Y >= innerTL.Y && mouse.X < innerBR.X && mouse.Y < innerBR.Y;
+	if (trueInterior)
+		return ZoomFrameHit::None;
+	bool nearLeft = mouse.X < outerTL.X + cornerSize;
+	bool nearRight = mouse.X >= outerBR.X - cornerSize;
+	bool nearTop = mouse.Y < outerTL.Y + cornerSize;
+	bool nearBottom = mouse.Y >= outerBR.Y - cornerSize;
+	if (nearLeft && nearTop) return ZoomFrameHit::ResizeTL;
+	if (nearRight && nearTop) return ZoomFrameHit::ResizeTR;
+	if (nearLeft && nearBottom) return ZoomFrameHit::ResizeBL;
+	if (nearRight && nearBottom) return ZoomFrameHit::ResizeBR;
+	return ZoomFrameHit::Move;
+}
+
 void GameView::OnMouseMove(int x, int y, int dx, int dy)
 {
+	currentMouse = ui::Point(x, y);
+	if (zoomWindowDragging)
+	{
+		ui::Point size = c->GetZoomWindowSize();
+		ui::Point newPos = ui::Point(x, y) - zoomWindowDragOffset;
+		newPos.X = std::clamp(newPos.X, 0, XRES - size.X);
+		newPos.Y = std::clamp(newPos.Y, 0, YRES - size.Y);
+		c->SetZoomWindowPosition(newPos);
+		return;
+	}
+	if (zoomWindowResizing)
+	{
+		int maxSide = std::min(XRES, YRES);
+		int rawSide = std::max(std::abs(x - zoomWindowResizeAnchor.X), std::abs(y - zoomWindowResizeAnchor.Y));
+		int zoomSize = c->GetZoomSize();
+		int newFactor = std::clamp((rawSide + zoomSize / 2) / zoomSize, 1, std::max(1, maxSide / zoomSize));
+		int side = zoomSize * newFactor;
+		ui::Point newPos(0, 0);
+		newPos.X = (zoomWindowResizeAnchor.X <= x) ? zoomWindowResizeAnchor.X : zoomWindowResizeAnchor.X - side;
+		newPos.Y = (zoomWindowResizeAnchor.Y <= y) ? zoomWindowResizeAnchor.Y : zoomWindowResizeAnchor.Y - side;
+		newPos.X = std::clamp(newPos.X, 0, XRES - side);
+		newPos.Y = std::clamp(newPos.Y, 0, YRES - side);
+		c->SetZoomFactor(newFactor);
+		c->SetZoomWindowPosition(newPos);
+		return;
+	}
 	bool newMouseInZoom = c->MouseInZoom(ui::Point(x, y));
 	mousePosition = c->PointTranslate(ui::Point(x, y));
 	currentMouse = ui::Point(x, y);
+	UpdateSubCategoryLadderHover(currentMouse);
+	UpdateStateLadderHover(currentMouse);
 	if (selectMode != SelectNone)
 	{
 		if (selectMode == PlaceSave)
@@ -1153,6 +1771,50 @@ void GameView::OnMouseMove(int x, int y, int dx, int dy)
 void GameView::OnMouseDown(int x, int y, unsigned button)
 {
 	currentMouse = ui::Point(x, y);
+	if (PointInSubCategoryLadder(currentMouse))
+	{
+		// The ladder can extend up over the sim viewport (Y < YRES), which
+		// the check just below wouldn't otherwise exclude -- without this,
+		// clicking a ladder entry also paints/erases in the sim underneath
+		// it. The Button component itself still gets this same click
+		// through the normal component dispatch and handles the actual
+		// subcategory selection; this only blocks GameView's own
+		// background sim-interaction path for that click.
+		return;
+	}
+	if (PointInStateLadder(currentMouse))
+	{
+		// Same reasoning as the subcategory-ladder guard just above -- the
+		// state ladder also extends up over the sim viewport.
+		return;
+	}
+	if (PointInFavoritesWheel(currentMouse))
+	{
+		// Same reasoning again -- the favorites wheel is centered on the
+		// cursor wherever that happens to be, so it's even more likely to
+		// sit over the sim viewport than the anchored ladders above.
+		return;
+	}
+	if (button == SDL_BUTTON_LEFT)
+	{
+		auto hit = HitTestZoomWindowFrame(currentMouse);
+		if (hit == ZoomFrameHit::Move)
+		{
+			zoomWindowDragging = true;
+			zoomWindowDragOffset = currentMouse - c->GetZoomWindowPosition();
+			return;
+		}
+		if (hit != ZoomFrameHit::None)
+		{
+			zoomWindowResizing = true;
+			ui::Point pos = c->GetZoomWindowPosition();
+			ui::Point size = c->GetZoomWindowSize();
+			// anchor = whichever corner is opposite the one under the mouse -- it stays put on screen while the dragged corner follows the mouse
+			zoomWindowResizeAnchor.X = (hit == ZoomFrameHit::ResizeTL || hit == ZoomFrameHit::ResizeBL) ? pos.X + size.X : pos.X;
+			zoomWindowResizeAnchor.Y = (hit == ZoomFrameHit::ResizeTL || hit == ZoomFrameHit::ResizeTR) ? pos.Y + size.Y : pos.Y;
+			return;
+		}
+	}
 	if (altBehaviour && !shiftBehaviour && !ctrlBehaviour)
 		button = SDL_BUTTON_MIDDLE;
 	if  (!(zoomEnabled && !zoomCursorFixed))
@@ -1220,9 +1882,17 @@ Vec2<int> GameView::PlaceSavePos() const
 void GameView::OnMouseUp(int x, int y, unsigned button)
 {
 	currentMouse = ui::Point(x, y);
+	if (zoomWindowDragging || zoomWindowResizing)
+	{
+		zoomWindowDragging = false;
+		zoomWindowResizing = false;
+		c->CommitZoomWindowPlacement();
+		return;
+	}
 	if (zoomEnabled && !zoomCursorFixed)
 	{
 		zoomCursorFixed = true;
+		c->SetZoomWindowVisible(true);
 		drawMode = DrawPoints;
 		isMouseDown = false;
 	}
@@ -1262,22 +1932,34 @@ void GameView::OnMouseUp(int x, int y, unsigned button)
 		if (drawMode == DrawRect || drawMode == DrawLine)
 		{
 			drawPoint2 = finalDrawPoint2;
+			// drawPoint1 was already run through PointTranslate once, when the
+			// drag started (OnMouseDown) -- translating it again here was
+			// feeding an already-real simulation coordinate back through the
+			// zoom-window remap (GameModel::AdjustZoomCoords), which only
+			// no-ops when that coordinate _doesn't_ also happen to fall inside
+			// the on-screen zoom box. When it does (drawing inside the zoomed
+			// area, which is exactly when precise placement matters most),
+			// the anchor point silently got zoom-remapped a second time,
+			// throwing the whole shape off. Same bug, and same fix, at every
+			// other drawPoint1/initialDrawPoint use in this file.
 			if (drawSnap && drawMode == DrawLine)
 			{
-				finalDrawPoint2 = lineSnapCoords(c->PointTranslate(drawPoint1), drawPoint2);
+				finalDrawPoint2 = lineSnapCoords(drawPoint1, drawPoint2);
 			}
 			if (drawSnap && drawMode == DrawRect)
 			{
-				finalDrawPoint2 = rectSnapCoords(c->PointTranslate(drawPoint1), drawPoint2);
+				finalDrawPoint2 = rectSnapCoords(drawPoint1, drawPoint2);
 			}
 
 			if (drawMode == DrawRect)
 			{
-				c->DrawRect(toolIndex, c->PointTranslate(drawPoint1), finalDrawPoint2);
+				ui::Point corner1(0, 0), corner2(0, 0);
+				ComputeAnchoredRect(drawPoint1, finalDrawPoint2, centerAnchorBehaviour, corner1, corner2);
+				c->DrawRect(toolIndex, corner1, corner2);
 			}
 			if (drawMode == DrawLine)
 			{
-				c->DrawLine(toolIndex, c->PointTranslate(drawPoint1), finalDrawPoint2);
+				c->DrawLine(toolIndex, drawPoint1, finalDrawPoint2);
 			}
 		}
 		else if (drawMode == DrawPoints)
@@ -1344,7 +2026,26 @@ void GameView::OnMouseWheel(int x, int y, int d)
 	}
 	else
 	{
-		c->AdjustBrushSize(d, false, ctrlBehaviour, shiftBehaviour);
+		// Flat +/-1 per notch by default, regardless of current brush size --
+		// fine control has to stay available even when the brush is already
+		// big, or there's no way to nudge a large brush by one pixel. Only
+		// ramps up once you've been scrolling continuously for a while
+		// (rampStartStreak notches in a row with no pause), so a deliberate
+		// scroll or two for precision work never gets sped up, but holding
+		// the wheel down to cover a lot of ground doesn't take forever.
+		// Wall-clock gap between notches, not sim ticks -- sim tick rate can
+		// be capped or vary, and this needs to track real elapsed time.
+		Uint32 now = SDL_GetTicks();
+		constexpr Uint32 quickScrollMs = 200;
+		constexpr int rampStartStreak = 12;
+		if (now - lastScrollTime <= quickScrollMs)
+			scrollStreak = std::min(scrollStreak + 1, 60);
+		else
+			scrollStreak = 0;
+		lastScrollTime = now;
+		int accel = scrollStreak > rampStartStreak ? 1 + (scrollStreak - rampStartStreak) / 4 : 1;
+
+		c->AdjustBrushSize(d * accel, false, ctrlBehaviour, shiftBehaviour);
 	}
 }
 
@@ -1431,7 +2132,26 @@ void GameView::OnKeyPress(int key, int scan, bool repeat, bool shift, bool ctrl,
 			isMouseDown = false;
 			zoomCursorFixed = false;
 			c->SetZoomEnabled(true);
+			// Don't show the (possibly huge, if previously resized) window
+			// tracking the cursor around the screen before it's placed --
+			// wait for the click below to fix it in place.
+			c->SetZoomWindowVisible(false);
 		}
+		break;
+	case SDL_SCANCODE_T:
+		// Toggle, not hold-to-show -- press once to open, press again (or
+		// pick something, which already closes it) to close. Release no
+		// longer does anything (see OnKeyRelease).
+		if (!repeat)
+		{
+			if (favoritesWheelVisible)
+				CloseFavoritesWheel();
+			else
+				OpenFavoritesWheel(currentMouse);
+		}
+		break;
+	case SDL_SCANCODE_M:
+		centerAnchorBehaviour = true;
 		break;
 	case SDL_SCANCODE_P:
 	case SDL_SCANCODE_F2:
@@ -1454,6 +2174,10 @@ void GameView::OnKeyPress(int key, int scan, bool repeat, bool shift, bool ctrl,
 	case SDL_SCANCODE_R:
 		if (ctrl)
 			c->ReloadSim();
+		else if (shift)
+			c->AdjustBrushRotation(-1);
+		else
+			c->AdjustBrushRotation(1);
 		break;
 	case SDL_SCANCODE_E:
 		if (ctrl)
@@ -1683,6 +2407,11 @@ void GameView::OnKeyRelease(int key, int scan, bool repeat, bool shift, bool ctr
 			c->SetZoomEnabled(false);
 		return;
 	}
+	if (scan == SDL_SCANCODE_M)
+	{
+		centerAnchorBehaviour = false;
+		return;
+	}
 }
 
 void GameView::OnBlur()
@@ -1738,6 +2467,14 @@ void GameView::SkipIntroText()
 
 void GameView::OnTick()
 {
+	// Re-check hover every tick, not just on mouse movement -- a mouse that
+	// is stationary over the ladder/button never fires OnMouseMove, so
+	// without this the hide countdown (started by the last real movement)
+	// kept expiring under a perfectly still pointer.
+	UpdateSubCategoryLadderHover(currentMouse);
+	DecaySubCategoryLadderHover();
+	UpdateStateLadderHover(currentMouse);
+	DecayStateLadderHover();
 	if (selectMode == PlaceSave && !placeSaveThumb)
 		selectMode = SelectNone;
 	if (zoomEnabled && !zoomCursorFixed)
@@ -1762,8 +2499,8 @@ void GameView::OnTick()
 		{
 			ui::Point drawPoint2 = currentMouse;
 			if (altBehaviour)
-				drawPoint2 = lineSnapCoords(c->PointTranslate(drawPoint1), currentMouse);
-			c->ToolDrag(toolIndex, c->PointTranslate(drawPoint1), c->PointTranslate(drawPoint2));
+				drawPoint2 = lineSnapCoords(drawPoint1, currentMouse);
+			c->ToolDrag(toolIndex, drawPoint1, c->PointTranslate(drawPoint2));
 		}
 	}
 
@@ -2211,7 +2948,7 @@ void GameView::OnDraw()
 		{
 			if (drawSnap)
 			{
-				finalCurrentMouse = rectSnapCoords(c->PointTranslate(initialDrawPoint), finalCurrentMouse);
+				finalCurrentMouse = rectSnapCoords(initialDrawPoint, finalCurrentMouse);
 			}
 			if (wallBrush)
 			{
@@ -2225,15 +2962,17 @@ void GameView::OnDraw()
 				else
 					initialDrawPoint.Y += CELL-1;
 			}
-			activeBrush->RenderRect(g, c->PointTranslate(initialDrawPoint), finalCurrentMouse);
+			ui::Point rectCorner1(0, 0), rectCorner2(0, 0);
+			ComputeAnchoredRect(initialDrawPoint, finalCurrentMouse, centerAnchorBehaviour, rectCorner1, rectCorner2);
+			activeBrush->RenderRect(g, rectCorner1, rectCorner2);
 		}
 		else if (drawMode == DrawLine && isMouseDown)
 		{
 			if (drawSnap)
 			{
-				finalCurrentMouse = lineSnapCoords(c->PointTranslate(initialDrawPoint), finalCurrentMouse);
+				finalCurrentMouse = lineSnapCoords(initialDrawPoint, finalCurrentMouse);
 			}
-			activeBrush->RenderLine(g, c->PointTranslate(initialDrawPoint), finalCurrentMouse);
+			activeBrush->RenderLine(g, initialDrawPoint, finalCurrentMouse);
 		}
 		else if (drawMode == DrawFill)// || altBehaviour)
 		{
@@ -2300,6 +3039,42 @@ void GameView::OnDraw()
 	}
 
 	g->RenderZoom();
+
+	// Diagnostic overlay for the zoom-window feature, which has repeatedly
+	// been reported broken without anyone (including several fix attempts)
+	// being able to see WHY -- shows the live state driving both rendering
+	// and hit-testing so a report can come back with actual numbers instead
+	// of "it doesn't work". Deliberately left in the shipped build; remove
+	// once zoom has been solid for a while and this stops earning its keep.
+	if (zoomEnabled)
+	{
+		auto hit = HitTestZoomWindowFrame(currentMouse);
+		String hitName = "None";
+		switch (hit)
+		{
+		case ZoomFrameHit::Move: hitName = "Move"; break;
+		case ZoomFrameHit::ResizeTL: hitName = "ResizeTL"; break;
+		case ZoomFrameHit::ResizeTR: hitName = "ResizeTR"; break;
+		case ZoomFrameHit::ResizeBL: hitName = "ResizeBL"; break;
+		case ZoomFrameHit::ResizeBR: hitName = "ResizeBR"; break;
+		default: break;
+		}
+		auto winPos = c->GetZoomWindowPosition();
+		auto winSize = c->GetZoomWindowSize();
+		StringBuilder zoomDebug;
+		zoomDebug << "ZOOM enabled=" << (zoomEnabled ? "1" : "0")
+			<< " placed=" << (zoomCursorFixed ? "1" : "0")
+			<< " visible=" << (g->zoomWindowVisible ? "1" : "0")
+			<< " dragging=" << (zoomWindowDragging ? "1" : "0")
+			<< " resizing=" << (zoomWindowResizing ? "1" : "0");
+		g->BlendText({ 4, 100 }, zoomDebug.Build(), 0x00FF00_rgb .WithAlpha(255));
+		StringBuilder zoomDebug2;
+		zoomDebug2 << "mouse=(" << currentMouse.X << "," << currentMouse.Y << ")"
+			<< " hit=" << hitName
+			<< " winPos=(" << winPos.X << "," << winPos.Y << ")"
+			<< " winSize=(" << winSize.X << "," << winSize.Y << ")";
+		g->BlendText({ 4, 112 }, zoomDebug2.Build(), 0x00FF00_rgb .WithAlpha(255));
+	}
 
 	if (doScreenshot)
 	{

@@ -12,6 +12,7 @@
 #include "RenderPreset.h"
 #include "tool/PropertyTool.h"
 #include "tool/GOLTool.h"
+#include "tool/ElementTool.h"
 
 #include "GameControllerEvents.h"
 #include "lua/CommandInterface.h"
@@ -300,12 +301,17 @@ void GameController::InvertAirSim()
 
 void GameController::AdjustBrushSize(int delta, bool logarithmic, bool keepX, bool keepY)
 {
-	gameModel->GetBrush().AdjustSize(delta, logarithmic, keepX, keepY);
+	gameModel->GetBrush().AdjustSize(delta, logarithmic, keepX, keepY, gameModel->GetBrushResizeDivisor());
 }
 
 void GameController::SetBrushSize(ui::Point newSize)
 {
 	gameModel->GetBrush().SetRadius(newSize);
+}
+
+void GameController::AdjustBrushRotation(int direction)
+{
+	gameModel->GetBrush().AdjustRotation(direction * gameModel->GetBrushRotationStep());
 }
 
 void GameController::AdjustZoomSize(int delta, bool logarithmic)
@@ -321,10 +327,14 @@ void GameController::AdjustZoomSize(int delta, bool logarithmic)
 			newSize = 64;
 	gameModel->SetZoomSize(newSize);
 
-	int newZoomFactor = 256/newSize;
-	if(newZoomFactor<3)
-		newZoomFactor = 3;
-	gameModel->SetZoomFactor(newZoomFactor);
+	// Zoom factor (on-screen magnification) is its own independent knob now
+	// -- set by dragging the zoom window's corner, not derived from size --
+	// so the window can actually grow past the old fixed ~256px box. Only
+	// clamp it here if the current factor would now draw a window bigger
+	// than the play area.
+	int maxFactor = std::max(1, std::min(XRES, YRES) / newSize);
+	if (gameModel->GetZoomFactor() > maxFactor)
+		gameModel->SetZoomFactor(maxFactor);
 }
 
 bool GameController::MouseInZoom(ui::Point position)
@@ -985,6 +995,11 @@ void GameController::SetZoomEnabled(bool zoomEnabled)
 	gameModel->SetZoomEnabled(zoomEnabled);
 }
 
+void GameController::SetZoomWindowVisible(bool visible)
+{
+	gameModel->SetZoomWindowVisible(visible);
+}
+
 void GameController::SetToolStrength(float value)
 {
 	gameModel->SetToolStrength(value);
@@ -1003,12 +1018,59 @@ void GameController::SetZoomPosition(ui::Point position)
 	if(zoomPosition.Y >= YRES-gameModel->GetZoomSize())
 			zoomPosition.Y = YRES-gameModel->GetZoomSize();
 
-	ui::Point zoomWindowPosition = ui::Point(0, 0);
-	if(position.X < XRES/2)
-		zoomWindowPosition.X = XRES-(gameModel->GetZoomSize()*gameModel->GetZoomFactor());
-
 	gameModel->SetZoomPosition(zoomPosition);
-	gameModel->SetZoomWindowPosition(zoomWindowPosition);
+
+	// Once the user has dragged the zoom window to a spot of their own
+	// choosing, stop silently overwriting it here on every mouse move --
+	// that auto left/right-edge snap was the whole "it keeps jumping to the
+	// side of my screen" complaint. Only auto-place it before that.
+	if (!gameModel->GetZoomWindowManuallyPlaced())
+	{
+		ui::Point zoomWindowPosition = ui::Point(0, 0);
+		if(position.X < XRES/2)
+			zoomWindowPosition.X = XRES-gameModel->GetZoomWindowSize().X;
+		gameModel->SetZoomWindowPosition(zoomWindowPosition);
+	}
+}
+
+ui::Point GameController::GetZoomWindowPosition()
+{
+	return gameModel->GetZoomWindowPosition();
+}
+
+void GameController::SetZoomWindowPosition(ui::Point position)
+{
+	gameModel->SetZoomWindowPosition(position);
+}
+
+ui::Point GameController::GetZoomWindowSize()
+{
+	return gameModel->GetZoomWindowSize();
+}
+
+int GameController::GetZoomFactor()
+{
+	return gameModel->GetZoomFactor();
+}
+
+void GameController::SetZoomFactor(int factor)
+{
+	gameModel->SetZoomFactor(factor);
+}
+
+int GameController::GetZoomSize()
+{
+	return gameModel->GetZoomSize();
+}
+
+bool GameController::GetZoomWindowManuallyPlaced()
+{
+	return gameModel->GetZoomWindowManuallyPlaced();
+}
+
+void GameController::CommitZoomWindowPlacement()
+{
+	gameModel->CommitZoomWindowPlacement();
 }
 
 bool GameController::GetPaused() const
@@ -1128,6 +1190,11 @@ void GameController::SetActiveMenu(int menuID)
 		gameModel->SetColourSelectorVisibility(false);
 }
 
+void GameController::SetActiveSubCategory(int subCategoryIndex)
+{
+	gameModel->SetActiveSubCategory(subCategoryIndex);
+}
+
 std::vector<Menu*> GameController::GetMenuList()
 {
 	return gameModel->GetMenuList();
@@ -1151,6 +1218,11 @@ int GameController::GetNumMenus(bool onlyEnabled)
 void GameController::RebuildFavoritesMenu()
 {
 	gameModel->BuildMenus();
+}
+
+Tool *GameController::GetToolFromIdentifier(ByteString identifier)
+{
+	return gameModel->GetToolFromIdentifier(identifier);
 }
 
 Tool * GameController::GetActiveTool(int selection)
@@ -1189,6 +1261,113 @@ void GameController::SetActiveTool(int toolSelection, ByteString identifier)
 void GameController::SetLastTool(Tool * tool)
 {
 	gameModel->SetLastTool(tool);
+}
+
+// Re-tags one of the 4 shared generic "state carrier" element tools (PWCR/
+// LQCR/GSCR/SDCR, see PWCR.cpp) to stand in for sourceTool's element and
+// activates it -- e.g. Alt-clicking DMND hands you a working powdered-
+// diamond brush with no separate tool step. The carrier remembers its
+// source via ctype, packed into ToolID the same way Element_TESC_Tool packs
+// its radius (PMAPID); the carrier's own Create() unpacks it back out.
+// No-op if sourceTool isn't an element tool, or already is that state.
+// Shared by the modifier-click shortcuts and the hover-submenu chips, so
+// "is this state actually offerable" and "what do we call it" have exactly
+// one answer regardless of which UI path is asking.
+String GameController::GetStateCarrierLabel(Tool *sourceTool, ByteString carrierIdentifier)
+{
+	if (!sourceTool || !sourceTool->Identifier.Contains("_PT_"))
+		return "";
+	int srcId = TYP(sourceTool->ToolID);
+	auto &sd = SimulationData::CRef();
+	auto &elements = sd.elements;
+	if (srcId <= 0 || srcId >= PT_NUM || !elements[srcId].Enabled)
+		return "";
+	// A source whose own real melting point already transitions to real
+	// LAVA (most metals -- gold, titanium, etc.) should offer real,
+	// correctly weighted/viscous LAVA tagged to that source instead of the
+	// generic synthetic LQCR carrier: LQCR exists to synthesize a liquid for
+	// elements that DON'T have a real molten form in the stock tables, not
+	// to replace one that already does.
+	if (carrierIdentifier == "DEFAULT_PT_LQCR" && elements[srcId].HighTemperatureTransition == PT_LAVA)
+		carrierIdentifier = "DEFAULT_PT_LAVA";
+	Tool *carrier = gameModel->GetToolFromIdentifier(carrierIdentifier);
+	if (!carrier)
+		return "";
+	int carrierBaseId = TYP(carrier->ToolID);
+	if (carrierBaseId == srcId)
+		return ""; // same element, nothing to carry
+	constexpr unsigned stateMask = TYPE_SOLID | TYPE_LIQUID | TYPE_GAS | TYPE_PART;
+	unsigned srcState = elements[srcId].Properties & stateMask;
+	unsigned carrierState = elements[carrierBaseId].Properties & stateMask;
+	if (srcState == carrierState)
+		return ""; // source is already that state natively, use the real element instead
+	// "Molten" instead of generic "Liquid" for anything that isn't
+	// natively a gas -- melting a powder is exactly as "molten" as melting
+	// the bulk solid ("if it's molten it's molten"), and that holds for
+	// energy-type particles (PHOT/NEUT/ELEC/etc, srcState==0 since they
+	// carry none of the SOLID/LIQUID/GAS/PART bits) and anything else
+	// non-gas too, not just SOLID/PART specifically -- the old check only
+	// covered those two explicitly and silently fell through to generic
+	// "Liquid" for everything else. Only a natively-gas source still gets
+	// generic "Liquid" (condensing a gas isn't really "molten"). A
+	// natively-liquid source never reaches here -- the same-state check
+	// above already excludes it.
+	if (carrierState == TYPE_LIQUID && srcState != TYPE_GAS)
+		return "Molten";
+	switch (carrierState)
+	{
+		case TYPE_PART:   return "Powder";
+		case TYPE_LIQUID: return "Liquid";
+		case TYPE_GAS:    return "Gas";
+		case TYPE_SOLID:  return "Solid";
+	}
+	return "";
+}
+
+void GameController::SelectStateCarrierTool(int toolSelection, Tool *sourceTool, ByteString carrierIdentifier)
+{
+	int srcId = TYP(sourceTool->ToolID);
+	{
+		auto &sd = SimulationData::CRef();
+		auto &elements = sd.elements;
+		// Same LAVA-instead-of-LQCR substitution as GetStateCarrierLabel --
+		// has to be applied here too since this function goes on to actually
+		// look up/create a tool for carrierIdentifier itself, not just the
+		// label text.
+		if (carrierIdentifier == "DEFAULT_PT_LQCR" && srcId > 0 && srcId < PT_NUM && elements[srcId].Enabled && elements[srcId].HighTemperatureTransition == PT_LAVA)
+			carrierIdentifier = "DEFAULT_PT_LAVA";
+	}
+	String stateLabel = GetStateCarrierLabel(sourceTool, carrierIdentifier);
+	if (stateLabel.empty())
+		return;
+	auto &sd = SimulationData::CRef();
+	auto &elements = sd.elements;
+	Tool *carrierBase = gameModel->GetToolFromIdentifier(carrierIdentifier);
+	int carrierBaseId = TYP(carrierBase->ToolID);
+	// One dedicated carrier tool PER (carrier type, tool slot) pair, not one
+	// shared per carrier type -- mutating a single shared PWCR/LQCR/GSCR/SDCR
+	// tool in place meant picking a state for slot 1 silently rewrote
+	// whatever slot 0 was already showing whenever both slots used the same
+	// carrier type (e.g. primary=Molten Gold, secondary=Molten Silver both
+	// being the same underlying LQCR tool object), since GameModel::
+	// activeTools[] stores raw pointers and both slots ended up aliasing the
+	// exact same Tool. Lazily allocate one real, GameModel-owned tool per
+	// slot on first use (same AllocTool/ElementTool mechanism
+	// AllocCustomGolTool already uses), then reuse+mutate that slot's own
+	// instance from then on -- no more cross-slot aliasing.
+	ByteString slotIdentifier = ByteString::Build(carrierIdentifier, "#", toolSelection);
+	Tool *carrier = gameModel->GetToolFromIdentifier(slotIdentifier);
+	if (!carrier)
+	{
+		auto newTool = std::make_unique<ElementTool>(carrierBaseId, carrierBase->Name, carrierBase->Description, carrierBase->Colour, slotIdentifier);
+		carrier = newTool.get();
+		gameModel->AllocTool(std::move(newTool));
+	}
+	carrier->ToolID = carrierBaseId | PMAPID(srcId);
+	carrier->Colour = elements[srcId].Colour;
+	carrier->Name = elements[srcId].Name;
+	carrier->Description = String::Build(elements[srcId].Name, " (", stateLabel, ")");
+	SetActiveTool(toolSelection, carrier);
 }
 
 Tool *GameController::GetLastTool()

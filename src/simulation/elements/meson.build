@@ -195,6 +195,24 @@ simulation_elem_names = [
 	'RSSS',
 	'BASE',
 	'SEED',
+	# Ported from cracker1000's TPT mod (Bledge-2024 branch) -- appended, never
+	# inserted, so existing elements keep their numeric PT_ id. GSNS (gravity
+	# sensor) skipped: its whole purpose is reading/writing a per-cell gravity
+	# array (sim->gravp/gravmap) that doesn't exist in our fork's gravity
+	# system (GravityInput/GravityOutput, no flat writable array) -- not a
+	# rename fix, a missing capability.
+	'ACTY', 'ALMP', 'ALUM', 'AMBE', 'BALL', 'BEE', 'BFLM', 'CEXP', 'CHLR',
+	'CLNT', 'CLRC', 'CLUD', 'CMNT', 'COND', 'COPR', 'CSNS', 'CWIR', 'DFOM',
+	'DIGS', 'DMRN', 'ECLR', 'ELEX', 'FNTC', 'FPTC', 'FUEL', 'GRPH',
+	'LED', 'LITH2', 'MGNT', 'MISL', 'NAPM', 'NTRG', 'PCON', 'PET', 'PHOS',
+	'PINV', 'PPTI', 'PPTO', 'PRMT', 'PROJ', 'QGPP', 'RADN', 'RUBR', 'SODM',
+	'STRC', 'SUN', 'TIMC', 'TMPS', 'TURB', 'UVRD', 'WALL', 'WHEL',
+	# Generic state carriers for the subcategory picker's state selector --
+	# ctype names the real element they're standing in for. See PWCR.cpp.
+	'PWCR', 'LQCR', 'GSCR', 'SDCR',
+	# Rare earth metals, real measured constants (2026-08-29). GADO is
+	# ferromagnetic below its real Curie point, ~293.4 K -- see GADO.cpp.
+	'LUTE', 'GADO',
 ]
 
 simulation_elem_src = []

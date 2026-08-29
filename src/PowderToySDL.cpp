@@ -260,6 +260,10 @@ void SDLSetScreen()
 		}
 		SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
 		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, newFrameOpsNorm.blurryScaling ? "linear" : "nearest");
+		// Reverted: SDL's overscan logical-size mode (set here briefly to
+		// kill fullscreen letterbox bars) crashed on window resize -- a
+		// crash is worse than black bars. Back to SDL's default (letterbox)
+		// until this can be revisited without the resize crash.
 		sdl_renderer = SDL_CreateRenderer(sdl_window, -1, rendererFlags);
 		if (!sdl_renderer)
 		{

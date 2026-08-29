@@ -93,16 +93,22 @@ static int update(UPDATE_FUNC_ARGS)
 				if (!r)
 					continue;
 				auto rt = TYP(r);
-				if ((surround_space || elements[rt].Explosive) &&
+				// Ignition reads the REAL tagged element's properties for a
+				// state-carrier neighbor (PWCR/LQCR/GSCR/SDCR.cpp), see FIRE.cpp.
+				int rtProps = rt;
+				if ((rt == PT_PWCR || rt == PT_LQCR || rt == PT_GSCR || rt == PT_SDCR) &&
+				    parts[ID(r)].ctype > 0 && parts[ID(r)].ctype < PT_NUM && elements[parts[ID(r)].ctype].Enabled)
+					rtProps = parts[ID(r)].ctype;
+				if ((surround_space || elements[rtProps].Explosive) &&
 				    (rt!=PT_SPNG || parts[ID(r)].life==0) &&
-					elements[rt].Flammable && sim->rng.chance(elements[rt].Flammable + int(sim->pv[(y+ry)/CELL][(x+rx)/CELL] * 10.0f), 1000))
+					elements[rtProps].Flammable && sim->rng.chance(elements[rtProps].Flammable + int(sim->pv[(y+ry)/CELL][(x+rx)/CELL] * 10.0f), 1000))
 				{
 					//@ LIGH + flammable -> LIGH + FIRE
 					sim->part_change_type(ID(r),x+rx,y+ry,PT_FIRE);
-					parts[ID(r)].temp = restrict_flt(elements[PT_FIRE].DefaultProperties.temp + (elements[rt].Flammable/2), MIN_TEMP, MAX_TEMP);
+					parts[ID(r)].temp = restrict_flt(elements[PT_FIRE].DefaultProperties.temp + (elements[rtProps].Flammable/2), MIN_TEMP, MAX_TEMP);
 					parts[ID(r)].life = sim->rng.between(180, 259);
 					parts[ID(r)].tmp = parts[ID(r)].ctype = 0;
-					if (elements[rt].Explosive)
+					if (elements[rtProps].Explosive)
 						sim->pv[y/CELL][x/CELL] += 0.25f * CFDS;
 				}
 				switch (rt)

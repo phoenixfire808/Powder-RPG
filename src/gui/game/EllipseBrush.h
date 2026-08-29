@@ -1,6 +1,8 @@
 #pragma once
 #include "Brush.h"
+#include "graphics/Graphics.h"
 #include <cmath>
+#include <algorithm>
 
 class EllipseBrush: public Brush
 {
@@ -67,5 +69,42 @@ public:
 	std::unique_ptr<Brush> Clone() const override
 	{
 		return std::make_unique<EllipseBrush>(*this);
+	}
+
+	bool IsEllipseShaped() const override { return true; }
+	bool IsPerfectCircle() const override { return perfectCircle; }
+
+	// Ellipse outline preview for the Ctrl+drag region-fill tool, matching
+	// the actual ellipse Simulation::CreateEllipse fills -- the base
+	// Brush::RenderRect always draws a rectangle, which would preview the
+	// wrong shape for this brush.
+	void RenderRect(Graphics *g, ui::Point position1, ui::Point position2) const override
+	{
+		if (perfectCircle)
+		{
+			// Match Simulation::CreateEllipse: keep position1 (the drag's
+			// start point) fixed as a true corner and grow toward
+			// position2's direction, instead of recentring on the drag
+			// box's midpoint -- see that function for why.
+			int dx = position2.X - position1.X;
+			int dy = position2.Y - position1.Y;
+			int r = std::max(std::abs(dx), std::abs(dy));
+			if (r < 1) r = 1;
+			position2.X = position1.X + (dx < 0 ? -r : r);
+			position2.Y = position1.Y + (dy < 0 ? -r : r);
+		}
+		int cx = (position1.X + position2.X) / 2;
+		int cy = (position1.Y + position2.Y) / 2;
+		float rx = std::abs(position2.X - position1.X) / 2.0f;
+		float ry = std::abs(position2.Y - position1.Y) / 2.0f;
+		constexpr int segments = 48;
+		ui::Point prev(cx + int(rx), cy);
+		for (int k = 1; k <= segments; k++)
+		{
+			float angle = 2.0f * 3.14159265f * float(k) / float(segments);
+			ui::Point next(cx + int(rx * std::cos(angle)), cy + int(ry * std::sin(angle)));
+			g->XorLine(prev, next);
+			prev = next;
+		}
 	}
 };

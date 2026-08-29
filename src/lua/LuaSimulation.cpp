@@ -18,6 +18,76 @@
 #include "simulation/ToolClasses.h"
 #include <type_traits>
 
+static int simStep(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	lsi->AssertInterfaceEvent();
+	int nFrames = luaL_checkint(L, 1);
+	if (nFrames < 1) nFrames = 1;
+	for (int i = 0; i < nFrames; ++i)
+	{
+		lsi->sim->BeforeSim(false);
+		lsi->sim->UpdateParticles(0, NPART);
+		lsi->sim->AfterSim();
+	}
+	return 0;
+}
+
+static int simGetTemp(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	auto pos = Vec2{ luaL_checkint(L, 1), luaL_checkint(L, 2) };
+	if (!CELLS.OriginRect().Contains(pos))
+	{
+		return luaL_error(L, "Coordinates (%i, %i) out of range", pos.X, pos.Y);
+	}
+	lua_pushnumber(L, lsi->sim->hv[pos.Y][pos.X]);
+	return 1;
+}
+
+static int simSetTemp(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	GetLSI()->AssertMutableSimEvent();
+	auto pos = Vec2{ luaL_checkint(L, 1), luaL_checkint(L, 2) };
+	if (!CELLS.OriginRect().Contains(pos))
+	{
+		return luaL_error(L, "Coordinates (%i, %i) out of range", pos.X, pos.Y);
+	}
+	float temp = luaL_checknumber(L, 3);
+	if (temp > MAX_TEMP) temp = MAX_TEMP;
+	if (temp < MIN_TEMP) temp = MIN_TEMP;
+	lsi->sim->hv[pos.Y][pos.X] = temp;
+	return 0;
+}
+
+static int simGetPressure(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	auto pos = Vec2{ luaL_checkint(L, 1), luaL_checkint(L, 2) };
+	if (!CELLS.OriginRect().Contains(pos))
+	{
+		return luaL_error(L, "Coordinates (%i, %i) out of range", pos.X, pos.Y);
+	}
+	lua_pushnumber(L, lsi->sim->pv[pos.Y][pos.X]);
+	return 1;
+}
+
+static int simSetPressure(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	GetLSI()->AssertMutableSimEvent();
+	auto pos = Vec2{ luaL_checkint(L, 1), luaL_checkint(L, 2) };
+	if (!CELLS.OriginRect().Contains(pos))
+	{
+		return luaL_error(L, "Coordinates (%i, %i) out of range", pos.X, pos.Y);
+	}
+	float pressure = luaL_checknumber(L, 3);
+	if (pressure > MAX_PRESSURE) pressure = MAX_PRESSURE;
+	if (pressure < MIN_PRESSURE) pressure = MIN_PRESSURE;
+	lsi->sim->pv[pos.Y][pos.X] = pressure;
+	return 0;
+}
 static int ambientHeatSim(lua_State *L)
 {
 	auto *lsi = GetLSI();
@@ -2119,7 +2189,11 @@ void LuaSimulation::Open(lua_State *L)
 		LFUNC(decoSpace),
 		LFUNC(fanVelocityX),
 		LFUNC(fanVelocityY),
-		LFUNC(listDefaultGol),
+		{ "step", simStep },
+		{ "getTemp", simGetTemp },
+		{ "setTemp", simSetTemp },
+		{ "getPressure", simGetPressure },
+		{ "setPressure", simSetPressure },
 #undef LFUNC
 		{ nullptr, nullptr }
 	};

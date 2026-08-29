@@ -1519,7 +1519,7 @@ void Renderer::Clear()
 	}
 	else
 	{
-		std::fill_n(video.data(), WINDOWW * YRES, 0);
+		std::fill_n(video.data(), WINDOWW * YRES, pixel(backgroundColour));
 	}
 	AdjustHdispLimit();
 }

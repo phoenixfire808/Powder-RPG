@@ -79,6 +79,10 @@ public:
 	void SetIncludePressure(bool includePressure);
 	bool GetPerfectCircle();
 	void SetPerfectCircle(bool perfectCircle);
+	int GetBrushRotationStep();
+	void SetBrushRotationStep(int step);
+	int GetBrushResizeDivisor();
+	void SetBrushResizeDivisor(int divisor);
 	bool GetMomentumScroll();
 	void SetMomentumScroll(bool momentumScroll);
 	bool GetRedirectStd();

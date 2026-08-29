@@ -2601,6 +2601,22 @@ bool SimulationImpl::TransitionPhase(int i, const Neighbourhood &neighbourhood)
 						parts[i].ctype = 0;
 					}
 				}
+				else if (t == PT_PWCR || t == PT_SDCR)
+				{
+					// State-carrier melting (see PWCR.cpp/SDCR.cpp): not a
+					// fixed threshold, uses the REAL tagged element's own
+					// melting point so titanium melts at titanium's
+					// temperature, gold at gold's, etc, automatically.
+					// ctype (which real element this is) carries straight
+					// through unchanged -- still the same material, now molten.
+					int ct = parts[i].ctype;
+					if (ct > 0 && ct < PT_NUM && elements[ct].Enabled &&
+					    elements[ct].HighTemperatureTransition != NT && elements[ct].HighTemperatureTransition != ST &&
+					    ctemph >= elements[ct].HighTemperature)
+						t = PT_LQCR;
+					else
+						s = 0;
+				}
 				else
 					s = 0;
 			}
@@ -2664,6 +2680,24 @@ bool SimulationImpl::TransitionPhase(int i, const Neighbourhood &neighbourhood)
 					}
 					else if (pt<973.0f)
 						t = PT_STNE; //@ LAVA -> STNE
+					else
+						s = 0;
+				}
+				else if (t == PT_LQCR || t == PT_GSCR)
+				{
+					// State-carrier cooling straight back into the REAL tagged
+					// element ("mix back into their true form") once below ITS
+					// real melting point -- ctype names which element that is.
+					// No intermediate carrier hop here: liquid/gas cooling enough
+					// to solidify becomes the genuine element outright.
+					int ct = parts[i].ctype;
+					if (ct > 0 && ct < PT_NUM && elements[ct].Enabled &&
+					    elements[ct].HighTemperatureTransition != NT && elements[ct].HighTemperatureTransition != ST &&
+					    ctempl < elements[ct].HighTemperature)
+					{
+						t = ct;
+						parts[i].ctype = 0;
+					}
 					else
 						s = 0;
 				}

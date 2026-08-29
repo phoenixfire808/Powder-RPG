@@ -10,7 +10,15 @@ void ElementTool::DrawLine(Simulation * sim, Brush const &brush, ui::Point posit
 	sim->CreateLine(position1.X, position1.Y, position2.X, position2.Y, ToolID, brush, -1);
 }
 void ElementTool::DrawRect(Simulation * sim, Brush const &brush, ui::Point position1, ui::Point position2) {
-	sim->CreateBox(-2, position1.X, position1.Y, position2.X, position2.Y, ToolID, -1);
+	// Same designator, two shapes: a region-fill drag (Ctrl+drag) fills a
+	// rectangle by default, but an ellipse instead when the currently
+	// selected brush shape is EllipseBrush -- same "rectangle or a circle"
+	// choice RimWorld's Designator Shapes mod gives, driven by the brush
+	// shape selector that already exists rather than a new control.
+	if (brush.IsEllipseShaped())
+		sim->CreateEllipse(-2, position1.X, position1.Y, position2.X, position2.Y, ToolID, -1, brush.IsPerfectCircle());
+	else
+		sim->CreateBox(-2, position1.X, position1.Y, position2.X, position2.Y, ToolID, -1);
 }
 void ElementTool::DrawFill(Simulation * sim, Brush const &brush, ui::Point position) {
 	sim->FloodParts(position.X, position.Y, ToolID, -1, -1);
