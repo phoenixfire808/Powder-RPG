@@ -1,0 +1,64 @@
+{
+ "name": "conv_coil_segment",
+ "description": "One tokamak field-coil tooth: a TTAN mount holding a CONV(PSCN) cell above an HEAC cooling strip, INSL-backed. Repeat by hand around a torus, swapping ctype to NSCN on roughly every other placement.",
+ "why": "2730526 ('Tokamak in TPT', explicitly 'uses FRAY as magnets') builds its confinement ring from CONV cells that convert incoming particles to alternating ctype=PSCN/ctype=NSCN around the loop -- an AC-coil abstraction: CONV@144,205(PSCN), @223,206(NSCN), @365,207(NSCN), @445,205(PSCN), @539,206(PSCN), @603,206(PSCN). 2919792 repeats the same CONV(PSCN/NSCN) idea at smaller scale. No existing module models a magnetic-coil segment; the blueprint compiler has no trig so a true circular repeat isn't possible -- this is one placeable tooth, meant to be hand-placed at each coil position the builder chooses.",
+ "source": "save 2730526, coil-ring context x138-230 y198-212 (CONV tmp=15, HEAC@235-247,196 at 22C, TTAN/INSL/METL structure sampled in the same box)",
+ "params": {
+  "width": 3,
+  "tmp": 15
+ },
+ "parts": [
+  {
+   "box": "TTAN",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    "width",
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    1
+   ],
+   "size": [
+    "width",
+    1
+   ]
+  },
+  {
+   "box": "CONV",
+   "at": [
+    1,
+    0
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PSCN",
+    "tmp": "tmp"
+   }
+  },
+  {
+   "box": "HEAC",
+   "at": [
+    0,
+    2
+   ],
+   "size": [
+    "width",
+    1
+   ],
+   "props": {
+    "temp_c": 22
+   }
+  }
+ ],
+ "verified": true
+}

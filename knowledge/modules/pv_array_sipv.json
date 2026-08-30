@@ -1,0 +1,55 @@
+{
+ "description": "Photovoltaic array: a row of SIPV cells on a common CU busbar with an LEDL status lamp.",
+ "name": "pv_array_sipv",
+ "params": {
+  "count": 5
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "part": {
+    "at": [
+     0,
+     0
+    ],
+    "box": "SIPV",
+    "size": [
+     4,
+     4
+    ]
+   },
+   "repeat": "count",
+   "step": [
+    5,
+    0
+   ]
+  },
+  {
+   "at": [
+    0,
+    4
+   ],
+   "box": "CU",
+   "id": "pv_bus",
+   "size": [
+    "count*5-1",
+    1
+   ]
+  },
+  {
+   "at": [
+    "pv_bus.right+2",
+    0
+   ],
+   "box": "LEDL",
+   "size": [
+    3,
+    3
+   ]
+  }
+ ],
+ "why": "SIPV models real monocrystalline-silicon PV: ~88% of incident PHOT hits convert to a 3-unit SPRK pulse (perSpark), matching the ~22% panel-level efficiency once averaged over a realistic photon flux, and it shrugs off heat to 1414 C melt. The array only produces anything when PHOT (from an ARAY/LCRY source or outdoor light) actually lands on the cells -- point a light source at this panel, don't bury it in an enclosure. Only HF etches SIPV in reality, so it is otherwise chemically safe to mount anywhere."
+}

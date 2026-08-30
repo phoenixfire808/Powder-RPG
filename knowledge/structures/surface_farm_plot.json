@@ -1,0 +1,47 @@
+{
+ "id": "surface_farm_plot",
+ "category": "surface",
+ "description": "A row of tilled soil with plant stalks between two fence posts -- a wild/abandoned farm patch, not a player-built one. 16x6px.",
+ "biomes": [
+  "forest",
+  "swamp"
+ ],
+ "depth_band": {
+  "min": -3,
+  "max": 0
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.14,
+ "min_spacing": 180,
+ "clearance": {
+  "top": 1,
+  "bottom": 0,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 0,
+  "y": 3
+ },
+ "width": 16,
+ "height": 6,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "D": "clay",
+  "P": "plant",
+  "F": "wood"
+ },
+ "grid": [
+  "F              F",
+  "F P   P   P  P F",
+  "F P   P   P  P F",
+  "FDDDDDDDDDDDDDDF",
+  "                ",
+  "                "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Deliberately small/sparse (a discoverable trace of past habitation) rather than a functional farming feature -- Drew's ask was exploration variety, not a farming mechanic; @progression owns actual farming if that's ever added."
+}

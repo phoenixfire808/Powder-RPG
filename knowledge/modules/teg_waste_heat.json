@@ -1,0 +1,43 @@
+{
+  "description": "TEG plate on a hot wall with CU busbar and LEDL: waste-heat recovery / power-saving generator",
+  "name": "teg_waste_heat",
+  "params": {
+    "length": 10
+  },
+  "parts": [
+    {
+      "at": [
+        0,
+        0
+      ],
+      "box": "TEG",
+      "size": [
+        4,
+        4
+      ]
+    },
+    {
+      "at": [
+        4,
+        1
+      ],
+      "box": "CU",
+      "size": [
+        "length",
+        1
+      ]
+    },
+    {
+      "at": [
+        "length+4",
+        0
+      ],
+      "box": "LEDL",
+      "size": [
+        3,
+        3
+      ]
+    }
+  ],
+  "why": "Verified live P3: TEG at 200 C pulses SPRK into the CU bar every 20 frames until it cools to 100 C. Mount it on any wall above 100 C (condenser jacket, reactor shield)."
+}

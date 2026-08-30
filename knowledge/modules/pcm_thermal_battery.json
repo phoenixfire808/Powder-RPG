@@ -1,0 +1,36 @@
+{
+ "description": "Phase-change thermal battery: a PCMP core wrapped in an AERO insulation jacket.",
+ "name": "pcm_thermal_battery",
+ "params": {
+  "height": 16,
+  "width": 20
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "AERO",
+   "hollow": 2,
+   "id": "pcm_jacket",
+   "size": [
+    "width",
+    "height"
+   ]
+  },
+  {
+   "at": [
+    2,
+    2
+   ],
+   "box": "PCMP",
+   "id": "pcm_core",
+   "size": [
+    "width-4",
+    "height-4"
+   ]
+  }
+ ],
+ "why": "PCMP melts at 58 C absorbing ~200 kJ/kg of latent heat and releases the same heat back when it re-freezes, holding a nearly constant temperature the whole time -- exactly a real paraffin-wax thermal buffer. AERO (0.02 W/mK, the best insulator available) keeps that stored latent heat from leaking out before it is needed. Keep the whole assembly well under PCMP's 250 C decomposition point (it goes to SMKE above that, losing the charge for good) and away from open flame (PCMP is itself flammable)."
+}

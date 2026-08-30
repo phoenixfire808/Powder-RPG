@@ -1,0 +1,70 @@
+{
+ "name": "dome_vessel",
+ "description": "Hollow BRCK/TTAN containment shell over a CNCT (non-conductive) floor cap.",
+ "why": "Build-lessons 'a conductive floor or plane shorts the whole build': the verified non-conductive structural materials are BRCK, CNCT and GLAS (NOT TTAN, METL, BMTL); this shell uses BRCK+TTAN for the dome body (radiation/heat resistance) but caps the floor in CNCT so a stray BTRY never shorts the vessel. blueprint_lint flagged the TTAN band as a conductive_floor_span (90% of the build's width); fixed by splitting it into two TTAN halves with a 2px INSL gap at the midpoint -- the rule's own suggested fix -- which breaks the continuous conductive run without changing the band's visual/radiation-shielding role.",
+ "source": "save2, BRCK+TTAN dome x222-300 y211-345 (BRCK 1389, TTAN 1074, CNCT floor y340-345)",
+ "params": {
+  "width": 78,
+  "height": 134,
+  "wall_t": 4
+ },
+ "parts": [
+  {
+   "box": "BRCK",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    "width",
+    "height"
+   ],
+   "hollow": "wall_t"
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    "wall_t",
+    "wall_t"
+   ],
+   "size": [
+    "(width-2*wall_t)//2-1",
+    4
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    "wall_t+(width-2*wall_t)//2-1",
+    "wall_t"
+   ],
+   "size": [
+    2,
+    4
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    "wall_t+(width-2*wall_t)//2+1",
+    "wall_t"
+   ],
+   "size": [
+    "width-2*wall_t-(width-2*wall_t)//2-1",
+    4
+   ]
+  },
+  {
+   "box": "CNCT",
+   "at": [
+    0,
+    "height-5"
+   ],
+   "size": [
+    "width",
+    5
+   ]
+  }
+ ],
+ "verified": true
+}

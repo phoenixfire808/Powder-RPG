@@ -1,0 +1,1612 @@
+{
+ "name": "pcln_fuel_breeder_grid",
+ "description": "22x16 fuel-on-demand grid: a METL/PUMP frame around five rows of PCLN cells (ctype PLUT, DEUT or NEUT per cell as captured) with two PRTI rows below; spark the frame and the grid spawns fissile material only while powered.",
+ "why": "Save 254630 (Nuclear Power Plant 2) holds no fissile particles at rest -- its core is this powered-clone grid (PCLN ctype histogram PLUT=52 DEUT=32 NEUT=6), so fuel appears only while the console sparks it and the PRTI rows teleport the spawned material/heat into the reaction chamber. Per-cell ctypes copied exactly. Deviation: empty cells beside PRTI filled with INSL (lint). Sibling module pcln_fuel_synth_grid is the same 254630 box simplified to all-PLUT cells; this one keeps the captured per-cell PLUT/DEUT/NEUT mix.",
+ "source": "save 254630, x247-268 y276-291; PCLN rows y=277,279,281,283,285; PRTI rows y=287,289; PUMP column x=248",
+ "params": {},
+ "parts": [
+  {
+   "box": "METL",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    1,
+    16
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    1,
+    0
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    9,
+    0
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    13,
+    0
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    18,
+    0
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    1,
+    1
+   ],
+   "size": [
+    1,
+    15
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    2,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    4,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    6,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    8,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    10,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    12,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    14,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    16,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    18,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    20,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    21,
+    1
+   ],
+   "size": [
+    1,
+    15
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    2,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    4,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    6,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    8,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    10,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    12,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    14,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    16,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    18,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    20,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    2,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    4,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    6,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    8,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    10,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    12,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    14,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    16,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    18,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    20,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    2,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    4,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    6,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    8,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    10,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    12,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    14,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    16,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    18,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    20,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    2,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    4,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    6,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    8,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    10,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    12,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    14,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    16,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    18,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    20,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PLUT"
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    2,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    4,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    6,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    8,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    10,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    12,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    14,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    16,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    18,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    20,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    2,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    4,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    6,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    8,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    10,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    12,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    14,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    16,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    18,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    20,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    2,
+    15
+   ],
+   "size": [
+    19,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    4,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    4,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    4,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    6,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    6,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    6,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    7,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    7,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    8,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    8,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    8,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    9,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    9,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    10,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    10,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    10,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    11,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    11,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    12,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    12,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    12,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    13,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    13,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    14,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    14,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    14,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    15,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    15,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    16,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    16,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    16,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    18,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    18,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    18,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    19,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    19,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    20,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    20,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    20,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  }
+ ],
+ "verified": true
+}

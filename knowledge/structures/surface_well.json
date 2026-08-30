@@ -1,0 +1,52 @@
+{
+ "id": "surface_well",
+ "category": "surface",
+ "description": "Stone ring well with a wood roof beam on two posts, an open (not capped) shaft down to a real water pool. 9x9px.",
+ "biomes": [
+  "forest",
+  "desert",
+  "swamp"
+ ],
+ "depth_band": {
+  "min": -1,
+  "max": 4
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.12,
+ "min_spacing": 200,
+ "clearance": {
+  "top": 1,
+  "bottom": 0,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 4,
+  "y": 4
+ },
+ "width": 9,
+ "height": 9,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "F": "stone",
+  "L": "water",
+  "R": "wood",
+  "P": "wood"
+ },
+ "grid": [
+  "P  RRR  P",
+  "P       P",
+  "PRR   RRP",
+  " F.....F ",
+  " F.....F ",
+  " F.....F ",
+  " FLLLLLF ",
+  " FLLLLLF ",
+  " FFFFFFF "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Real WATR at the bottom (finding #7: water is a static prop inside these builds, physics left alone). Anchor row 4 = first grounded row, so the rim (row 3) pokes exactly 1px above the surface and the shaft (rows 4-8) is embedded, matching how a real well reads (short visible rim, deep shaft). Desert oasis wells can reuse world.lua's existing oasisPoolAt logic instead of this one if @world prefers a single water-source mechanism."
+}

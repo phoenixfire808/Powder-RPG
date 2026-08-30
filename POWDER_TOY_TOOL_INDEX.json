@@ -1,0 +1,4340 @@
+{
+  "schema_version": 4,
+  "source_root": "D:/The-Powder-Toy/src/lua",
+  "generated_by": "D:/powder-toy/research/index_lua_api.py",
+  "coverage": "exact export-name to C++ symbol mapping plus brace-balanced source-body contracts where parsable; unknown fields remain unknown",
+  "contract_counts": {
+    "exports": 227,
+    "source_body_parsed": 206,
+    "unknown": 21
+  },
+  "modules": [
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaBit.cpp",
+      "globals": [],
+      "functions": [
+        "arshift",
+        "band",
+        "bnot",
+        "bor",
+        "bswap",
+        "bxor",
+        "lshift",
+        "rol",
+        "ror",
+        "rshift",
+        "tobit",
+        "tohex"
+      ],
+      "contracts": [
+        {
+          "export_name": "arshift",
+          "cpp_symbol": "bit_arshift",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "band",
+          "cpp_symbol": "bit_band",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "bnot",
+          "cpp_symbol": "bit_bnot",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 105,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "bor",
+          "cpp_symbol": "bit_bor",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "bswap",
+          "cpp_symbol": "bit_bswap",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 130,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "bxor",
+          "cpp_symbol": "bit_bxor",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "lshift",
+          "cpp_symbol": "bit_lshift",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "rol",
+          "cpp_symbol": "bit_rol",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "ror",
+          "cpp_symbol": "bit_ror",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "rshift",
+          "cpp_symbol": "bit_rshift",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "tobit",
+          "cpp_symbol": "bit_tobit",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 104,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "tohex",
+          "cpp_symbol": "bit_tohex",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 137,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaButton.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [
+        "action",
+        "enabled",
+        "name",
+        "position",
+        "size",
+        "text",
+        "visible"
+      ],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaBz2.cpp",
+      "globals": [
+        "bz2"
+      ],
+      "functions": [
+        "compress",
+        "decompress"
+      ],
+      "contracts": [
+        {
+          "export_name": "compress",
+          "cpp_symbol": "compress",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 4,
+            "lua_checks": [
+              "luaL_optinteger"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "decompress",
+          "cpp_symbol": "decompress",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 22,
+            "lua_checks": [
+              "luaL_optinteger"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaCheckbox.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [
+        "action",
+        "checked",
+        "name",
+        "position",
+        "size",
+        "text",
+        "visible"
+      ],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaElements.cpp",
+      "globals": [
+        "elements",
+        "elem"
+      ],
+      "functions": [
+        "allocate",
+        "element",
+        "exists",
+        "free",
+        "getByName",
+        "loadDefault",
+        "property"
+      ],
+      "contracts": [
+        {
+          "export_name": "allocate",
+          "cpp_symbol": "allocate",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 313,
+            "lua_checks": [
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "element",
+          "cpp_symbol": "element",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 401,
+            "lua_checks": [
+              "luaL_checkinteger",
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "exists",
+          "cpp_symbol": "exists",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 755,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "free",
+          "cpp_symbol": "ffree",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 716,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getByName",
+          "cpp_symbol": "getByName",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 835,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "loadDefault",
+          "cpp_symbol": "loadDefault",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 762,
+            "lua_checks": [
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "property",
+          "cpp_symbol": "property",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 546,
+            "lua_checks": [
+              "luaL_checkinteger",
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaEvent.cpp",
+      "globals": [
+        "event",
+        "evt"
+      ],
+      "functions": [
+        "getModifiers",
+        "register",
+        "unregister"
+      ],
+      "contracts": [
+        {
+          "export_name": "getModifiers",
+          "cpp_symbol": "getModifiers",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 34,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "register",
+          "cpp_symbol": "fregister",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 5,
+            "lua_checks": [
+              "luaL_checkinteger",
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "unregister",
+          "cpp_symbol": "unregister",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 20,
+            "lua_checks": [
+              "luaL_checkinteger",
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaFileSystem.cpp",
+      "globals": [
+        "fileSystem",
+        "fs"
+      ],
+      "functions": [
+        "copy",
+        "exists",
+        "isDirectory",
+        "isFile",
+        "isLink",
+        "list",
+        "makeDirectory",
+        "move",
+        "removeDirectory",
+        "removeFile"
+      ],
+      "contracts": [
+        {
+          "export_name": "copy",
+          "cpp_symbol": "copy",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 97,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "exists",
+          "cpp_symbol": "exists",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 22,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "isDirectory",
+          "cpp_symbol": "isDirectory",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 40,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "isFile",
+          "cpp_symbol": "isFile",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 31,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "isLink",
+          "cpp_symbol": "isLink",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 49,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "list",
+          "cpp_symbol": "list",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 4,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "makeDirectory",
+          "cpp_symbol": "makeDirectory",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 58,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "move",
+          "cpp_symbol": "move",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 87,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "removeDirectory",
+          "cpp_symbol": "removeDirectory",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 69,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "removeFile",
+          "cpp_symbol": "removeFile",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 79,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaGraphics.cpp",
+      "globals": [
+        "graphics",
+        "gfx"
+      ],
+      "functions": [
+        "drawCircle",
+        "drawLine",
+        "drawPixel",
+        "drawRect",
+        "drawText",
+        "fillCircle",
+        "fillRect",
+        "getColors",
+        "getHexColor",
+        "setClipRect",
+        "textSize"
+      ],
+      "contracts": [
+        {
+          "export_name": "drawCircle",
+          "cpp_symbol": "drawCircle",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 225,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "drawLine",
+          "cpp_symbol": "drawLine",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 126,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "drawPixel",
+          "cpp_symbol": "drawPixel",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 104,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "drawRect",
+          "cpp_symbol": "drawRect",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 159,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "drawText",
+          "cpp_symbol": "drawText",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 79,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "fillCircle",
+          "cpp_symbol": "fillCircle",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 251,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "fillRect",
+          "cpp_symbol": "fillRect",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 192,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getColors",
+          "cpp_symbol": "getColors",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 277,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              4
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getHexColor",
+          "cpp_symbol": "getHexColor",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 293,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "setClipRect",
+          "cpp_symbol": "setClipRect",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 307,
+            "lua_checks": [
+              "luaL_optinteger"
+            ],
+            "numeric_return_counts": [
+              4
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "textSize",
+          "cpp_symbol": "textSize",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 70,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaHttp.cpp",
+      "globals": [
+        "http"
+      ],
+      "functions": [
+        "cancel",
+        "finish",
+        "get",
+        "getAuthToken",
+        "post",
+        "progress",
+        "status"
+      ],
+      "contracts": [
+        {
+          "export_name": "cancel",
+          "cpp_symbol": "HTTPRequest_cancel",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 234,
+            "lua_checks": [
+              "luaL_checkudata"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "finish",
+          "cpp_symbol": "HTTPRequest_finish",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 245,
+            "lua_checks": [
+              "luaL_checkudata"
+            ],
+            "numeric_return_counts": [
+              0,
+              3
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "get",
+          "cpp_symbol": "get",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 416,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getAuthToken",
+          "cpp_symbol": "getAuthToken",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 408,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "post",
+          "cpp_symbol": "post",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 421,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "progress",
+          "cpp_symbol": "HTTPRequest_progress",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 220,
+            "lua_checks": [
+              "luaL_checkudata"
+            ],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "status",
+          "cpp_symbol": "HTTPRequest_status",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 199,
+            "lua_checks": [
+              "luaL_checkudata"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [
+        {
+          "function": "HTTPRequest_gc",
+          "field": "__gc"
+        }
+      ],
+      "cfunction_sites": [
+        {
+          "line": 439,
+          "source": "lua_pushcfunction(L, HTTPRequest_gc);"
+        }
+      ],
+      "cclosure_sites": [],
+      "registration_blocks": 2
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaInterface.cpp",
+      "globals": [
+        "interface",
+        "ui"
+      ],
+      "functions": [
+        "activeMenu",
+        "activeTool",
+        "addComponent",
+        "beginConfirm",
+        "beginInput",
+        "beginMessageBox",
+        "beginThrowError",
+        "brushID",
+        "brushRadius",
+        "closeWindow",
+        "console",
+        "dropTextInput",
+        "grabTextInput",
+        "menuEnabled",
+        "mousePosition",
+        "numMenus",
+        "perfectCircleBrush",
+        "removeComponent",
+        "showWindow",
+        "textInputRect",
+        "windowSize"
+      ],
+      "contracts": [
+        {
+          "export_name": "activeMenu",
+          "cpp_symbol": "activeMenu",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 401,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "activeTool",
+          "cpp_symbol": "activeTool",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 245,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "addComponent",
+          "cpp_symbol": "addComponent",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 270,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "beginConfirm",
+          "cpp_symbol": "beginConfirm",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 149,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "beginInput",
+          "cpp_symbol": "beginInput",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 105,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "beginMessageBox",
+          "cpp_symbol": "beginMessageBox",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 47,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "beginThrowError",
+          "cpp_symbol": "beginThrowError",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 77,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "brushID",
+          "cpp_symbol": "brushID",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 202,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "brushRadius",
+          "cpp_symbol": "brushRadius",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 220,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "closeWindow",
+          "cpp_symbol": "closeWindow",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 378,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "console",
+          "cpp_symbol": "console",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 185,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "dropTextInput",
+          "cpp_symbol": "dropTextInput",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 348,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "grabTextInput",
+          "cpp_symbol": "grabTextInput",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 339,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "menuEnabled",
+          "cpp_symbol": "menuEnabled",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 420,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "mousePosition",
+          "cpp_symbol": "mousePosition",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 235,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "numMenus",
+          "cpp_symbol": "numMenus",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 446,
+            "lua_checks": [
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "perfectCircleBrush",
+          "cpp_symbol": "perfectCircleBrush",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 387,
+            "lua_checks": [
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "removeComponent",
+          "cpp_symbol": "removeComponent",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 304,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "showWindow",
+          "cpp_symbol": "showWindow",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 368,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "textInputRect",
+          "cpp_symbol": "textInputRect",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 357,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "windowSize",
+          "cpp_symbol": "windowSize",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 461,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaLabel.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [
+        "name",
+        "position",
+        "size",
+        "text",
+        "visible"
+      ],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaMisc.cpp",
+      "globals": [
+        "tpt"
+      ],
+      "functions": [
+        "compatChunk",
+        "debug",
+        "drawCap",
+        "fpsCap",
+        "getUserName",
+        "installScriptManager",
+        "log",
+        "record",
+        "screenshot"
+      ],
+      "contracts": [
+        {
+          "export_name": "compatChunk",
+          "cpp_symbol": "compatChunk",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 175,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "debug",
+          "cpp_symbol": "debug",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 181,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "drawCap",
+          "cpp_symbol": "drawCap",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 228,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "fpsCap",
+          "cpp_symbol": "fpsCap",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 196,
+            "lua_checks": [
+              "luaL_checknumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getUserName",
+          "cpp_symbol": "getUserName",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 14,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "installScriptManager",
+          "cpp_symbol": "installScriptManager",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 28,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "log",
+          "cpp_symbol": "flog",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 123,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "record",
+          "cpp_symbol": "record",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 163,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "screenshot",
+          "cpp_symbol": "screenshot",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 147,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaPlatform.cpp",
+      "globals": [
+        "platform",
+        "plat"
+      ],
+      "functions": [
+        "clipboardCopy",
+        "clipboardPaste",
+        "exeName",
+        "ident",
+        "openLink",
+        "platform",
+        "releaseType",
+        "restart"
+      ],
+      "contracts": [
+        {
+          "export_name": "clipboardCopy",
+          "cpp_symbol": "clipboardCopy",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 49,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "clipboardPaste",
+          "cpp_symbol": "clipboardPaste",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 56,
+            "lua_checks": [
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "exeName",
+          "cpp_symbol": "exeName",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 24,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "ident",
+          "cpp_symbol": "ident",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 12,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "openLink",
+          "cpp_symbol": "openLink",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 41,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "platform",
+          "cpp_symbol": "platform",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 6,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "releaseType",
+          "cpp_symbol": "releaseType",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 18,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "restart",
+          "cpp_symbol": "restart",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 34,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaProgressBar.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [
+        "name",
+        "position",
+        "progress",
+        "size",
+        "status",
+        "visible"
+      ],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp",
+      "globals": [
+        "renderer",
+        "ren"
+      ],
+      "functions": [
+        "colorMode",
+        "debugHud",
+        "decorations",
+        "depth3d",
+        "displayMode",
+        "fireSize",
+        "grid",
+        "gridCheckerboard",
+        "heatDisplayAutoArea",
+        "heatDisplayLimits",
+        "hud",
+        "renderMode",
+        "separateThread",
+        "showBrush",
+        "useDisplayPreset",
+        "zoomEnabled",
+        "zoomScope",
+        "zoomWindow"
+      ],
+      "contracts": [
+        {
+          "export_name": "colorMode",
+          "cpp_symbol": "colorMode",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 95,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "debugHud",
+          "cpp_symbol": "debugHud",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 36,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "decorations",
+          "cpp_symbol": "decorations",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 108,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "depth3d",
+          "cpp_symbol": "depth3d",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 154,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "displayMode",
+          "cpp_symbol": "displayMode",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 81,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "fireSize",
+          "cpp_symbol": "fireSize",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 68,
+            "lua_checks": [
+              "luaL_checknumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "grid",
+          "cpp_symbol": "grid",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 124,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "gridCheckerboard",
+          "cpp_symbol": "gridCheckerboard",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 305,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "heatDisplayAutoArea",
+          "cpp_symbol": "heatDisplayAutoArea",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 285,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              4
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "heatDisplayLimits",
+          "cpp_symbol": "heatDisplayLimits",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 249,
+            "lua_checks": [
+              "luaL_checknumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "hud",
+          "cpp_symbol": "hud",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 21,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "renderMode",
+          "cpp_symbol": "renderMode",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 8,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "separateThread",
+          "cpp_symbol": "separateThread",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 236,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "showBrush",
+          "cpp_symbol": "showBrush",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 139,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "useDisplayPreset",
+          "cpp_symbol": "useDisplayPreset",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 51,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "zoomEnabled",
+          "cpp_symbol": "zoomEnabled",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 160,
+            "lua_checks": [
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "zoomScope",
+          "cpp_symbol": "zoomScope",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 205,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              3
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "zoomWindow",
+          "cpp_symbol": "zoomWindow",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 177,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              4
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaScriptInterface.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [],
+      "direct_registrations": [
+        {
+          "function": "osExit",
+          "field": "exit"
+        },
+        {
+          "function": "mathRandom",
+          "field": "random"
+        },
+        {
+          "function": "mathRandomseed",
+          "field": "randomseed"
+        }
+      ],
+      "cfunction_sites": [
+        {
+          "line": 172,
+          "source": "lua_pushcfunction(L, osExit);"
+        },
+        {
+          "line": 178,
+          "source": "lua_pushcfunction(L, mathRandom);"
+        },
+        {
+          "line": 180,
+          "source": "lua_pushcfunction(L, mathRandomseed);"
+        }
+      ],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp",
+      "globals": [
+        "simulation",
+        "sim"
+      ],
+      "functions": [
+        "addCustomGol",
+        "adjustCoords",
+        "airMode",
+        "ambientAirTemp",
+        "ambientHeat",
+        "ambientHeatSim",
+        "brush",
+        "canMove",
+        "clearRect",
+        "clearSim",
+        "convectionMode",
+        "createBox",
+        "createLine",
+        "createParts",
+        "createWallBox",
+        "createWallLine",
+        "createWalls",
+        "customGravity",
+        "decoBox",
+        "decoBrush",
+        "decoColor",
+        "decoLine",
+        "decoSpace",
+        "deleteStamp",
+        "edgeMode",
+        "edgePressure",
+        "edgeVelocity",
+        "elecMap",
+        "elementCount",
+        "ensureDeterminism",
+        "fanVelocityX",
+        "fanVelocityY",
+        "floodDeco",
+        "floodParts",
+        "floodWalls",
+        "frameRender",
+        "getPressure",
+        "getSaveID",
+        "getTemp",
+        "golSpeedRatio",
+        "gravityField",
+        "gravityGrid",
+        "gravityMask",
+        "gravityMass",
+        "gravityMode",
+        "hash",
+        "heatSim",
+        "historyForward",
+        "historyRestore",
+        "lastUpdatedID",
+        "listCustomGol",
+        "listStamps",
+        "loadSave",
+        "loadStamp",
+        "neighbors",
+        "newtonianGravity",
+        "partChangeType",
+        "partCount",
+        "partCreate",
+        "partExists",
+        "partID",
+        "partKill",
+        "partNeighbors",
+        "partPosition",
+        "partProperty",
+        "parts",
+        "paused",
+        "photons",
+        "pmap",
+        "pressure",
+        "prettyPowders",
+        "randomSeed",
+        "reloadSave",
+        "removeCustomGol",
+        "replaceModeFlags",
+        "resetPressure",
+        "resetSpark",
+        "resetTemp",
+        "resetVelocity",
+        "saveStamp",
+        "setPressure",
+        "setTemp",
+        "step",
+        "takeSnapshot",
+        "temperatureScale",
+        "toolBox",
+        "toolBrush",
+        "toolLine",
+        "updateUpTo",
+        "velocityX",
+        "velocityY",
+        "vorticityCoeff",
+        "wallMap",
+        "waterEqualization"
+      ],
+      "contracts": [
+        {
+          "export_name": "addCustomGol",
+          "cpp_symbol": "addCustomGol",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1761,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "adjustCoords",
+          "cpp_symbol": "adjustCoords",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1206,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "airMode",
+          "cpp_symbol": "airMode",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1303,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "ambientAirTemp",
+          "cpp_symbol": "ambientAirTemp",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1333,
+            "lua_checks": [
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "ambientHeat",
+          "cpp_symbol": "ambientHeat",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 263,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "ambientHeatSim",
+          "cpp_symbol": "ambientHeatSim",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 91,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "brush",
+          "cpp_symbol": "brush",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1470,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "canMove",
+          "cpp_symbol": "canMove",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1426,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "clearRect",
+          "cpp_symbol": "clearRect",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 987,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "clearSim",
+          "cpp_symbol": "clearSim",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 979,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "convectionMode",
+          "cpp_symbol": "convectionMode",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1396,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "createBox",
+          "cpp_symbol": "createBox",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 641,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "createLine",
+          "cpp_symbol": "createLine",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 609,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "createParts",
+          "cpp_symbol": "createParts",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 571,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "createWallBox",
+          "cpp_symbol": "createWallBox",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 724,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "createWallLine",
+          "cpp_symbol": "createWallLine",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 703,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "createWalls",
+          "cpp_symbol": "createWalls",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 683,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "customGravity",
+          "cpp_symbol": "customGravity",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1280,
+            "lua_checks": [
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "decoBox",
+          "cpp_symbol": "decoBox",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 912,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "decoBrush",
+          "cpp_symbol": "decoBrush",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 857,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "decoColor",
+          "cpp_symbol": "decoColor",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 933,
+            "lua_checks": [
+              "luaL_optint",
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "decoLine",
+          "cpp_symbol": "decoLine",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 882,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "decoSpace",
+          "cpp_symbol": "decoSpace",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 160,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "deleteStamp",
+          "cpp_symbol": "deleteStamp",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1127,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "edgeMode",
+          "cpp_symbol": "edgeMode",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1250,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "edgePressure",
+          "cpp_symbol": "edgePressure",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1348,
+            "lua_checks": [
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "edgeVelocity",
+          "cpp_symbol": "edgeVelocity",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1363,
+            "lua_checks": [
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "elecMap",
+          "cpp_symbol": "elecMap",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 308,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "elementCount",
+          "cpp_symbol": "elementCount",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1415,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "ensureDeterminism",
+          "cpp_symbol": "ensureDeterminism",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 2084,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "fanVelocityX",
+          "cpp_symbol": "fanVelocityX",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 324,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "fanVelocityY",
+          "cpp_symbol": "fanVelocityY",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 332,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "floodDeco",
+          "cpp_symbol": "floodDeco",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 958,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "floodParts",
+          "cpp_symbol": "floodParts",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 665,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "floodWalls",
+          "cpp_symbol": "floodWalls",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 743,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "frameRender",
+          "cpp_symbol": "frameRender",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1638,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getPressure",
+          "cpp_symbol": "simGetPressure",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 64,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getSaveID",
+          "cpp_symbol": "getSaveID",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1192,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getTemp",
+          "cpp_symbol": "simGetTemp",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 36,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "golSpeedRatio",
+          "cpp_symbol": "golSpeedRatio",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1654,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "gravityField",
+          "cpp_symbol": "gravityField",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 295,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              2
+            ],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "gravityGrid",
+          "cpp_symbol": "gravityGrid",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1234,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "gravityMask",
+          "cpp_symbol": "gravityMask",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 287,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "gravityMass",
+          "cpp_symbol": "gravityMass",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 279,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "gravityMode",
+          "cpp_symbol": "gravityMode",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1265,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "hash",
+          "cpp_symbol": "hash",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 2076,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "heatSim",
+          "cpp_symbol": "heatSim",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 108,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "historyForward",
+          "cpp_symbol": "historyForward",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1688,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "historyRestore",
+          "cpp_symbol": "historyRestore",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1679,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "lastUpdatedID",
+          "cpp_symbol": "lastUpdatedID",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1805,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "listCustomGol",
+          "cpp_symbol": "listCustomGol",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1716,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "listStamps",
+          "cpp_symbol": "listStamps",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1157,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "loadSave",
+          "cpp_symbol": "loadSave",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1173,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "loadStamp",
+          "cpp_symbol": "loadStamp",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1062,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "neighbors",
+          "cpp_symbol": "neighbors",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1577,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "newtonianGravity",
+          "cpp_symbol": "newtonianGravity",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 123,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partChangeType",
+          "cpp_symbol": "partChangeType",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 383,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partCount",
+          "cpp_symbol": "partCount",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 153,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partCreate",
+          "cpp_symbol": "partCreate",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 394,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "partExists",
+          "cpp_symbol": "partExists",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 563,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partID",
+          "cpp_symbol": "partID",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 428,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partKill",
+          "cpp_symbol": "partKill",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 548,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partNeighbors",
+          "cpp_symbol": "partNeighbors",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 339,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partPosition",
+          "cpp_symbol": "partPosition",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 450,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "partProperty",
+          "cpp_symbol": "partProperty",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 486,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "parts",
+          "cpp_symbol": "parts",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1603,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "paused",
+          "cpp_symbol": "paused",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 138,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "photons",
+          "cpp_symbol": "photons",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1624,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "pmap",
+          "cpp_symbol": "pmap",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1610,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "pressure",
+          "cpp_symbol": "pressure",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 271,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "prettyPowders",
+          "cpp_symbol": "prettyPowders",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1218,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "randomSeed",
+          "cpp_symbol": "randomSeed",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 2056,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              4
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "reloadSave",
+          "cpp_symbol": "reloadSave",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1184,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "removeCustomGol",
+          "cpp_symbol": "removeCustomGol",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1795,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "replaceModeFlags",
+          "cpp_symbol": "replaceModeFlags",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1697,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "resetPressure",
+          "cpp_symbol": "resetPressure",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1017,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "resetSpark",
+          "cpp_symbol": "resetSpark",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 2048,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "resetTemp",
+          "cpp_symbol": "resetTemp",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 999,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "resetVelocity",
+          "cpp_symbol": "resetVelocity",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 2025,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "saveStamp",
+          "cpp_symbol": "saveStamp",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1048,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "setPressure",
+          "cpp_symbol": "simSetPressure",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 76,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_checknumber"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "setTemp",
+          "cpp_symbol": "simSetTemp",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 48,
+            "lua_checks": [
+              "luaL_checkint",
+              "luaL_checknumber"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "cell"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "step",
+          "cpp_symbol": "simStep",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 21,
+            "lua_checks": [
+              "luaL_checkint"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "takeSnapshot",
+          "cpp_symbol": "takeSnapshot",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1670,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "temperatureScale",
+          "cpp_symbol": "temperatureScale",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1840,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "toolBox",
+          "cpp_symbol": "toolBox",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 825,
+            "lua_checks": [
+              "luaL_optint",
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "toolBrush",
+          "cpp_symbol": "toolBrush",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 765,
+            "lua_checks": [
+              "luaL_optint",
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "toolLine",
+          "cpp_symbol": "toolLine",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 793,
+            "lua_checks": [
+              "luaL_optint",
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [
+              "pixel"
+            ],
+            "interface_event_assert": false,
+            "tool_event_assert": true
+          }
+        },
+        {
+          "export_name": "updateUpTo",
+          "cpp_symbol": "updateUpTo",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1820,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "velocityX",
+          "cpp_symbol": "velocityX",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 247,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "velocityY",
+          "cpp_symbol": "velocityY",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 255,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "vorticityCoeff",
+          "cpp_symbol": "vorticityCoeff",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1381,
+            "lua_checks": [
+              "luaL_optnumber"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "wallMap",
+          "cpp_symbol": "wallMap",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 316,
+            "lua_checks": [],
+            "numeric_return_counts": [],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "waterEqualization",
+          "cpp_symbol": "waterEqualization",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 1318,
+            "lua_checks": [
+              "luaL_optint"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [
+        {
+          "function": "signsIndex",
+          "field": "__index"
+        },
+        {
+          "function": "signsNewIndex",
+          "field": "__newindex"
+        },
+        {
+          "function": "Sign_new",
+          "field": "new"
+        },
+        {
+          "function": "Sign_delete",
+          "field": "delete"
+        }
+      ],
+      "cfunction_sites": [
+        {
+          "line": 2337,
+          "source": "lua_pushcfunction(L, signsIndex);"
+        },
+        {
+          "line": 2339,
+          "source": "lua_pushcfunction(L, signsNewIndex);"
+        },
+        {
+          "line": 2346,
+          "source": "lua_pushcfunction(L, Sign_new);"
+        },
+        {
+          "line": 2348,
+          "source": "lua_pushcfunction(L, Sign_delete);"
+        }
+      ],
+      "cclosure_sites": [
+        {
+          "line": 1505,
+          "source": "lua_pushcclosure(L, brushClosure, 5);"
+        },
+        {
+          "line": 1599,
+          "source": "lua_pushcclosure(L, neighboursClosure, 7);"
+        },
+        {
+          "line": 1606,
+          "source": "lua_pushcclosure(L, partsClosure, 1);"
+        }
+      ],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaSlider.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [
+        "name",
+        "onValueChanged",
+        "position",
+        "size",
+        "steps",
+        "value",
+        "visible"
+      ],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaSocket.cpp",
+      "globals": [
+        "socket",
+        "net",
+        "json"
+      ],
+      "functions": [
+        "close",
+        "getTime",
+        "listen",
+        "parse",
+        "sleep",
+        "stringify"
+      ],
+      "contracts": [
+        {
+          "export_name": "close",
+          "cpp_symbol": "netClose",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 423,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "getTime",
+          "cpp_symbol": "LuaSocket::GetTime",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "listen",
+          "cpp_symbol": "netListen",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 351,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "parse",
+          "cpp_symbol": "jsonParse",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 57,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1,
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "sleep",
+          "cpp_symbol": "LuaSocket::Sleep",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "stringify",
+          "cpp_symbol": "jsonStringify",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 121,
+            "lua_checks": [],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [
+        {
+          "line": 401,
+          "source": "lua_pushcfunction(L, [](lua_State *L) -> int {"
+        }
+      ],
+      "cclosure_sites": [],
+      "registration_blocks": 3
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaSocketTCPHttp.cpp",
+      "globals": [],
+      "functions": [
+        "close",
+        "connect",
+        "getpeername",
+        "getsockname",
+        "lasterror",
+        "receive",
+        "send",
+        "setoption",
+        "settimeout",
+        "shutdown",
+        "status"
+      ],
+      "contracts": [
+        {
+          "export_name": "close",
+          "cpp_symbol": "LuaSocket::Close",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "connect",
+          "cpp_symbol": "LuaSocket::Connect",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "getpeername",
+          "cpp_symbol": "LuaSocket::GetPeerName",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "getsockname",
+          "cpp_symbol": "LuaSocket::GetSockName",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "lasterror",
+          "cpp_symbol": "LuaSocket::LastError",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "receive",
+          "cpp_symbol": "LuaSocket::Receive",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "send",
+          "cpp_symbol": "LuaSocket::Send",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "setoption",
+          "cpp_symbol": "LuaSocket::SetOption",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "settimeout",
+          "cpp_symbol": "LuaSocket::SetTimeout",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "shutdown",
+          "cpp_symbol": "LuaSocket::Shutdown",
+          "contract": {
+            "status": "unknown"
+          }
+        },
+        {
+          "export_name": "status",
+          "cpp_symbol": "LuaSocket::GetStatus",
+          "contract": {
+            "status": "unknown"
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [
+        {
+          "function": "LuaSocket::GC",
+          "field": "__gc"
+        },
+        {
+          "function": "LuaSocket::New",
+          "field": "tcp"
+        }
+      ],
+      "cfunction_sites": [
+        {
+          "line": 628,
+          "source": "lua_pushcfunction(L, LuaSocket::GC);"
+        },
+        {
+          "line": 649,
+          "source": "lua_pushcfunction(L, LuaSocket::New);"
+        }
+      ],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaSocketTCPWebsocket.cpp",
+      "globals": [],
+      "functions": [
+        "close",
+        "send",
+        "status"
+      ],
+      "contracts": [
+        {
+          "export_name": "close",
+          "cpp_symbol": "Close",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 119,
+            "lua_checks": [
+              "luaL_checkinteger",
+              "luaL_checkudata"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "send",
+          "cpp_symbol": "Send",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 149,
+            "lua_checks": [
+              "luaL_checktype",
+              "luaL_checkudata",
+              "luaL_optinteger"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "status",
+          "cpp_symbol": "Status",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 199,
+            "lua_checks": [
+              "luaL_checkudata"
+            ],
+            "numeric_return_counts": [
+              2
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [
+        {
+          "function": "GC",
+          "field": "__gc"
+        },
+        {
+          "function": "New",
+          "field": "web"
+        }
+      ],
+      "cfunction_sites": [
+        {
+          "line": 339,
+          "source": "lua_pushcfunction(L, GC);"
+        },
+        {
+          "line": 356,
+          "source": "lua_pushcfunction(L, New);"
+        }
+      ],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaTextbox.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [
+        "focus",
+        "name",
+        "onTextChanged",
+        "position",
+        "readonly",
+        "size",
+        "text",
+        "visible"
+      ],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaTools.cpp",
+      "globals": [
+        "tools"
+      ],
+      "functions": [
+        "allocate",
+        "exists",
+        "free",
+        "isCustom",
+        "property"
+      ],
+      "contracts": [
+        {
+          "export_name": "allocate",
+          "cpp_symbol": "allocate",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 8,
+            "lua_checks": [
+              "luaL_checktype"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "exists",
+          "cpp_symbol": "exists",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 364,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "free",
+          "cpp_symbol": "ffree",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 52,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "isCustom",
+          "cpp_symbol": "isCustom",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 373,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": true,
+            "tool_event_assert": false
+          }
+        },
+        {
+          "export_name": "property",
+          "cpp_symbol": "property",
+          "contract": {
+            "status": "source_body_parsed",
+            "definition_line": 263,
+            "lua_checks": [
+              "luaL_checkinteger"
+            ],
+            "numeric_return_counts": [
+              0,
+              1
+            ],
+            "coordinate_mentions": [],
+            "interface_event_assert": false,
+            "tool_event_assert": false
+          }
+        }
+      ],
+      "userdata_methods": [],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 1
+    },
+    {
+      "file": "D:/The-Powder-Toy/src/lua/LuaWindow.cpp",
+      "globals": [],
+      "functions": [],
+      "contracts": [],
+      "userdata_methods": [
+        "addComponent",
+        "name",
+        "onBlur",
+        "onDraw",
+        "onExit",
+        "onFocus",
+        "onInitialized",
+        "onKeyPress",
+        "onKeyRelease",
+        "onMouseDown",
+        "onMouseMove",
+        "onMouseUp",
+        "onMouseWheel",
+        "onTick",
+        "onTryExit",
+        "onTryOkay",
+        "position",
+        "removeComponent",
+        "size"
+      ],
+      "direct_registrations": [],
+      "cfunction_sites": [],
+      "cclosure_sites": [],
+      "registration_blocks": 0
+    }
+  ],
+  "notes": [
+    "Aliases and macro-prefixed registrations map to their actual C++ symbols (for example free->ffree and status->HTTPRequest_status).",
+    "Direct anonymous/lambda cfunctions and returned closures are indexed as source sites even without export names.",
+    "Coordinate mentions and event assertions are source evidence, not an invented signature/default contract.",
+    "MCP exposes only authenticated, verified subsets; indexed source sites are not arbitrary-code execution."
+  ]
+}

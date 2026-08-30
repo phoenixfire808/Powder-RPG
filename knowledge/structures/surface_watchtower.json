@@ -1,0 +1,72 @@
+{
+ "id": "surface_watchtower",
+ "category": "surface",
+ "description": "Tall wood-framed watchtower: two vertical support posts with cross-joists every 6px (a real climbable ladder-like frame) up to an open lookout platform with corner rails, on a stone footing. 9x32px -- ~2.5 player-heights.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": -2,
+  "max": 26
+ },
+ "rest_on_solid": true,
+ "erodible": true,
+ "rarity": 0.06,
+ "min_spacing": 420,
+ "clearance": {
+  "top": 3,
+  "bottom": 0,
+  "left": 2,
+  "right": 2
+ },
+ "anchor": {
+  "x": 4,
+  "y": 30
+ },
+ "width": 9,
+ "height": 32,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "T": "wood",
+  "F": "stone",
+  "R": "metal_old"
+ },
+ "grid": [
+  " TTTTTTT ",
+  " R.....R ",
+  " T.....T ",
+  " T.....T ",
+  " TTTTTTT ",
+  "   T T   ",
+  "   TTT   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   TTT   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   TTT   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   TTT   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  "   T T   ",
+  " FFFFFFF ",
+  " FFFFFFF "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "The crenellation/parapet motif from 304820/2390773 castle saves, scaled down to a single-player lookout. Joist spacing (6px) matches the mineshaft support-post spacing already in world.lua so it reads as the same 'built structure' vocabulary. Anchor row 30 = the footing's top row (first grounded row), same rule as surface_cabin_small."
+}

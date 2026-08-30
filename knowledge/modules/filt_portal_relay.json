@@ -1,0 +1,64 @@
+{
+ "name": "filt_portal_relay",
+ "description": "5x5 hollow FILT frame relaying a photon beam through a portal pair (PRTO in / GLOW / PRTI out rows).",
+ "why": "Build-lessons 'laser bay': a FILT frame holds a PRTO/GLOW/PRTI sandwich that takes photons through a colour filter and teleports them on a channel -- decorate the FILT to set the transmitted colour (decorating FILT sets the photon colour it passes, per the rendering lesson). blueprint_lint flags PRTO as unjacketed (heat_source_uninsulated); accepted by design -- PRTO is deliberately embedded flush against the FILT ring on 3 sides and GLOW on the 4th exactly as captured, because the FILT frame's colour-filtering function requires the photon beam to pass directly through/beside it; inserting an INSL layer here would isolate PRTO from the frame it is meant to filter through and break the relay's actual purpose.",
+ "source": "save2, exact pixel pattern x434-438 y91-95",
+ "params": {
+  "channel_out": 5,
+  "channel_in": 4
+ },
+ "parts": [
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    5,
+    5
+   ],
+   "hollow": 1
+  },
+  {
+   "box": "PRTO",
+   "at": [
+    1,
+    1
+   ],
+   "size": [
+    3,
+    1
+   ],
+   "props": {
+    "channel": "channel_out"
+   }
+  },
+  {
+   "box": "GLOW",
+   "at": [
+    1,
+    2
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "PRTI",
+   "at": [
+    1,
+    3
+   ],
+   "size": [
+    3,
+    1
+   ],
+   "props": {
+    "channel": "channel_in"
+   }
+  }
+ ],
+ "verified": true
+}

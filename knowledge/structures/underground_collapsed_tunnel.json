@@ -1,0 +1,46 @@
+{
+ "id": "underground_collapsed_tunnel",
+ "category": "underground",
+ "description": "A mine tunnel with a partial cave-in: rubble fills roughly half the passage height and a support beam has snapped -- passable but tight, reads as danger. 20x7px.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": 60,
+  "max": 900
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.14,
+ "min_spacing": 260,
+ "clearance": {
+  "top": 1,
+  "bottom": 1,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 0,
+  "y": 3
+ },
+ "width": 20,
+ "height": 7,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "D": "stone",
+  "T": "wood"
+ },
+ "grid": [
+  "      DDDDDDDD      ",
+  "  TTT DDDDDDDD      ",
+  "...T..DDDDDDDD......",
+  "...T................",
+  "...T................",
+  "                    ",
+  "                    "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Rubble is real solid material woven into the passage (not decoration on top), so it actually narrows the path the way world.lua's own R.crumble() debris does; the snapped beam is two disconnected wood segments, not one -- reads as broken without needing the felling/physics system."
+}

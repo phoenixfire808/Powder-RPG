@@ -1,0 +1,49 @@
+{
+ "id": "underground_mineshaft_junction",
+ "category": "underground",
+ "description": "A four-way mineshaft junction: wood-framed east-west gallery crossing a north-south rail shaft, support posts, an ore cart sitting on the rails. 22x9px.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": 60,
+  "max": 900
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.16,
+ "min_spacing": 340,
+ "clearance": {
+  "top": 1,
+  "bottom": 1,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 10,
+  "y": 4
+ },
+ "width": 22,
+ "height": 9,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "T": "wood",
+  "R": "metal_old",
+  "C": "metal_old"
+ },
+ "grid": [
+  "         R..R         ",
+  "         R..R         ",
+  "TTTTTTTTTRTTRTTTTTTTTT",
+  "T....T...RT.R..T....T.",
+  "T....T...RT.R..T....T.",
+  "T....T...RT.R..T....T.",
+  "TTTTTTTTTRTTRTTTTTTTTT",
+  "         RC.R         ",
+  "         R..R         "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Wood framing pattern matches world.lua's existing mineshaftHere() (roof/floor plank + posts) so a generated junction blends with the plain mineshaft corridors either side of it; ore cart + rails are the imported Terraria/Minecraft convention Drew asked for."
+}

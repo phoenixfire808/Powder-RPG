@@ -1,0 +1,51 @@
+{
+ "id": "underground_miners_camp",
+ "category": "underground",
+ "description": "A small excavated room off a shaft: bedroll, campfire ring with an ember glow, a crate and a barrel, and a ladder up in the corner. 16x8px.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": 80,
+  "max": 500
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.12,
+ "min_spacing": 300,
+ "clearance": {
+  "top": 1,
+  "bottom": 1,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 0,
+  "y": 6
+ },
+ "width": 16,
+ "height": 8,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "T": "wood",
+  "K": "stone",
+  "V": "glow",
+  "C": "wood",
+  "B": "metal_old",
+  "L": "wood"
+ },
+ "grid": [
+  "                ",
+  "                ",
+  "              L ",
+  "..............L.",
+  "......V.......L.",
+  "..TT..K..CC.BBL.",
+  "..TT.....CC.BBL.",
+  "                "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Same 'trace of past habitation' read as surface_campsite, underground flavor. Ladder rungs use the same wood-post vocabulary as underground_ladder_shaft below so the two compose along a single vertical route."
+}

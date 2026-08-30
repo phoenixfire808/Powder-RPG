@@ -1,0 +1,101 @@
+{
+ "name": "village_house_bmtl",
+ "description": "Small house with a BMTL header band, CNCT walls and a GOO ground plinth -- the village variant of `house`.",
+ "why": "Save1 village census (x477-546 y55-130): unlike the generic `house` module (BRCK/WOOD), this village uses CNCT for walls (non-conductive, per the electrical lesson) with a thin BMTL header/frame band and sits its footing on a GOO ground plinth instead of bare canvas.",
+ "source": "save1, village x477-546 y55-130 (GOO 2117, CNCT 1160, WOOD 351, GLAS 214, BMTL 176)",
+ "params": {
+  "width": 16,
+  "height": 10
+ },
+ "parts": [
+  {
+   "box": "GOO",
+   "at": [
+    -2,
+    "height"
+   ],
+   "size": [
+    "width+4",
+    3
+   ]
+  },
+  {
+   "box": "BMTL",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    "width",
+    2
+   ]
+  },
+  {
+   "box": "CNCT",
+   "at": [
+    0,
+    2
+   ],
+   "size": [
+    "width",
+    "height-2"
+   ]
+  },
+  {
+   "erase": true,
+   "at": [
+    2,
+    4
+   ],
+   "size": [
+    "width-4",
+    "height-4"
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    3,
+    5
+   ],
+   "size": [
+    4,
+    3
+   ]
+  },
+  {
+   "erase": true,
+   "at": [
+    "width-6",
+    "height-4"
+   ],
+   "size": [
+    3,
+    4
+   ]
+  },
+  {
+   "line": "WOOD",
+   "from": [
+    0,
+    0
+   ],
+   "to": [
+    "width//2",
+    "0-height//2"
+   ]
+  },
+  {
+   "line": "WOOD",
+   "from": [
+    "width//2",
+    "0-height//2"
+   ],
+   "to": [
+    "width-1",
+    0
+   ]
+  }
+ ],
+ "verified": true
+}

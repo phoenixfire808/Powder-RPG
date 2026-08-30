@@ -1,0 +1,138 @@
+{
+ "name": "crmc_uran_fuel_can",
+ "description": "Uranium fuel can: 5px URAN column in a 1px CRMC (ceramic) sleeve, INSL wrap, TTAN outer wall, with PCLN(LN2)+CLNE(LN2) emergency-cryo pads on the shoulders. One column of the 6-rod Auto Mode reactor.",
+ "why": "Save 1289009 (Uranium Power Plant v1.0): six identical cans at 24px pitch, URAN (134 per can) in CRMC at (51-57,269-298), INSL then TTAN outside; LN2 pads at (46-47,265-266) with CLNE(LN2) so an emergency dump refills itself; TSNS ladder beside each can reads 50..1200C in 10 steps. CRMC is used because it does not conduct and survives the fuel temperature.",
+ "source": "save 1289009, (44,265)-(62,299)",
+ "params": {
+  "height": 30
+ },
+ "parts": [
+  {
+   "box": "TTAN",
+   "at": [
+    0,
+    4
+   ],
+   "size": [
+    19,
+    "height"
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    4
+   ],
+   "size": [
+    15,
+    "height"
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    7,
+    4
+   ],
+   "size": [
+    7,
+    "height-1"
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    8,
+    5
+   ],
+   "size": [
+    5,
+    "height-3"
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    0
+   ],
+   "size": [
+    4,
+    4
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    13,
+    0
+   ],
+   "size": [
+    4,
+    4
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    3,
+    1
+   ],
+   "size": [
+    2,
+    1
+   ],
+   "props": {
+    "ctype": "LN2",
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "CLNE",
+   "at": [
+    3,
+    2
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "LN2",
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    14,
+    1
+   ],
+   "size": [
+    2,
+    1
+   ],
+   "props": {
+    "ctype": "LN2",
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "CLNE",
+   "at": [
+    15,
+    2
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "LN2",
+    "temp_c": -202
+   }
+  }
+ ],
+ "verified": true
+}

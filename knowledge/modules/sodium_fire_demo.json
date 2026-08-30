@@ -1,0 +1,48 @@
+{
+ "description": "Sodium-water safety demo cell: an FBRK-walled pit holding a WATR pool with an NA charge suspended above it on a shelf gap, ready to drop.",
+ "name": "sodium_fire_demo",
+ "params": {
+  "height": 20,
+  "width": 20
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "FBRK",
+   "hollow": 2,
+   "id": "nafire_cell",
+   "size": [
+    "width",
+    "height"
+   ]
+  },
+  {
+   "at": [
+    2,
+    "height-6"
+   ],
+   "box": "WATR",
+   "id": "nafire_pool",
+   "size": [
+    "width-4",
+    4
+   ]
+  },
+  {
+   "at": [
+    "width//2-2",
+    2
+   ],
+   "box": "NA",
+   "id": "nafire_charge",
+   "size": [
+    4,
+    4
+   ]
+  }
+ ],
+ "why": "Sodium metal (melts 98 C) reacts violently with water: NA+WATR/DSTW releases ~600 K of heat and H2 gas that then ignites -- a real and historically documented hazard at sodium-cooled reactor sites. This is a HAZARD DEMO, not a toy: the FBRK containment (acid/heat resistant, a decent insulator) keeps the fire and blast local. The NA block sits on a dry shelf above the pool at rest; unpausing lets gravity drop it in. Never build this with a conductive (METL) enclosure, and never site it near stored fuel or logic."
+}

@@ -1,0 +1,44 @@
+{
+ "id": "detail_fence_post",
+ "category": "detail",
+ "description": "A single wood fence post -- placed in a repeating row by the loader (spacing documented in README) to form a fence line, not authored as one big structure. 1x4px.",
+ "biomes": [
+  "forest",
+  "swamp",
+  "desert"
+ ],
+ "depth_band": {
+  "min": -3,
+  "max": 0
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.25,
+ "min_spacing": 6,
+ "clearance": {
+  "top": 0,
+  "bottom": 0,
+  "left": 0,
+  "right": 0
+ },
+ "anchor": {
+  "x": 0,
+  "y": 3
+ },
+ "width": 1,
+ "height": 4,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "P": "wood"
+ },
+ "grid": [
+  "P",
+  "P",
+  "P",
+  "P"
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "No harvested save had a clean fence-post reference (the harvested 'fence' saves were logic toys, see research doc) -- built from standard Terraria/Minecraft fence conventions instead, called out explicitly as an assumption."
+}

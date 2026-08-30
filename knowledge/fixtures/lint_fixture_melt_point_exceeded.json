@@ -1,0 +1,11 @@
+{
+  "description": "GRNT (granite, catalog highTemperature=1523.15K -> LAVA) set to 1600K -> warning; it would transition to LAVA immediately instead of staying placed as granite.",
+  "rule": "melt_point_exceeded",
+  "compiled": {
+    "ok": true,
+    "bounds": {"x1": 0, "y1": 0, "x2": 3, "y2": 3},
+    "primitives": [
+      {"kind": "set", "path": "parts[0]", "element": "GRNT", "x1": 0, "y1": 0, "x2": 3, "y2": 3, "props": {"temp": 1600.0}}
+    ]
+  }
+}

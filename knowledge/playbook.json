@@ -1,0 +1,1528 @@
+{
+ "schema": 1,
+ "title": "Powder Toy building playbook \u2014 graded practices, each verified before scaling",
+ "how_to_use": "Practices are ordered by level. Do level N practices until every 'verify' passes before composing them at level N+1. Each step is a blueprint fragment (see BLUEPRINT_SPEC.md) or an action. 'status' says how far the practice is trusted: verified = reproduced live by us, observed = seen working in community saves and explained from source, proposed = derived from source facts only. Practices may list 'variants': alternative implementations lifted from community saves (cite the save id); use the base steps first, then a variant when its trade-off fits.",
+ "practices": [
+  {
+   "name": "checkpoint_verify_loop",
+   "level": 0,
+   "topic": "workflow",
+   "goal": "Never lose a build and never trust a placement response.",
+   "status": "verified",
+   "steps": [
+    {
+     "do": "Pause the simulation before drawing anything (blueprint_build does this: pause=true)."
+    },
+    {
+     "do": "Save a full-canvas stamp before every test run (save_stamp x=0 y=0 width=611 height=383)."
+    },
+    {
+     "do": "Draw with blueprint_build dry_run=true first; fix every error; then dry_run=false."
+    },
+    {
+     "do": "Verify by census, not by ok:true \u2014 count the elements you expect in the box you drew (spatial_snapshot/execute_lua)."
+    },
+    {
+     "do": "Record what you learned with record_build_lesson before moving on."
+    }
+   ],
+   "verify": "Census of your region lists exactly the elements and counts you intended; stamp id exists in list_stamps.",
+   "pitfalls": [
+    "Verify by capturing and running, not by reading back the draw result",
+    "Placing over occupied pixels silently fails \u2014 erase before fill (blueprint 'box' does this by default)",
+    "Simulation runs live/unpaused by default -- wall-clock tool latency silently advances real frames"
+   ],
+   "scale_up": "Same loop at every size. At >30k particles keep stamps of each section separately so a failed test only rewinds one section.",
+   "modules": []
+  },
+  {
+   "name": "sealed_vessel",
+   "level": 1,
+   "topic": "containment",
+   "goal": "A box that holds a liquid or gas with zero leaks.",
+   "status": "verified",
+   "steps": [
+    {
+     "blueprint": {
+      "id": "v",
+      "box": "TTAN",
+      "at": [
+       0,
+       0
+      ],
+      "size": [
+       30,
+       20
+      ],
+      "hollow": 2
+     }
+    },
+    {
+     "blueprint": {
+      "box": "DSTW",
+      "at": [
+       "v.left+2",
+       "v.top+10"
+      ],
+      "size": [
+       26,
+       8
+      ]
+     }
+    },
+    {
+     "do": "Unpause for 120 frames (set_pause 0, sleep 2.5 s, set_pause 1)."
+    }
+   ],
+   "verify": "Census outside the vessel box shows 0 DSTW; inside count unchanged (\u00b10).",
+   "pitfalls": [
+    "Bottom vent gap drains liquid fuel under ambient gravity",
+    "Draw elements before placing walls",
+    "Wall types differ visually and some animate"
+   ],
+   "scale_up": "Any pipe or valve entering a vessel must pass through the shell flush and be collared (GLAS/TTAN) \u2014 leaks always start at penetrations. Prefer wall types (WALL) as the pressure boundary when the contents will be pressurised (see pressure_chamber).",
+   "modules": [
+    "tank",
+    "dome_vessel"
+   ]
+  },
+  {
+   "name": "insulated_heat_source",
+   "level": 1,
+   "topic": "thermal",
+   "goal": "Place a hot element (WIFI, HEAC, PRTO, laser) without cooking its surroundings.",
+   "status": "verified",
+   "steps": [
+    {
+     "blueprint": {
+      "module": "wifi_node",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "channel": 5
+      }
+     }
+    },
+    {
+     "do": "Read the WIFI temperature: channel N sits at 73.15+100*(N-1) K permanently. Channel 5 = ~500 K; channel 40 = 4000 K."
+    },
+    {
+     "do": "Put anything above 600 K inside a 2px INSL jacket; run blueprint_lint and clear every heat_source_uninsulated finding."
+    }
+   ],
+   "verify": "After 300 frames the pixel just outside the INSL jacket is within 5 K of ambient (get_field temp).",
+   "pitfalls": [
+    "WIFI blocks are standing heat sources at channel temperature \u2014 INSL-jacket every one",
+    "WIFI/PRTI/PRTO channel is derived from temperature, not tmp \u2014 set temp = 73.15 + 100*(N-1)",
+    "Unjacketed WIFI bank inside a GLAS console heat-soaks the glass to 922C (melt edge) \u2014 jacket or move the bus",
+    "Vacuum gaps don't insulate (air grid conducts); DMND-contained molten LITH works as a liquid breeder module"
+   ],
+   "scale_up": "Group all WIFI of a plant into one jacketed bus (wifi_bus_row) with INWR stubs out; keep channels <= 8 near anything flammable; reserve high channels for portals that must be hot anyway.",
+   "modules": [
+    "wifi_node",
+    "insulated_box",
+    "wifi_bus_row"
+   ]
+  },
+  {
+   "name": "wire_a_signal",
+   "level": 1,
+   "topic": "electrical",
+   "goal": "Send a spark from a button to a target without shorting anything on the way.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "id": "b",
+      "box": "BTRY",
+      "at": [
+       0,
+       0
+      ],
+      "size": [
+       2,
+       2
+      ]
+     }
+    },
+    {
+     "blueprint": {
+      "line": "INWR",
+      "from": [
+       "b.right+1",
+       "b.cy"
+      ],
+      "to": [
+       "b.right+40",
+       "b.cy"
+      ]
+     }
+    },
+    {
+     "blueprint": {
+      "box": "PSCN",
+      "at": [
+       "b.right+41",
+       "b.cy-1"
+      ],
+      "size": [
+       2,
+       3
+      ]
+     }
+    },
+    {
+     "blueprint": {
+      "box": "LCRY",
+      "at": [
+       "b.right+43",
+       "b.cy-2"
+      ],
+      "size": [
+       6,
+       5
+      ]
+     }
+    },
+    {
+     "do": "Spark rules as measured live (2026-08-25 rigs): a 3-cell PSCN/NSCN chain lit in BOTH directions at frame 1 (the textbook 'NSCN never sparks PSCN' asymmetry did not reproduce in that rig - treat it as unconfirmed); INST floods its whole body in 1 frame; INWR side-touching METL DID pass the spark in the rig, so do not rely on INWR as insulation from adjacent conductors - keep a 1px gap or INSL; SWCH gates when toggled; LCRY lights only on direct PSCN contact (confirmed)."
+    }
+   ],
+   "verify": "Within 10 frames of the battery being placed the LCRY reads lit (its temp/ctype changes) \u2014 census shows SPRK particles along the INWR and none on neighbouring METL.",
+   "pitfalls": [
+    "A conductive floor or plane shorts the whole build",
+    "PSCN must touch LCRY directly; 1px gap silently kills lamp panels",
+    "INWR (insulated wire) for buried and overhead signal runs \u2014 no INSL sheath needed, crossing-safe",
+    "Structure gates must count SPRK by ctype \u2014 spark traffic masks conductive structure"
+   ],
+   "scale_up": "One bus, many channels: convert long INWR runs into a WIFI channel per function; label channels in a table before building (channel_reuse lint catches collisions).",
+   "modules": [
+    "lcry_panel",
+    "lcry_lamp_13",
+    "button_pad",
+    "inwr_pylon"
+   ]
+  },
+  {
+   "name": "tank_with_valve",
+   "level": 2,
+   "topic": "containment",
+   "goal": "A tank whose outlet can be opened and closed reliably.",
+   "status": "verified",
+   "steps": [
+    {
+     "do": "Build sealed_vessel with the outlet pipe (PIPE, 3px) entering the tank floor flush; extend the pipe 6px INTO the tank interior and collar it with GLAS."
+    },
+    {
+     "do": "Close = replace 3 rows of the drain pipe with a TTAN plug (physical valve). Open = replace the plug rows with PIPE; the pipe re-initialises in ~60 frames."
+    },
+    {
+     "do": "Do NOT rely on PPIP pause flags for a valve that must survive rebuilds \u2014 pipe re-init wipes them."
+    }
+   ],
+   "verify": "Closed: tank level constant over 300 frames (count DSTW inside). Open: level falls and the same count appears downstream.",
+   "pitfalls": [
+    "Bottom vent gap drains liquid fuel under ambient gravity",
+    "Unpausing releases stored dynamics: valve every gravity line and expect DEUT concentration"
+   ],
+   "scale_up": "Every gravity-fed line in a plant gets a plug valve; keep all valves CLOSED before unpause; open one at a time and watch the downstream census. For fuel (DEUT) gauge by sum of life, not particle count.",
+   "modules": [
+    "tank",
+    "ppip_valve_chute",
+    "dstw_reservoir_manifold"
+   ]
+  },
+  {
+   "name": "remote_flood_and_drain",
+   "level": 2,
+   "topic": "electrical",
+   "goal": "Fill or empty any chamber from a control room with one WIFI pulse each.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "id": "c",
+      "box": "TTAN",
+      "at": [
+       0,
+       0
+      ],
+      "size": [
+       40,
+       30
+      ],
+      "hollow": 2
+     }
+    },
+    {
+     "blueprint": {
+      "module": "injector_pod",
+      "at": [
+       "c.left+4",
+       "c.top-3"
+      ],
+      "params": {
+       "channel": 6,
+       "delay_c": 98
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "module": "drain_pod",
+      "at": [
+       "c.left+20",
+       "c.bottom+1"
+      ],
+      "params": {
+       "channel": 7
+      }
+     }
+    },
+    {
+     "do": "Pulse channel 6 from a wifi_node+PSCN button; the DLAY holds the PCLN(DSTW) cloners on for delay_c frames, then they stop by themselves."
+    }
+   ],
+   "verify": "After the pulse, DSTW count inside 'c' rises for ~98 frames then plateaus; after pulsing channel 7 it falls to 0.",
+   "pitfalls": [
+    "WIFI-triggered injector pod (DLAY->PUMP+PCLN(DSTW)) and drain pod (BTRY->PVOD) = remote flood/drain for any chamber",
+    "Use DSTW, not WATR, for coolant that touches conductors or logic",
+    "PUMP columns + VACU sump form a pressure pair that drives a walled fission core"
+   ],
+   "scale_up": "One pod pair per chamber, unique channel pair per chamber, all buttons on one console (button_pad + lcry_lamp_13 per chamber for state).",
+   "modules": [
+    "injector_pod",
+    "drain_pod",
+    "button_pad",
+    "lcry_lamp_13"
+   ],
+   "variants": [
+    {
+     "name": "PVOD drain",
+     "from": "save 5170 alternate build; drain_pod v2",
+     "how": "PVOD deletes only while its own spark is live, so there is no permanently armed VOID to leave exposed if the gate fails open. NOTE: PVOD-while-powered did not reproduce in the 2026-08-25 live rig (experiment #4) - verify before relying on it; NTCT+VOID is the unconditional fallback.",
+     "modules": [
+      "drain_pod"
+     ],
+     "status": "proposed"
+    }
+   ]
+  },
+  {
+   "name": "pressure_chamber",
+   "level": 3,
+   "topic": "containment",
+   "goal": "Hold a region at a chosen pressure without it blowing out.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "module": "pressure_chamber",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "width": 40,
+       "height": 32,
+       "sump_height": 16
+      }
+     }
+    },
+    {
+     "do": "Walls (wall type WALL) are the pressure boundary \u2014 particles are not. PUMP columns raise the interior (+127 measured in save 78400), VACU sump below holds the exhaust negative (-256)."
+    },
+    {
+     "do": "Measure with get_field pressure at the chamber centre every 60 frames until it is stable."
+    }
+   ],
+   "verify": "Centre pressure stable within \u00b15 for 120 frames; pressure outside the wall box stays within \u00b12 of ambient.",
+   "pitfalls": [
+    "set_field_region takes CELL coordinates, not pixels",
+    "Air temperature fields survive particle quenches and re-flash rebuilds on unpause",
+    "H2 fusion requires particle temp AND cell pressure simultaneously"
+   ],
+   "scale_up": "For a reactor core use the chamber as the fuel bed (fill param) and put the breeder_liner along the DMND walls; the sump doubles as the neutron/heat exhaust path.",
+   "modules": [
+    "pressure_chamber",
+    "breeder_liner",
+    "dmnd_throat"
+   ],
+   "variants": [
+    {
+     "name": "embedded pump lattice",
+     "from": "saves 1186972, 895042",
+     "how": "Single PUMP/VACU pixels embedded in a solid QRTZ/INSL lattice spacer every 4-20 rows pressurise many small already-solid cells without a wall frame per cell. Use for fuel lattices; the wall-boxed chamber stays the choice for one open volume.",
+     "modules": [
+      "qrtz_uran_lattice",
+      "uran_lattice_cell"
+     ],
+     "status": "observed"
+    }
+   ]
+  },
+  {
+   "name": "self_healing_liner",
+   "level": 3,
+   "topic": "materials",
+   "goal": "A self-breeding wall: a barrier (or fuel column) that regrows after damage.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "module": "clne_liner",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "length": 40
+      }
+     }
+    },
+    {
+     "do": "The CLNE is armed with INSL by the compiler (ctype prop) and kept cold; cap both ends with solid INSL so it cannot creep."
+    },
+    {
+     "do": "Test: erase a 5px gap in the INSL above the liner, run 60 frames."
+    }
+   ],
+   "verify": "The gap is refilled with INSL within 60 frames; CLNE count unchanged.",
+   "pitfalls": [
+    "CLNE with ctype INSL makes a self-healing insulation liner",
+    "CLNE learns ctype on touch then emits it forever",
+    "CLNE armed to NEUT ctype triggers real full-pile DEUT chain reaction fast"
+   ],
+   "scale_up": "Same trick gives infinite coolant (CLNE ctype DSTW), infinite cryogen (cryo_column_ln2) and self-breeding fuel (breeder_liner) \u2014 but a CLNE armed to NEUT or a hot CLNE is a bomb: keep every cloner cold and away from the reaction zone.",
+   "modules": [
+    "clne_liner",
+    "cryo_column_ln2",
+    "breeder_liner"
+   ],
+   "variants": [
+    {
+     "name": "self-breeding fuel wall",
+     "from": "save 214245 thrm_breeder_wall",
+     "how": "A 477-particle CLNE(THRM) column re-breeds thermite continuously - the CLNE-liner pattern works for any breedable fuel, not only INSL/DEUT. Same cautions: keep the cloner cold and away from the reaction zone.",
+     "modules": [
+      "thrm_breeder_wall"
+     ],
+     "status": "observed"
+    }
+   ]
+  },
+  {
+   "name": "cryogenic_supply",
+   "level": 3,
+   "topic": "thermal",
+   "goal": "Keep a cryogen alive and deliver it where it is needed.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "module": "cryo_column_ln2",
+      "at": [
+       0,
+       0
+      ],
+      "params": {}
+     }
+    },
+    {
+     "do": "Every cryogen you place must carry props temp_c below its boiling point (LN2: -196 C); the compiler will not do it for you (cryo_no_cold_temp lint)."
+    },
+    {
+     "do": "Route it through INSL-lined channels or an insl_air_shaft; never through METL."
+    }
+   ],
+   "verify": "LN2 count inside the column is constant over 300 frames; INSL liner outer face within 20 K of ambient.",
+   "pitfalls": [
+    "Cryogenic liquids spawn at ambient temperature",
+    "LN2 is LNTG and dies by deletion at 77K",
+    "Infinite cryogen reservoir: INSL-lined TTAN-capped LN2 column with one cold CLNE(LN2) at the core"
+   ],
+   "scale_up": "Feed magnets/condensers with HEAC lines from the reservoir (FSN-2 cryoplant pattern: ICE reservoir at 60 K + HEAC cryoline); valve the line like tank_with_valve.",
+   "modules": [
+    "cryo_column_ln2",
+    "insl_air_shaft"
+   ],
+   "variants": [
+    {
+     "name": "on-demand quench nozzle",
+     "from": "save 1289009 ln2_quench_fuel_column",
+     "how": "Small LN2 pocket topped up by CLNE(LN2) at rest; a PCLN(LN2) nozzle fires onto the fuel rod only when a TSNS threshold ladder trips - emergency quench instead of continuous cooling.",
+     "modules": [
+      "ln2_quench_fuel_column"
+     ],
+     "status": "observed"
+    }
+   ],
+   "plant_profiles": {
+    "tokamak_shot": {
+     "source": "iter.org/factsfigures, en.wikipedia.org/wiki/ITER, en.wikipedia.org/wiki/Niobium-tin, en.wikipedia.org/wiki/Tungsten, en.wikipedia.org/wiki/Beryllium -- research pass 2026-08-26",
+     "status": "proposed",
+     "plasma_core_c": 150000000,
+     "toroidal_field_t": 5.3,
+     "magnet_bath_k": 4.2,
+     "nbti_critical_temp_k": 9.3,
+     "first_wall_material_2023plus": "tungsten",
+     "first_wall_melt_c": 3422,
+     "pulse_duration_s": [
+      400,
+      600
+     ],
+     "note": "ITER-specific disruption thermal-quench and magnet-quench-propagation timescales were not confirmed via an accessible source this pass; only generic (non-ITER) quench-physics figures exist and should not be cited as ITER numbers",
+     "verify_bands": [
+      "NBTI coil is never built (even at rest) without being fully submerged in an LHE bath at or below -269 C -- lint-check this rather than relying on the element to model resistive transition",
+      "breaching the vacuum vessel raises cavity pressure measurably within the breach's local radius, and any plasma-equivalent hot element quenches once the H2-fusion temp+pressure condition is no longer jointly met",
+      "the WC/BE liner point of contact during a simulated disruption heats measurably faster than the rest of the vessel (localized heat-flux concentration), even without an exact ms timing"
+     ]
+    },
+    "sfr_core": {
+     "source": "en.wikipedia.org/wiki/Sodium-cooled_fast_reactor, en.wikipedia.org/wiki/Sodium, en.wikipedia.org/wiki/EBR-II, en.wikipedia.org/wiki/PRISM_(reactor), en.wikipedia.org/wiki/Monju_Nuclear_Power_Plant, world-nuclear.org/.../fast-neutron-reactors -- research pass 2026-08-26",
+     "status": "proposed",
+     "primary_inlet_c": 400,
+     "primary_outlet_c": [
+      525,
+      550
+     ],
+     "sodium_melt_c": 98,
+     "sodium_boil_c": 883,
+     "sodium_autoignition_air_c": 290,
+     "operating_pressure": "near-atmospheric",
+     "verify_bands": [
+      "NAK primary loop stays 400-550 C, at least 330 C below its 883 C boil point, at near-atmospheric pressure",
+      "NAK never contacts WATR/DSTW anywhere in the same build (sodium-water reaction hazard) -- assert zero contact frames",
+      "a core in an rvacs_shroud with all PUMP/WIFI power cut still cools over time from natural convection alone (passive RVACS success case)",
+      "a deliberate NAK-to-air breach shows rapid local temp rise consistent with sodium autoignition near 290 C"
+     ]
+    }
+   }
+  },
+  {
+   "name": "status_display",
+   "level": 3,
+   "topic": "rendering",
+   "goal": "Show plant state on a panel that a human (or a screenshot) can read.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "module": "lcry_lamp_13",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "channel": 24
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "module": "lcry_bar_gauge",
+      "at": [
+       20,
+       0
+      ],
+      "params": {}
+     }
+    },
+    {
+     "do": "Drive each lamp from a sensor: TSNS (temp threshold in its temp) or PSNS (pressure) -> PSCN -> WIFI on the lamp's channel."
+    }
+   ],
+   "verify": "Heating the TSNS above its threshold lights the lamp within 10 frames; cooling clears it via the reset channel.",
+   "pitfalls": [
+    "Control console pattern: SWCH/HSWC button pads per WIFI channel, 13x13 LCRY lamps set/reset by two channels",
+    "PSCN must touch LCRY directly; 1px gap silently kills lamp panels",
+    "Decoration only lands where particles already exist",
+    "Deco alpha 255 fully replaces an element colour"
+   ],
+   "scale_up": "One lamp per functional system (fuel, coolant, pressure, cryo, fault); put the console in GLAS but keep the WIFI bus jacketed behind it.",
+   "modules": [
+    "lcry_lamp_13",
+    "lcry_bar_gauge",
+    "button_pad",
+    "lcry_panel"
+   ],
+   "variants": [
+    {
+     "name": "seeded GLOW field",
+     "from": "saves 2591226, 2001108",
+     "how": "Scatter GLOW through the core; each GLOW learns a different ctype by touch (60+ ctypes in 2591226), giving a live what-touches-what map of the whole core for far fewer particles than a gauge per point.",
+     "modules": [],
+     "status": "observed"
+    }
+   ]
+  },
+  {
+   "name": "heat_extraction_loop",
+   "level": 4,
+   "topic": "thermal",
+   "goal": "Move heat from a hot core to a condenser and back, continuously.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "module": "shld_pipe_riser",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "length": 60
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "module": "dstw_reservoir_manifold",
+      "at": [
+       10,
+       60
+      ],
+      "params": {}
+     }
+    },
+    {
+     "do": "Coolant is DSTW (non-conductive). Pipe runs are PIPE sheathed in SHLD (self-repairing). Put a clne_liner under the pipe bundle. Condense in a TTAN box at low temperature; return by gravity or PUMP."
+    },
+    {
+     "do": "Alternative for distance: a portal_pair (PRTI at the core, PRTO at the condenser) \u2014 remember the portal pads sit at channel temperature."
+    }
+   ],
+   "verify": "Core temperature (TSNS at the core) falls and the condenser temperature rises over 600 frames; DSTW count in the loop constant (no leaks, no boiling losses).",
+   "pitfalls": [
+    "Sheathe long PIPE runs in SHLD; SHLD self-repairs and its growth stages are normal",
+    "PRTI/PRTO channel pairs teleport coolant and heat; portal temp equals channel state",
+    "Fusion power train runs steam-dominant: condense-flash-recirculate with a condenser duty cycle",
+    "An INSL deck does not stop a METL/GOO surface deck from heat-soaking to one temperature"
+   ],
+   "scale_up": "Two independent loops per core (one can be valved off while the other runs); a condenser duty cycle (see FSN-2 lesson) instead of continuous flow; steam turbine hall downstream.",
+   "modules": [
+    "shld_pipe_riser",
+    "dstw_reservoir_manifold",
+    "portal_pair",
+    "clne_liner",
+    "cooling_tower"
+   ],
+   "operating_bands": {
+    "source": "TPT forum Thread=27188 'MONR reactor manual' via research round 2",
+    "boiler_c": {
+     "min": 130,
+     "max": 180,
+     "note": "below 130 boils inefficiently, above 180 overheats"
+    },
+    "coolant_container_c": {
+     "optimal": [
+      70,
+      80
+     ],
+     "warn_at": 90
+    },
+    "verify_bands": [
+     "boiler region tavg 130-180 C",
+     "coolant reservoir tavg 70-80 C, never >=90 C",
+     "no PRTI/PRTO in the liquid loop (ghost heat)"
+    ]
+   },
+   "plant_profiles": {
+    "steam_rankine_cycle": {
+     "source": "en.wikipedia.org/wiki/Supercritical_steam_generator, en.wikipedia.org/wiki/Rankine_cycle, en.wikipedia.org/wiki/Deaerator, nuclear-power.com/nuclear-power-plant/turbine-generator -- research pass 2026-08-26",
+     "status": "proposed",
+     "subcritical_max_c": 374,
+     "supercritical_c": [
+      538,
+      566
+     ],
+     "ultra_supercritical_c": 600,
+     "condenser_c_pwr_reference": 41.5,
+     "condenser_pressure_mpa_abs_pwr_reference": 0.008,
+     "note": "our current heat_extraction_loop/steam_generator bands (130-180 C boiler) run 3-4x cooler than real utility subcritical steam -- a deliberate game-stability simplification, not an error; flag before assuming it scales",
+     "verify_bands": [
+      "raising condenser_cu's bath temperature toward saturation measurably reduces trbn_work_per_120f versus the existing >=20 band with a cool bath",
+      "a boiler-tube breach in steam_generator shows WTRV appearing on the wrong side of the former wall and the pressure differential across it collapsing toward zero within a few frames"
+     ]
+    },
+    "gas_turbine_brayton": {
+     "source": "en.wikipedia.org/wiki/Gas_turbine, gevernova.com/gas-power/products/gas-turbines/7ha, en.wikipedia.org/wiki/Combined_cycle_power_plant -- research pass 2026-08-26",
+     "status": "proposed",
+     "firing_temp_c": 1540,
+     "exhaust_temp_c": [
+      450,
+      650
+     ],
+     "simple_cycle_efficiency_pct": [
+      42,
+      43.3
+     ],
+     "combined_cycle_efficiency_pct": [
+      63,
+      64.18
+     ],
+     "startup_minutes": [
+      10,
+      21
+     ],
+     "note": "no dedicated Brayton-cycle (hot-air) turbine element exists in our inventory yet -- TRBN only models the Rankine/steam half; treat any Brayton-cycle build as waste-heat-panel + steam-bottoming-cycle only until a GTRB-style custom element is built",
+     "verify_bands": [
+      "severing the firing-chamber waste-heat link to the downstream steam_generator drops total measured work output toward the ~42% simple-cycle band rather than the ~63% combined-cycle band",
+      "INC7 firing-chamber lining approaches its 1300 C melt margin when run at the real 1540 C firing temperature with no cooling/insulation layer present"
+     ]
+    }
+   }
+  },
+  {
+   "name": "fission_core_plut",
+   "level": 4,
+   "topic": "containment",
+   "goal": "A PLUT/DEUT core that runs steadily instead of detonating.",
+   "status": "observed",
+   "steps": [
+    {
+     "blueprint": {
+      "module": "nscn_fuel_head",
+      "at": [
+       0,
+       0
+      ],
+      "params": {}
+     }
+    },
+    {
+     "blueprint": {
+      "module": "dmnd_throat",
+      "at": [
+       0,
+       36
+      ],
+      "params": {}
+     }
+    },
+    {
+     "blueprint": {
+      "module": "pressure_chamber",
+      "at": [
+       -8,
+       52
+      ],
+      "params": {
+       "width": 40,
+       "height": 32,
+       "fill": "DEUT"
+      }
+     }
+    },
+    {
+     "do": "Order: walls of the pressure boxes first, then DMND/TTAN/NSCN structure, then PUMP/VACU fills, then fuel (PLUT bed, DEUT), then CLNE seeds armed by touch, then pipes/portals, then logic. Keep paused throughout."
+    },
+    {
+     "do": "Meter the trigger: one small NEUT source (CRAY ctype NEUT fired for <=10 frames) \u2014 never a CLNE armed to NEUT touching the pile."
+    }
+   ],
+   "verify": "DEUT sum-of-life rises slowly (breeding) and NEUT count stays < 100 over 600 frames; DMND hotspot < 1500 C; no PLUT outside the bed.",
+   "pitfalls": [
+    "NEUT+DEUT fusion trigger = DeutExplosion chain reaction",
+    "DEUT reactor yield control: meter the trigger, derate the bed, never rain+boost a full charge",
+    "PLUT spontaneous fission under pressure + NEUT interactions",
+    "DEUT life=concentration, maxlife formula",
+    "Packed DEUT is the stable non-destructive light source"
+   ],
+   "scale_up": "Add remote_flood_and_drain pods to the chamber, heat_extraction_loop on the sump, status_display on TSNS/PSNS \u2014 that is the whole community save 78400.",
+   "modules": [
+    "nscn_fuel_head",
+    "dmnd_throat",
+    "breeder_liner",
+    "pressure_chamber",
+    "injector_pod",
+    "drain_pod"
+   ],
+   "variants": [
+    {
+     "name": "zero-inventory idle core",
+     "from": "save 254630 (x247-268,y276-291)",
+     "how": "No resident PLUT/DEUT/NEUT at rest: the charge is a PCLN grid armed to fuel that only synthesises fissile material while the console sparks it, and drains back out through a PRTI floor when power is cut. Preferred cold-start/idle state; keep a resident pile only for the hot demo.",
+     "modules": [
+      "pcln_fuel_breeder_grid",
+      "pcln_fuel_synth_grid"
+     ],
+     "status": "observed"
+    }
+   ],
+   "operating_bands": {
+    "source": "TPT forum Thread=27188 'MONR reactor manual' (author-written operating numbers) via research round 2",
+    "core_temp_c": {
+     "hold": 500,
+     "trip": 1064,
+     "note": "1064 C triggers automatic neutron-poison injection in the source design"
+    },
+    "control_rods": {
+     "levels": "0 idle .. 4 fully inserted",
+     "shutdown": "hold rods fully inserted 40 s (~2000 frames) before idling"
+    },
+    "safe_shutdown": {
+     "temp_c_below": 160,
+     "pressure_below": 5
+    },
+    "verify_bands": [
+     "core TSNS 400-600 C during run",
+     "no reading above 1064 C without poison injection firing",
+     "after shutdown: core <160 C and |pressure| <5"
+    ]
+   },
+   "plant_profiles": {
+    "realistic_pwr_core": {
+     "source": "en.wikipedia.org/wiki/Pressurized_water_reactor, world-nuclear.org nuclear-power-reactors, en.wikipedia.org/wiki/Uranium_dioxide, en.wikipedia.org/wiki/Zirconium_alloy, en.wikipedia.org/wiki/Boiling_water_reactor_safety_systems (10 CFR 50.46) -- research pass 2026-08-26",
+     "status": "proposed",
+     "coolant_inlet_c": 275,
+     "coolant_outlet_c": 315,
+     "primary_pressure_mpa": 15.5,
+     "uo2_melt_c": 2865,
+     "zirc_oxidation_limit_c": 1230,
+     "zirc_melt_c": 1852,
+     "scram_insertion_s": 2,
+     "eccs_clad_temp_limit_c": 1204,
+     "decay_heat_fraction": {
+      "at_trip": 0.06,
+      "at_1hr": 0.012,
+      "at_1day": 0.0045,
+      "at_1week": 0.002
+     },
+     "verify_bands": [
+      "core DSTW temp 275-315 C during steady run",
+      "ZIRC clad stays below 1230 C except in a deliberate LOCA test",
+      "B4C/CD scram reaches full insertion within a small, bounded frame count after trip",
+      "unpowered core after station blackout follows a decaying (not flat or runaway) TSNS curve"
+     ]
+    },
+    "realistic_bwr_core": {
+     "source": "en.wikipedia.org/wiki/Boiling_water_reactor, en.wikipedia.org/wiki/Boiling_water_reactor_safety_systems, world-nuclear.org/.../fukushima-daiichi-accident -- research pass 2026-08-26",
+     "status": "proposed",
+     "core_pressure_mpa": 7.6,
+     "coolant_boil_c": 285,
+     "void_fraction_avg": 0.4,
+     "exit_steam_quality": 0.135,
+     "ads_timer_s": 105,
+     "eccs_clad_temp_limit_c": 1204,
+     "sbo_core_damage_hours_with_steam_injection": [
+      3.15,
+      76.1
+     ],
+     "verify_bands": [
+      "in-vessel WTRV/DSTW mix boils near 285 C at nominal power",
+      "low-water-level sensor trips B4C insertion before ZIRC reaches 1230 C",
+      "ADS vent pod fires only after both the low-low-low signature AND its DLAY timer elapse",
+      "a build with steam-driven injection survives station blackout far longer than one without"
+     ]
+    },
+    "candu_core": {
+     "source": "en.wikipedia.org/wiki/CANDU_reactor, en.wikipedia.org/wiki/Point_Lepreau_Nuclear_Generating_Station, en.wikipedia.org/wiki/Bruce_Nuclear_Generating_Station, en.wikipedia.org/wiki/Void_coefficient -- research pass 2026-08-26",
+     "status": "proposed",
+     "pht_pressure_mpa": 10.3,
+     "pht_outlet_c": 312,
+     "fuel_enrichment_pct": 0.72,
+     "bundle_elements": 37,
+     "channels_candu6": 380,
+     "thermal_efficiency_pct": 32,
+     "note": "PHT inlet temp, exact lattice pitch, and SDS1/SDS2 insertion timing were not confirmed via an accessible source this pass -- do not treat unlisted CANDU numbers as sourced",
+     "verify_bands": [
+      "calandria (moderator) DSTW pool stays near its own baseline temp even when the pressure-tube DSTW is drained (LOCA-with-intact-moderator test)",
+      "with both SDS1 (CD rod drop) and SDS2 (poison injection) disabled, a positive-reactivity transient is NOT self-limiting -- contrast against either system alone stopping it"
+     ]
+    },
+    "rbmk_core": {
+     "source": "en.wikipedia.org/wiki/RBMK, en.wikipedia.org/wiki/Chernobyl_disaster, en.wikipedia.org/wiki/Void_coefficient, world-nuclear.org/.../chernobyl-accident -- research pass 2026-08-26",
+     "status": "proposed",
+     "channel_pressure_mpa": 6.9,
+     "coolant_inlet_c": 267,
+     "coolant_outlet_c": 284,
+     "fuel_enrichment_pct": 2.0,
+     "control_rod_insertion_s": [
+      18,
+      21
+     ],
+     "void_coefficient_beta_eff_pre_accident": 4.7,
+     "void_coefficient_beta_eff_post_accident": 0.7,
+     "thermal_efficiency_pct": 31.25,
+     "verify_bands": [
+      "rbmk_rod_drive insertion from full withdrawal shows a brief flux INCREASE in the first few frames (graphite displacer effect) before flux falls -- monotonic decrease from frame 1 means the positive-scram flaw was not reproduced",
+      "boiling coolant with elevated flux shows flux and void fraction reinforcing each other rather than self-limiting (positive void coefficient), unlike the CANDU/MSR contrast cases",
+      "a core breach vents measurably to the ambient cell rather than being held by a bounded containment box, reflecting RBMK's lack of a full containment dome"
+     ]
+    }
+   }
+  },
+  {
+   "name": "fusion_shot",
+   "level": 5,
+   "topic": "thermal",
+   "goal": "Ignite H2/DEUT fusion on purpose and survive it.",
+   "status": "verified",
+   "steps": [
+    {
+     "do": "Vessel: TTAN structure and blanket (never TUNG \u2014 shatters on every shot); DMND rings inside; LITH breeder in double-DMND pods; WATR coolant ring outside; METL cryostat outside that."
+    },
+    {
+     "do": "Fuel: H2 at ~45% checkerboard density plus a DEUT pool in the annulus."
+    },
+    {
+     "do": "Shot recipe (FSN-2, proven): sector cells pressure 70 via set_field_region (CELL coords), fuel flashed to 4000 K, then unpause. Ignition is a race between the 1/5 roll and the thermal+pressure quench."
+    },
+    {
+     "do": "Only NBLE-sourced plasma self-sustains; PLSM melts every structural element and burns out \u2014 it is not a light source."
+    }
+   ],
+   "verify": "Plasma appears within 60 frames and the TTAN vessel census is unchanged after 600 frames (no TTAN loss, no fuel outside the vessel).",
+   "pitfalls": [
+    "H2 fusion requires particle temp AND cell pressure simultaneously",
+    "Fusion ignition is a race between the 1/5 roll and thermal+pressure quench",
+    "TUNG blanket shatters on every fusion shot; use TTAN structure + vacuum-insulated LITH pods",
+    "PLSM melts every structural element",
+    "Only NBLE-sourced plasma is self-sustaining",
+    "Controlled vs runaway fusion shot intensities in a TTAN vessel"
+   ],
+   "scale_up": "Full plant = FSN-2 registry: 8 GOLD coils at 20 K on a cryoplant, fuel depot with plug valves, heat pipe to a boiler, turbine hall, control room with 3 channel lamps. Master stamp 6a8ced9300.",
+   "modules": [
+    "dome_vessel",
+    "cryo_column_ln2",
+    "portal_pair",
+    "cooling_tower"
+   ],
+   "plant_profiles": {
+    "tokamak_shot": {
+     "source": "iter.org/factsfigures, en.wikipedia.org/wiki/ITER, en.wikipedia.org/wiki/Niobium-tin, en.wikipedia.org/wiki/Tungsten, en.wikipedia.org/wiki/Beryllium -- research pass 2026-08-26",
+     "status": "proposed",
+     "plasma_core_c": 150000000,
+     "toroidal_field_t": 5.3,
+     "magnet_bath_k": 4.2,
+     "nbti_critical_temp_k": 9.3,
+     "first_wall_material_2023plus": "tungsten",
+     "first_wall_melt_c": 3422,
+     "pulse_duration_s": [
+      400,
+      600
+     ],
+     "note": "ITER-specific disruption thermal-quench and magnet-quench-propagation timescales were not confirmed via an accessible source this pass; only generic (non-ITER) quench-physics figures exist and should not be cited as ITER numbers",
+     "verify_bands": [
+      "NBTI coil is never built (even at rest) without being fully submerged in an LHE bath at or below -269 C -- lint-check this rather than relying on the element to model resistive transition",
+      "breaching the vacuum vessel raises cavity pressure measurably within the breach's local radius, and any plasma-equivalent hot element quenches once the H2-fusion temp+pressure condition is no longer jointly met",
+      "the WC/BE liner point of contact during a simulated disruption heats measurably faster than the rest of the vessel (localized heat-flux concentration), even without an exact ms timing"
+     ]
+    }
+   }
+  },
+  {
+   "name": "plant_integration",
+   "level": 5,
+   "topic": "workflow",
+   "goal": "Assemble many practices into one plant without the interactions killing it.",
+   "status": "observed",
+   "steps": [
+    {
+     "do": "Budget: large solid fills dominate particle count \u2014 hollow every shell, use wall types for pressure boundaries, target < 60k particles."
+    },
+    {
+     "do": "Allocate WIFI channels in a table first (one per function, low numbers near fuel/flammables); run blueprint_lint on the whole plan and clear criticals."
+    },
+    {
+     "do": "Build in this order: walls -> structure -> fills -> fuel -> cloners -> pipes/portals -> logic -> decoration; stamp after each stage."
+    },
+    {
+     "do": "Commission one system at a time with all valves closed: cryo, then coolant loop, then logic/lamps, then fuel, then the first metered shot."
+    },
+    {
+     "do": "After every change: census + one lesson."
+    }
+   ],
+   "verify": "Each subsystem's own verify passes in situ (not just in isolation) and the whole-plant census is stable for 1000 frames with valves closed.",
+   "pitfalls": [
+    "Large solid fills dominate particle count",
+    "Instrument-bay wiring and hardening rules from Torus One commissioning",
+    "Rewind ring + registered cleanup + restore discipline",
+    "Audit before delete: whitelist sweeps must log offending types first"
+   ],
+   "scale_up": "This is the top level; scale by cloning proven sections as stamps, not by drawing new ones.",
+   "modules": []
+  },
+  {
+   "name": "generate_power",
+   "level": 3,
+   "topic": "electrical",
+   "goal": "Turn heat into a usable electrical signal with realistic parts: UO2/B4C fuel assembly -> steam -> TRBN turbine -> CU busbar -> LEDL, plus a TEG on waste heat.",
+   "status": "verified",
+   "steps": [
+    {
+     "do": "Run python scripts/define_power_elements.py once per game session (custom elements are not persistent)."
+    },
+    {
+     "blueprint": {
+      "id": "fa",
+      "module": "fuel_assembly_uo2",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "pins": 3,
+       "height": 20
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "ts",
+      "module": "steam_turbine_stage",
+      "at": [
+       "fa.right+20",
+       "fa.top"
+      ],
+      "params": {
+       "width": 24,
+       "height": 16
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "box": "WTRV",
+      "at": [
+       "ts.left+2",
+       "ts.top+2"
+      ],
+      "size": [
+       20,
+       12
+      ],
+      "props": {
+       "temp_c": 150
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "module": "teg_waste_heat",
+      "at": [
+       "fa.left",
+       "fa.bottom+4"
+      ],
+      "params": {
+       "length": 10
+      }
+     }
+    },
+    {
+     "do": "Withdraw the B4C rod (erase it) to raise NEUT flux; re-insert to scram. Watch B4C tmp (captures) and TRBN tmp (work)."
+    }
+   ],
+   "verify": "Over 120 frames: TRBN tmp (work) rises, WTRV in the chest falls and DSTW appears, B4C tmp rises while UO2 is uncovered, and SPRK appears on the CU bars (sample every 5 frames).",
+   "pitfalls": [
+    "Power element set verified: UO2->NEUT, B4C absorbs, TRBN steam->work->SPRK, TEG heat->SPRK; bridge needs custom ids",
+    "Use DSTW, not WATR, for coolant that touches conductors or logic",
+    "WIFI touching coolant boils it; high-channel WIFI melts TTAN \u2014 INSL-ring pods before embedding them; check param names"
+   ],
+   "scale_up": "Series turbine stages on one steam chest; a boiler between the assembly and the chest (heat_extraction_loop bands 130-180 C); AERO lagging on every hot line; LEDL panels instead of hot LCRY/WIFI for status.",
+   "modules": [
+    "fuel_assembly_uo2",
+    "steam_turbine_stage",
+    "teg_waste_heat",
+    "clne_liner"
+   ],
+   "operating_bands": {
+    "source": "live tests P1-P3 2026-08-26",
+    "trbn_work_per_120f": ">=20 with a full steam chest",
+    "teg_on_temp_c": 100
+   },
+   "plant_profiles": {
+    "pv_battery_microgrid": {
+     "source": "en.wikipedia.org/wiki/Solar_cell_efficiency, en.wikipedia.org/wiki/Lithium-ion_battery, en.wikipedia.org/wiki/Sodium-sulfur_battery -- research pass 2026-08-26",
+     "status": "proposed",
+     "si_pv_efficiency_pct": [
+      14,
+      24.5
+     ],
+     "pv_temp_coefficient_pct_per_c": -0.45,
+     "li_ion_charge_range_c": [
+      5,
+      45
+     ],
+     "li_ion_exothermic_onset_c": 70,
+     "li_ion_runaway_peak_c": 500,
+     "nas_operating_c": [
+      300,
+      350
+     ],
+     "note": "no Li-ion element exists in our catalog yet -- NAS (300-350 C molten) and PCMP/PCMS (32-58 C phase change) cover thermal/molten storage but not a room-temperature electrochemical cell with a ~70-150 C runaway threshold",
+     "verify_bands": [
+      "a segmented nas_battery_rack with STEL/INSL breaks between cells contains a single-cell breach without heating neighboring cells; an unsegmented rack does not",
+      "severing the CU-bus link between pv_array_sipv and the rest of the plant causes downstream LEDL/status panels to go dark within a small frame count while the array itself keeps producing SPRK locally (islanding signature)"
+     ]
+    },
+    "geothermal_plant": {
+     "source": "en.wikipedia.org/wiki/Geothermal_power, en.wikipedia.org/wiki/Hydrogen_sulfide -- research pass 2026-08-26",
+     "status": "proposed",
+     "dry_steam_min_c": 150,
+     "flash_steam_min_c": 180,
+     "binary_orc_min_c": 57,
+     "thermal_efficiency_pct": [
+      7,
+      13
+     ],
+     "h2s_idlh_ppm": 100,
+     "basel_induced_seismicity_events": 10000,
+     "basel_max_magnitude": 3.4,
+     "note": "our existing heat_extraction_loop boiler band (130-180 C) coincidentally matches the real 150-180 C flash/dry-steam threshold well -- the one system in this document where no band change is needed",
+     "verify_bands": [
+      "a binary/ORC loop never lets the geothermal DSTW reservoir body directly contact the TRBN turbine -- a second, separate low-boiling-point loop (PCMP/PCMS-mediated) must sit between them",
+      "reinjection PUMP pressure pushed past a defined safe band raises surrounding get_field pressure readings measurably, giving an assertable proxy for induced-seismicity risk"
+     ]
+    }
+   }
+  },
+  {
+   "name": "realistic_fission_core",
+   "level": 4,
+   "topic": "containment",
+   "goal": "A UO2/B4C/HF fission core with realistic melting-point margins, contained in a layered STEL/CNCR/LEAD vessel.",
+   "status": "proposed",
+   "steps": [
+    {
+     "do": "Run python scripts/define_power_elements.py once per game session (custom elements are not persistent)."
+    },
+    {
+     "blueprint": {
+      "id": "rpv",
+      "module": "rpv_steel_vessel",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "width": 70,
+       "height": 50
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "fb",
+      "module": "pwr_fuel_bundle",
+      "at": [
+       "rpv.left+14",
+       "rpv.top+14"
+      ],
+      "params": {
+       "pins": 3,
+       "height": 20
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "rod",
+      "module": "control_rod_drive_b4c",
+      "at": [
+       "fb.right+4",
+       "rpv.top+10"
+      ],
+      "params": {
+       "stroke": 10,
+       "bore": 3
+      }
+     }
+    },
+    {
+     "do": "Withdraw the control_rod_drive_b4c PSTN (erase the rod) to raise flux past pwr_fuel_bundle's HF trim rod; watch B4C/HF tmp (captures) and UO2's steady NEUT emission. Re-insert to scram."
+    }
+   ],
+   "verify": "Census inside rpv_steel_vessel's inner STEL cavity shows the fuel bundle and rod intact after 300 frames with the LEAD layer outermost and unmelted; B4C/HF tmp (captures) only climbs while the corresponding rod is inserted, and no element in the stack exceeds its own highTemperature.",
+   "pitfalls": [
+    "UO2 emits NEUT continuously regardless of rod position -- there is no chain-reaction runaway in this element set (unlike PLUT/DEUT), so 'criticality' here means neutron economy and clad temperature, not an explosion risk",
+    "LEAD must be the outermost, coolest layer of rpv_steel_vessel -- it melts at only 327 C, far below STEL (1500 C) or CNCR (spalls at 1200 C)",
+    "STEL is the pressure boundary and must always face the fuel side, never the reverse",
+    "This practice was authored and compiled offline (2026-08-26); it has not yet been run live in-sim -- treat the operating_bands as design targets, not measurements"
+   ],
+   "scale_up": "Stack multiple pwr_fuel_bundle instances inside one rpv_steel_vessel cavity for a multi-assembly core; feed the vessel's heat into a steam_generator (see electrical_generation_chain) instead of venting it, and add a status_display TSNS ladder on the vessel's STEL face.",
+   "modules": [
+    "pwr_fuel_bundle",
+    "control_rod_drive_b4c",
+    "rpv_steel_vessel"
+   ],
+   "operating_bands": {
+    "source": "derived from power-elements-2026-08-26.json melting/capture data, not yet run live",
+    "uo2_melt_c": 2865,
+    "zirc_clad_melt_c": 1852,
+    "b4c_melt_c": 2763,
+    "hf_melt_c": 2233,
+    "lead_melt_c": 327,
+    "note": "keep clad and rod temperatures far below these melt points; verify live before trusting exact numbers"
+   },
+   "plant_profiles": {
+    "realistic_pwr_core": {
+     "source": "en.wikipedia.org/wiki/Pressurized_water_reactor, world-nuclear.org nuclear-power-reactors, en.wikipedia.org/wiki/Uranium_dioxide, en.wikipedia.org/wiki/Zirconium_alloy, en.wikipedia.org/wiki/Boiling_water_reactor_safety_systems (10 CFR 50.46) -- research pass 2026-08-26",
+     "status": "proposed",
+     "coolant_inlet_c": 275,
+     "coolant_outlet_c": 315,
+     "primary_pressure_mpa": 15.5,
+     "uo2_melt_c": 2865,
+     "zirc_oxidation_limit_c": 1230,
+     "zirc_melt_c": 1852,
+     "scram_insertion_s": 2,
+     "eccs_clad_temp_limit_c": 1204,
+     "decay_heat_fraction": {
+      "at_trip": 0.06,
+      "at_1hr": 0.012,
+      "at_1day": 0.0045,
+      "at_1week": 0.002
+     },
+     "verify_bands": [
+      "core DSTW temp 275-315 C during steady run",
+      "ZIRC clad stays below 1230 C except in a deliberate LOCA test",
+      "B4C/CD scram reaches full insertion within a small, bounded frame count after trip",
+      "unpowered core after station blackout follows a decaying (not flat or runaway) TSNS curve"
+     ]
+    },
+    "sfr_core": {
+     "source": "en.wikipedia.org/wiki/Sodium-cooled_fast_reactor, en.wikipedia.org/wiki/Sodium, en.wikipedia.org/wiki/EBR-II, en.wikipedia.org/wiki/PRISM_(reactor), en.wikipedia.org/wiki/Monju_Nuclear_Power_Plant, world-nuclear.org/.../fast-neutron-reactors -- research pass 2026-08-26",
+     "status": "proposed",
+     "primary_inlet_c": 400,
+     "primary_outlet_c": [
+      525,
+      550
+     ],
+     "sodium_melt_c": 98,
+     "sodium_boil_c": 883,
+     "sodium_autoignition_air_c": 290,
+     "operating_pressure": "near-atmospheric",
+     "verify_bands": [
+      "NAK primary loop stays 400-550 C, at least 330 C below its 883 C boil point, at near-atmospheric pressure",
+      "NAK never contacts WATR/DSTW anywhere in the same build (sodium-water reaction hazard) -- assert zero contact frames",
+      "a core in an rvacs_shroud with all PUMP/WIFI power cut still cools over time from natural convection alone (passive RVACS success case)",
+      "a deliberate NAK-to-air breach shows rapid local temp rise consistent with sodium autoignition near 290 C"
+     ]
+    },
+    "msr_core": {
+     "source": "en.wikipedia.org/wiki/Molten_Salt_Reactor_Experiment, en.wikipedia.org/wiki/Molten-salt_reactor, world-nuclear.org/.../molten-salt-reactors, en.wikipedia.org/wiki/Kairos_Power -- research pass 2026-08-26",
+     "status": "proposed",
+     "flibe_melt_c": 459,
+     "flibe_boil_c": 1430,
+     "operating_c": [
+      650,
+      700
+     ],
+     "operating_pressure": "near-atmospheric",
+     "thermal_efficiency_pct_target": 45,
+     "verify_bands": [
+      "FLBE loop runs 650-700 C, well above its 459 C melt point and well below its 1430 C boil point",
+      "withdrawing all B4C rods at full power causes flux to plateau on its own (negative temperature coefficient) rather than diverge -- the opposite of the RBMK positive-void test",
+      "heating the freeze-plug FLBE segment past 459 C drains the loop into the dump tank under gravity alone within a bounded frame count, with zero PUMP/WIFI involvement",
+      "post-drain dump-tank NEUT emission is lower than the original core's for the same total fissile inventory (geometrically-safe dump tank)"
+     ]
+    }
+   }
+  },
+  {
+   "name": "electrical_generation_chain",
+   "level": 4,
+   "topic": "electrical",
+   "goal": "A full realistic power chain: UO2 fuel assembly -> NAK/steam generator -> CU condenser -> TEG waste-heat panel -> independent SIPV solar leg, all onto one CU bus.",
+   "status": "proposed",
+   "steps": [
+    {
+     "do": "Run python scripts/define_power_elements.py once per game session (custom elements are not persistent)."
+    },
+    {
+     "blueprint": {
+      "id": "fa",
+      "module": "fuel_assembly_uo2",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "pins": 3,
+       "height": 20
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "sg",
+      "module": "steam_generator",
+      "at": [
+       "fa.right+16",
+       "fa.top"
+      ],
+      "params": {
+       "width": 36,
+       "height": 24
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "cd",
+      "module": "condenser_cu",
+      "at": [
+       "sg.right+10",
+       "sg.top"
+      ],
+      "params": {
+       "tubes": 4,
+       "height": 20,
+       "gap": 6
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "tw",
+      "module": "teg_wall_panel",
+      "at": [
+       "sg.left",
+       "sg.bottom+6"
+      ],
+      "params": {
+       "count": 4
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "pv",
+      "module": "pv_array_sipv",
+      "at": [
+       "tw.right+10",
+       "tw.top"
+      ],
+      "params": {
+       "count": 5
+      }
+     }
+    },
+    {
+     "do": "Tie every module's CU bus together with a CU/INWR trunk line; each subsystem contributes SPRK independently (TRBN work pulses, TEG waste-heat pulses, SIPV under incident light) onto the shared bus."
+    }
+   ],
+   "verify": "Over 300 frames: TRBN tmp (work) in steam_generator rises while its WTRV falls and DSTW appears; condenser_cu's DSTW bath temperature climbs; teg_wall_panel's TEG cells exceed 100 C and pulse SPRK onto their bus; pv_array_sipv produces SPRK only while PHOT is actually incident on it.",
+   "pitfalls": [
+    "NAK is flammable in air (rating 400) -- keep the primary loop sealed inside steam_generator's STEL shell, never vent it to open atmosphere",
+    "TRBN needs WTRV specifically, not DSTW/WATR, to do work",
+    "TEG stops pulsing once it drops below its onTemp (100 C) -- site teg_wall_panel on a face that stays hot",
+    "SIPV produces nothing without incident PHOT -- this leg of the chain is independent of the thermal legs and needs its own light source",
+    "This practice was authored and compiled offline (2026-08-26); it has not yet been run live in-sim"
+   ],
+   "scale_up": "Series multiple steam_generator/condenser_cu pairs off one fuel_assembly_uo2 for more turbine stages; add nas_battery_rack or pcm_thermal_battery downstream of the CU trunk (see energy_storage_bank) to store the combined output instead of only showing it on LEDL.",
+   "modules": [
+    "fuel_assembly_uo2",
+    "steam_generator",
+    "condenser_cu",
+    "teg_wall_panel",
+    "pv_array_sipv"
+   ],
+   "operating_bands": {
+    "source": "derived from power-elements-2026-08-26.json + materials-catalog.json, not yet run live",
+    "teg_on_temp_c": 100,
+    "nak_operating_c": [
+     400,
+     700
+    ],
+    "note": "bands are design targets from element data; verify live before trusting exact numbers"
+   },
+   "plant_profiles": {
+    "steam_rankine_cycle": {
+     "source": "en.wikipedia.org/wiki/Supercritical_steam_generator, en.wikipedia.org/wiki/Rankine_cycle, en.wikipedia.org/wiki/Deaerator, nuclear-power.com/nuclear-power-plant/turbine-generator -- research pass 2026-08-26",
+     "status": "proposed",
+     "subcritical_max_c": 374,
+     "supercritical_c": [
+      538,
+      566
+     ],
+     "ultra_supercritical_c": 600,
+     "condenser_c_pwr_reference": 41.5,
+     "condenser_pressure_mpa_abs_pwr_reference": 0.008,
+     "note": "our current heat_extraction_loop/steam_generator bands (130-180 C boiler) run 3-4x cooler than real utility subcritical steam -- a deliberate game-stability simplification, not an error; flag before assuming it scales",
+     "verify_bands": [
+      "raising condenser_cu's bath temperature toward saturation measurably reduces trbn_work_per_120f versus the existing >=20 band with a cool bath",
+      "a boiler-tube breach in steam_generator shows WTRV appearing on the wrong side of the former wall and the pressure differential across it collapsing toward zero within a few frames"
+     ]
+    },
+    "pv_battery_microgrid": {
+     "source": "en.wikipedia.org/wiki/Solar_cell_efficiency, en.wikipedia.org/wiki/Lithium-ion_battery, en.wikipedia.org/wiki/Sodium-sulfur_battery -- research pass 2026-08-26",
+     "status": "proposed",
+     "si_pv_efficiency_pct": [
+      14,
+      24.5
+     ],
+     "pv_temp_coefficient_pct_per_c": -0.45,
+     "li_ion_charge_range_c": [
+      5,
+      45
+     ],
+     "li_ion_exothermic_onset_c": 70,
+     "li_ion_runaway_peak_c": 500,
+     "nas_operating_c": [
+      300,
+      350
+     ],
+     "note": "no Li-ion element exists in our catalog yet -- NAS (300-350 C molten) and PCMP/PCMS (32-58 C phase change) cover thermal/molten storage but not a room-temperature electrochemical cell with a ~70-150 C runaway threshold",
+     "verify_bands": [
+      "a segmented nas_battery_rack with STEL/INSL breaks between cells contains a single-cell breach without heating neighboring cells; an unsegmented rack does not",
+      "severing the CU-bus link between pv_array_sipv and the rest of the plant causes downstream LEDL/status panels to go dark within a small frame count while the array itself keeps producing SPRK locally (islanding signature)"
+     ]
+    }
+   }
+  },
+  {
+   "name": "chemical_safety_cell",
+   "level": 2,
+   "topic": "safety",
+   "goal": "House genuinely reactive chemistry (NA+water, CAC2+water, MG combustion, CAO slaking) in separated, contained demo cells that do nothing until deliberately triggered.",
+   "status": "proposed",
+   "steps": [
+    {
+     "blueprint": {
+      "id": "na",
+      "module": "sodium_fire_demo",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "width": 20,
+       "height": 20
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "cl",
+      "module": "carbide_lamp",
+      "at": [
+       "na.right+10",
+       "na.top"
+      ],
+      "params": {
+       "width": 12,
+       "height": 16
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "mg",
+      "module": "mg_flare",
+      "at": [
+       "cl.right+10",
+       "na.top"
+      ],
+      "params": {
+       "height": 14
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "lk",
+      "module": "lime_kiln",
+      "at": [
+       "na.left",
+       "na.bottom+6"
+      ],
+      "params": {
+       "width": 20,
+       "height": 16
+      }
+     }
+    },
+    {
+     "do": "Keep every hazard cell physically separated by at least one empty column and its own containment shell (FBRK/S316) -- never share a wall between two independent reactive-chemistry demos."
+    }
+   ],
+   "verify": "At rest (paused) census shows NA and WATR not yet touching in sodium_fire_demo, CAC2 and its WATR drip separated by an air gap in carbide_lamp, and MG only touching OXYG/FIRE at its own tip in mg_flare -- nothing reacts until a cell is deliberately triggered.",
+   "pitfalls": [
+    "NA+WATR/DSTW is genuinely violent (+600 K, ignites the H2 byproduct) -- never build this with a conductive enclosure or near stored fuel/logic",
+    "CAC2+water makes flammable acetylene GAS -- only ignite the vented gas at the nozzle, never inside the sealed chamber",
+    "Real magnesium fires cannot be extinguished with water or CO2 (both react with burning Mg) -- keep any fire-suppression element away from mg_flare",
+    "CAO+water is a real +300 K exotherm (lime slaking) even though dry CAO is inert -- treat lime_kiln's charge as live the moment water is added",
+    "This practice was authored and compiled offline (2026-08-26); it has not yet been run live in-sim"
+   ],
+   "scale_up": "One containment cell per reactive chemistry, one shared inert corridor between cells, and a single remote spark/valve trigger per cell (see wire_a_signal) so no two hazard demos can be set off by the same accidental touch.",
+   "modules": [
+    "sodium_fire_demo",
+    "carbide_lamp",
+    "mg_flare",
+    "lime_kiln"
+   ]
+  },
+  {
+   "name": "energy_storage_bank",
+   "level": 3,
+   "topic": "thermal",
+   "goal": "Three independent energy-storage mechanisms side by side: a PCM thermal buffer, a molten NAS battery rack, and a superconducting-magnet LHE dewar.",
+   "status": "proposed",
+   "steps": [
+    {
+     "blueprint": {
+      "id": "pcm",
+      "module": "pcm_thermal_battery",
+      "at": [
+       0,
+       0
+      ],
+      "params": {
+       "width": 20,
+       "height": 16
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "nas",
+      "module": "nas_battery_rack",
+      "at": [
+       "pcm.right+10",
+       0
+      ],
+      "params": {
+       "width": 24,
+       "height": 20
+      }
+     }
+    },
+    {
+     "blueprint": {
+      "id": "cd",
+      "module": "cryo_dewar_lhe",
+      "at": [
+       "nas.right+10",
+       0
+      ],
+      "params": {
+       "width": 30,
+       "height": 26
+      }
+     }
+    },
+    {
+     "do": "Route any surplus CU-bus power from electrical_generation_chain into nas_battery_rack to keep it above 300 C; route TEG/condenser waste heat into pcm_thermal_battery instead of venting it; keep cryo_dewar_lhe on its own insulated shaft, isolated from both hot subsystems."
+    }
+   ],
+   "verify": "Over 300 frames: pcm_thermal_battery's PCMP core holds within a few K of 58 C while heat is added or removed; nas_battery_rack's NAS core stays above 300 C without external heating once initialized at 320 C; cryo_dewar_lhe's LHE bath stays at -269 C with the NBTI coil particle count unchanged.",
+   "pitfalls": [
+    "PCMP above its 250 C decomposition point turns to SMKE and the buffer's charge is lost for good -- never let waste heat routed into pcm_thermal_battery exceed that",
+    "NAS below ~300 C freezes solid to SALT and stops functioning -- nas_battery_rack's AERO liner only slows the cool-down, it does not stop it, so a real build needs a standing trickle heater",
+    "Cryogenic liquids spawn at ambient temperature unless given an explicit cold props -- cryo_dewar_lhe's LHE bath must keep its temp_c: -269 prop or it flashes to NBLE immediately",
+    "This practice was authored and compiled offline (2026-08-26); it has not yet been run live in-sim"
+   ],
+   "scale_up": "Size nas_battery_rack to the CU-bus load from electrical_generation_chain; add a status_display TSNS ladder on each of the three modules so an operator can see which store is charged without opening the cabinet.",
+   "modules": [
+    "pcm_thermal_battery",
+    "nas_battery_rack",
+    "cryo_dewar_lhe"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,46 @@
+{
+ "description": "Aluminium heat sink: an AL61 base plate with an array of AL61 cooling fins.",
+ "name": "al_heat_sink",
+ "params": {
+  "fin_height": 10,
+  "fins": 5,
+  "width": 24
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "AL61",
+   "id": "hs_base",
+   "size": [
+    "width",
+    2
+   ]
+  },
+  {
+   "at": [
+    1,
+    2
+   ],
+   "part": {
+    "at": [
+     0,
+     0
+    ],
+    "box": "AL61",
+    "size": [
+     2,
+     "fin_height"
+    ]
+   },
+   "repeat": "fins",
+   "step": [
+    "(width-2)//fins",
+    0
+   ]
+  }
+ ],
+ "why": "6061-T6 aluminium conducts at 167 W/mK (far ahead of any steel in this catalog) but melts at only 582-652 C -- excellent for shedding waste heat off a warm surface (a TEG panel backing, a condenser shell) but never mount it directly on anything that can exceed roughly 500 C or the fins slump and melt. Its self-passivating oxide layer gives it moderate, not excellent, corrosion resistance -- prefer S316 in a chloride/acid environment."
+}

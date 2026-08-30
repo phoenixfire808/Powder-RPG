@@ -1,0 +1,971 @@
+-- Powder Bridge HTTP API — listen-first, no heavy startup, no json.stringify
+-- json.stringify LuaToJsonValue crashes on nested tables (relative stack index).
+-- sim.step inside LuaSocket::Process deadlocks (g_pendingMx). Defer via event.TICK.
+
+local function log(msg)
+    print(msg)
+    local f = io.open("autorun-runtime.log", "a")
+    if f then f:write(tostring(msg) .. "\n"); f:close() end
+end
+
+do
+    local f = io.open("autorun-runtime.log", "w")
+    if f then f:write("autorun entered\n"); f:close() end
+end
+local bridgeToken
+do
+    local f = io.open("powder-bridge.token", "r")
+    if f then
+        bridgeToken = f:read("*l")
+        f:close()
+    end
+end
+
+local function jesc(s)
+    s = tostring(s or "")
+    s = s:gsub("\\", "\\\\"):gsub('"', '\\"'):gsub("\n", "\\n")
+    return '"' .. s .. '"'
+end
+
+local function jnum(n)
+    if n == nil then return "null" end
+    return tostring(n)
+end
+
+local function jok(action, extra)
+    extra = extra or ""
+    return '{"ok":true,"action":' .. jesc(action) .. extra .. "}"
+end
+
+local function jerr(msg, extra)
+    extra = extra or ""
+    return '{"ok":false,"error":' .. jesc(msg) .. extra .. "}"
+end
+
+local function resolveElem(name)
+    if name == nil then return nil end
+    if tonumber(name) then return tonumber(name) end
+    name = string.upper(tostring(name))
+    return elements[name] or elements["DEFAULT_PT_" .. name]
+end
+local function resolveWall(name)
+    if name == nil then return nil end
+    if tonumber(name) then return tonumber(name) end
+    name = string.upper(tostring(name))
+    return (sim.walls and (sim.walls[name] or sim.walls["DEFAULT_WL_" .. name])) or nil
+end
+
+local function resolveTool(name)
+    if name == nil then return nil end
+    if tonumber(name) then return tonumber(name) end
+    name = string.upper(tostring(name))
+    return (tools and tools.index and (tools.index[name] or tools.index["DEFAULT_TOOL_" .. name])) or nil
+end
+local function stampExists(name)
+    if type(name) ~= "string" or name == "" then return false end
+    for _, stamp in ipairs(sim.listStamps()) do
+        if stamp == name then return true end
+    end
+    return false
+end
+
+_G.POWDER_BRIDGE_PENDING_STEPS = 0
+_G.POWDER_BRIDGE_COMPLETED_STEPS = 0
+local function onTick()
+    local pending = _G.POWDER_BRIDGE_PENDING_STEPS or 0
+    if pending > 0 and sim and sim.step then
+        local batch = math.min(pending, 200)
+        _G.POWDER_BRIDGE_PENDING_STEPS = pending - batch
+        local ok, err = pcall(sim.step, batch)
+        if ok then
+            _G.POWDER_BRIDGE_COMPLETED_STEPS = (_G.POWDER_BRIDGE_COMPLETED_STEPS or 0) + batch
+        else
+            _G.POWDER_BRIDGE_PENDING_STEPS = (_G.POWDER_BRIDGE_PENDING_STEPS or 0) + batch
+            log("STEP_ERR " .. tostring(err))
+        end
+    end
+end
+if event and event.register and event.TICK then
+    event.register(event.TICK, onTick)
+    log("[OK] event.TICK step defer registered")
+end
+
+local function handleRequest(body)
+    local ok, res = pcall(function()
+        if body == nil or body == "" then
+            return jerr("empty body")
+        end
+        local pok, req = pcall(json.parse, body)
+        if not pok then
+            return jerr("bad JSON", ',"detail":' .. jesc(req))
+        end
+        if type(req) ~= "table" then
+            return jerr("json parse returned non-table")
+        end
+        if not bridgeToken or req.token ~= bridgeToken then
+            return jerr("unauthorized")
+        end
+        local action = req.action or ""
+
+        if action == "stepSim" then
+            local n = tonumber(req.n) or 1
+            if n < 1 then n = 1 end
+            _G.POWDER_BRIDGE_PENDING_STEPS = (_G.POWDER_BRIDGE_PENDING_STEPS or 0) + n
+            return jok("stepSim", ',"stepped":' .. jnum(n) .. ',"deferred":true')
+
+        elseif action == "placeElement" then
+            local elemId = resolveElem(req.element)
+            if not elemId then
+                return jerr("unknown element", ',"name":' .. jesc(req.element))
+            end
+            local x1 = tonumber(req.x1) or 0
+            local y1 = tonumber(req.y1) or 0
+            local x2 = tonumber(req.x2) or 50
+            local y2 = tonumber(req.y2) or 50
+            if sim.createBox then
+                sim.createBox(x1, y1, x2, y2, elemId)
+            else
+                return jerr("sim.createBox missing")
+            end
+            return jok("placeElement", ',"placed":true,"id":' .. jnum(elemId))
+        elseif action == "placeElementLine" then
+            local elemId = resolveElem(req.element)
+            if not elemId then return jerr("unknown element", ',"name":' .. jesc(req.element)) end
+            local x1 = tonumber(req.x1) or 0
+            local y1 = tonumber(req.y1) or 0
+            local x2 = tonumber(req.x2) or 50
+            local y2 = tonumber(req.y2) or 50
+            if x1 < 0 or y1 < 0 or x2 >= sim.XRES or y2 >= sim.YRES then
+                return jerr("element line outside pixel bounds")
+            end
+            sim.createLine(x1, y1, x2, y2, 0, 0, elemId, sim.BRUSH_CIRCLE, 0)
+            return jok("placeElementLine", ',"id":' .. jnum(elemId))
+
+        elseif action == "placeWallBox" then
+            local wallId = resolveWall(req.wall)
+            if wallId == nil then return jerr("unknown wall", ',"name":' .. jesc(req.wall)) end
+            local x1 = tonumber(req.x1) or 0
+            local y1 = tonumber(req.y1) or 0
+            local x2 = tonumber(req.x2) or 50
+            local y2 = tonumber(req.y2) or 50
+            if x1 < 0 or y1 < 0 or x2 >= sim.XRES or y2 >= sim.YRES or x1 > x2 or y1 > y2 then
+                return jerr("wall box outside pixel bounds")
+            end
+            sim.createWallBox(x1, y1, x2, y2, wallId)
+            return jok("placeWallBox", ',"wall":' .. jnum(wallId))
+        elseif action == "placeWallLine" then
+            local wallId = resolveWall(req.wall)
+            if wallId == nil then return jerr("unknown wall", ',"name":' .. jesc(req.wall)) end
+            local x1 = tonumber(req.x1) or 0
+            local y1 = tonumber(req.y1) or 0
+            local x2 = tonumber(req.x2) or 50
+            local y2 = tonumber(req.y2) or 50
+            if x1 < 0 or y1 < 0 or x2 >= sim.XRES or y2 >= sim.YRES then
+                return jerr("wall line outside pixel bounds")
+            end
+            sim.createWallLine(x1, y1, x2, y2, 0, 0, wallId)
+            return jok("placeWallLine", ',"wall":' .. jnum(wallId))
+
+        elseif action == "applyToolBox" then
+            local toolId = resolveTool(req.tool)
+            if toolId == nil then return jerr("unknown native tool", ',"name":' .. jesc(req.tool)) end
+            local x1 = tonumber(req.x1) or 0
+            local y1 = tonumber(req.y1) or 0
+            local x2 = tonumber(req.x2) or 50
+            local y2 = tonumber(req.y2) or 50
+            local strength = tonumber(req.strength) or 1.0
+            local brush = tonumber(req.brush) or sim.BRUSH_CIRCLE
+            local rx = tonumber(req.rx) or 0
+            local ry = tonumber(req.ry) or 0
+            if x1 < 0 or y1 < 0 or x2 >= sim.XRES or y2 >= sim.YRES or x1 > x2 or y1 > y2 then
+                return jerr("tool box outside pixel bounds")
+            end
+            sim.toolBox(x1, y1, x2, y2, toolId, strength, brush, rx, ry)
+            return jok("applyToolBox", ',"tool":' .. jnum(toolId))
+
+        elseif action == "placeDecoBox" then
+            local x1 = tonumber(req.x1) or 0
+            local y1 = tonumber(req.y1) or 0
+            local x2 = tonumber(req.x2) or 50
+            local y2 = tonumber(req.y2) or 50
+            local r = math.max(0, math.min(255, tonumber(req.r) or 255))
+            local g = math.max(0, math.min(255, tonumber(req.g) or 255))
+            local b = math.max(0, math.min(255, tonumber(req.b) or 255))
+            local a = math.max(0, math.min(255, tonumber(req.a) or 255))
+            local tool = tonumber(req.tool) or sim.DECO_DRAW
+            if tool < 0 or tool > 6 or x1 < 0 or y1 < 0 or x2 >= sim.XRES or y2 >= sim.YRES or x1 > x2 or y1 > y2 then
+                return jerr("deco box outside safe bounds")
+            end
+            sim.decoBox(x1, y1, x2, y2, r, g, b, a, tool)
+            return jok("placeDecoBox")
+        elseif action == "placeDecoLine" then
+            local x1 = tonumber(req.x1) or 0
+            local y1 = tonumber(req.y1) or 0
+            local x2 = tonumber(req.x2) or 50
+            local y2 = tonumber(req.y2) or 50
+            local rx = tonumber(req.rx) or 5
+            local ry = tonumber(req.ry) or 5
+            local r = math.max(0, math.min(255, tonumber(req.r) or 255))
+            local g = math.max(0, math.min(255, tonumber(req.g) or 255))
+            local b = math.max(0, math.min(255, tonumber(req.b) or 255))
+            local a = math.max(0, math.min(255, tonumber(req.a) or 255))
+            local tool = tonumber(req.tool) or sim.DECO_DRAW
+            local brush = tonumber(req.brush) or sim.BRUSH_CIRCLE
+            if tool < 0 or tool > 6 or brush < 0 or brush > 2 or rx < 0 or rx > 100 or ry < 0 or ry > 100 or x1 < 0 or y1 < 0 or x2 >= sim.XRES or y2 >= sim.YRES then
+                return jerr("deco line outside safe bounds")
+            end
+            sim.decoLine(x1, y1, x2, y2, rx, ry, r, g, b, a, tool, brush)
+            return jok("placeDecoLine")
+
+        elseif action == "listStamps" then
+            local stamps = sim.listStamps()
+            local names = {}
+            for i, stamp in ipairs(stamps) do names[i] = jesc(stamp) end
+            return jok("listStamps", ',"stamps":[' .. table.concat(names, ",") .. "]")
+
+        elseif action == "saveStamp" then
+            local x = tonumber(req.x) or 0
+            local y = tonumber(req.y) or 0
+            local w = tonumber(req.w) or 50
+            local h = tonumber(req.h) or 50
+            if x < 0 or y < 0 or w < 1 or h < 1 or x + w >= sim.XRES or y + h >= sim.YRES then
+                return jerr("stamp bounds outside pixel domain")
+            end
+            local name = sim.saveStamp(x, y, w, h, req.includePressure == false and 0 or 1)
+            return jok("saveStamp", ',"name":' .. jesc(name))
+
+        elseif action == "loadStamp" then
+            local name = req.name
+            local x = tonumber(req.x) or 0
+            local y = tonumber(req.y) or 0
+            if not stampExists(name) then return jerr("unknown stamp", ',"name":' .. jesc(name)) end
+            if x < 0 or y < 0 or x >= sim.XRES or y >= sim.YRES then
+                return jerr("stamp position outside pixel domain")
+            end
+            local loaded, detail = sim.loadStamp(name, x, y)
+            if not loaded then return jerr("loadStamp failed", ',"detail":' .. jesc(detail)) end
+            return jok("loadStamp", ',"loaded":true')
+
+        elseif action == "deleteStamp" then
+            local name = req.name
+            if not stampExists(name) then return jerr("unknown stamp", ',"name":' .. jesc(name)) end
+            sim.deleteStamp(name)
+            return jok("deleteStamp", ',"deleted":true')
+        elseif action == "placeCircle" then
+            local elemId = resolveElem(req.element)
+            if not elemId then return jerr("unknown element") end
+            local cx = tonumber(req.cx) or 100
+            local cy = tonumber(req.cy) or 100
+            local r = tonumber(req.radius) or 10
+            sim.createParts(cx, cy, r, r, elemId)
+            return jok("placeCircle", ',"cx":' .. jnum(cx) .. ',"cy":' .. jnum(cy))
+
+        elseif action == "getField" then
+            local field = string.lower(tostring(req.field or "temp"))
+            local x = tonumber(req.x) or 10
+            local y = tonumber(req.y) or 10
+            local value
+            if field == "temp" or field == "temperature" then
+                value = sim.getTemp(x, y)
+            elseif field == "pressure" then
+                value = sim.getPressure(x, y)
+            else
+                return jerr("unknown field", ',"field":' .. jesc(field))
+            end
+            return jok("getField", ',"field":' .. jesc(field) .. ',"x":' .. jnum(x) .. ',"y":' .. jnum(y) .. ',"value":' .. jnum(value))
+        elseif action == "partsInventory" then
+            local slotBound = 235008
+            local function pInt(value, name)
+                if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or math.floor(value) ~= value then
+                    return nil, (name or "value") .. " must be an integer"
+                end
+                return value, nil
+            end
+            local function pFinite(value)
+                return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+            end
+            local function pNow()
+                local nowOk, now = pcall(function() return os.date("!%Y-%m-%dT%H:%M:%SZ") end)
+                return nowOk and type(now) == "string" and now or nil
+            end
+            local correlationId = req.correlation_id
+            local correlationSafe = type(correlationId) == "string" and #correlationId >= 1 and #correlationId <= 64
+                and correlationId:match("^[A-Za-z0-9_-]+$")
+            local function pProvenance()
+                return '{"source_root":"D:/The-Powder-Toy","runtime_deploy":"D:/The-Powder-Toy/build/autorun.lua","mcp_source_root":"D:/powder-toy"'
+                    .. ',"runtime_host":"127.0.0.1","runtime_port":9876,"particle_source":"sim.partExists/partPosition/partProperty"'
+                    .. ',"slot_bound_source":"SimulationConfig.h:NPART=XRES*YRES","slot_bound":' .. jnum(slotBound)
+                    .. ',"pid_source":"runtime_binding_or_unavailable"}'
+            end
+            local function pError(code, detail)
+                local now = pNow()
+                return jerr(detail, ',"action":"partsInventory","schema_version":"parts-inventory/v1","error_code":' .. jesc(code)
+                    .. ',"correlation_id":' .. (correlationSafe and jesc(correlationId) or "null")
+                    .. ',"timestamp":' .. (now and jesc(now) or "null")
+                    .. ',"cursor_next":null,"done":false,"scanned":0,"returned":0,"matched":0,"partCount":null,"truncated":false,"records":[]'
+                    .. ',"limits":{"max_limit":256,"max_scan":4096,"slot_bound":' .. jnum(slotBound) .. '}'
+                    .. ',"provenance":' .. pProvenance()
+                    .. ',"evidence":{"contract":"parts-inventory-evidence/v1","status":"failed","postcondition_ok":false,"complete":false,"strength":"absent","correlation_id":' .. (correlationSafe and jesc(correlationId) or "null")
+                    .. ',"reason":' .. jesc(code) .. "}")
+            end
+            local allowedKeys = {
+                token = true, action = true, correlation_id = true, cursor = true, limit = true, max_scan = true,
+                x1 = true, y1 = true, x2 = true, y2 = true, type = true
+            }
+            local requestKeys = 0
+            for key, _ in pairs(req) do
+                requestKeys = requestKeys + 1
+                if requestKeys > 16 or type(key) ~= "string" or not allowedKeys[key] then
+                    return pError("invalid_request", "unknown partsInventory request key")
+                end
+            end
+            if correlationId ~= nil and not correlationSafe then
+                return pError("invalid_request", "correlation_id must be a safe identifier")
+            end
+            local xres, yres = sim.XRES, sim.YRES
+            if not pFinite(xres) or not pFinite(yres) or xres < 1 or yres < 1 or xres ~= math.floor(xres) or yres ~= math.floor(yres) then
+                return pError("runtime_unavailable", "runtime pixel bounds unavailable")
+            end
+            slotBound = xres * yres
+            local cursor, cursorErr = pInt(req.cursor ~= nil and req.cursor or 0, "cursor")
+            if cursorErr or cursor < 0 or cursor > slotBound then
+                return pError("invalid_request", cursorErr or "cursor is outside the particle slot domain")
+            end
+            local limit, limitErr = pInt(req.limit ~= nil and req.limit or 256, "limit")
+            if limitErr or limit < 1 or limit > 256 then
+                return pError("invalid_request", limitErr or "limit must be between 1 and 256")
+            end
+            local maxScan, maxScanErr = pInt(req.max_scan ~= nil and req.max_scan or 4096, "max_scan")
+            if maxScanErr or maxScan < 1 or maxScan > 4096 then
+                return pError("invalid_request", maxScanErr or "max_scan must be between 1 and 4096")
+            end
+            local typeFilter
+            if req.type ~= nil then
+                local typeErr
+                typeFilter, typeErr = pInt(req.type, "type")
+                if typeErr or typeFilter < 0 then
+                    return pError("invalid_request", typeErr or "type must be a non-negative integer")
+                end
+            end
+            local hasRect = req.x1 ~= nil or req.y1 ~= nil or req.x2 ~= nil or req.y2 ~= nil
+            local region
+            if hasRect then
+                if req.x1 == nil or req.y1 == nil or req.x2 == nil or req.y2 == nil then
+                    return pError("invalid_request", "x1, y1, x2, and y2 are required together")
+                end
+                local x1, y1, x2, y2, regionErr
+                x1, regionErr = pInt(req.x1, "x1")
+                if regionErr then return pError("invalid_request", regionErr) end
+                y1, regionErr = pInt(req.y1, "y1")
+                if regionErr then return pError("invalid_request", regionErr) end
+                x2, regionErr = pInt(req.x2, "x2")
+                if regionErr then return pError("invalid_request", regionErr) end
+                y2, regionErr = pInt(req.y2, "y2")
+                if regionErr then return pError("invalid_request", regionErr) end
+                region = {x1 = x1, y1 = y1, x2 = x2, y2 = y2}
+            end
+            if region then
+                if region.x1 > region.x2 or region.y1 > region.y2 then
+                    return pError("invalid_request", "region lower bounds exceed upper bounds")
+                end
+                if region.x1 < 0 or region.y1 < 0 or region.x2 >= xres or region.y2 >= yres then
+                    return pError("coordinate_out_of_bounds", "region is outside pixel bounds")
+                end
+            end
+            if type(sim.partCount) ~= "function" or type(sim.partExists) ~= "function"
+                or type(sim.partPosition) ~= "function" or type(sim.partProperty) ~= "function" then
+                return pError("runtime_unavailable", "particle inventory APIs are unavailable")
+            end
+            local startedAt = pNow()
+            local countOk, partCount = pcall(sim.partCount)
+            if not countOk or not pFinite(partCount) or partCount < 0 then
+                return pError("runtime_unavailable", "partCount read unavailable")
+            end
+            local records, errors = {}, {}
+            local scanned, matched, returned = 0, 0, 0
+            local nextCursor = cursor
+            local stoppedByLimit = false
+            while nextCursor < slotBound and scanned < maxScan do
+                local id = nextCursor
+                scanned = scanned + 1
+                nextCursor = id + 1
+                local existsOk, exists = pcall(sim.partExists, id)
+                if not existsOk then
+                    if #errors < 16 then errors[#errors + 1] = "partExists:" .. tostring(id) end
+                elseif exists then
+                    local positionOk, px, py = pcall(sim.partPosition, id)
+                    local typeOk, particleType = pcall(sim.partProperty, id, "type")
+                    if not positionOk or not pFinite(px) or not pFinite(py) or not typeOk or not pFinite(particleType) then
+                        if #errors < 16 then errors[#errors + 1] = "particle_read:" .. tostring(id) end
+                    elseif (not typeFilter or particleType == typeFilter)
+                        and (not region or (px >= region.x1 and px <= region.x2 and py >= region.y1 and py <= region.y2)) then
+                        matched = matched + 1
+                        if returned < limit then
+                            local tempOk, temp = pcall(sim.partProperty, id, "temp")
+                            local lifeOk, life = pcall(sim.partProperty, id, "life")
+                            local vxOk, vx = pcall(sim.partProperty, id, "vx")
+                            local vyOk, vy = pcall(sim.partProperty, id, "vy")
+                            if tempOk and lifeOk and vxOk and vyOk and pFinite(temp) and pFinite(life) and pFinite(vx) and pFinite(vy) then
+                                returned = returned + 1
+                                records[#records + 1] = '{"id":' .. jnum(id)
+                                    .. ',"type":' .. jnum(particleType) .. ',"x":' .. jnum(px) .. ',"y":' .. jnum(py)
+                                    .. ',"temp":' .. jnum(temp) .. ',"life":' .. jnum(life)
+                                    .. ',"vx":' .. jnum(vx) .. ',"vy":' .. jnum(vy) .. "}"
+                                if returned >= limit then stoppedByLimit = true end
+                            elseif #errors < 16 then
+                                errors[#errors + 1] = "particle_properties:" .. tostring(id)
+                            end
+                        end
+                    end
+                end
+                if stoppedByLimit then break end
+            end
+            local done = nextCursor >= slotBound
+            local truncated = not done and (stoppedByLimit or scanned >= maxScan)
+            local completedAt = pNow()
+            local responseOk = #errors == 0
+            local complete = responseOk and done and not truncated
+            local status = not responseOk and "failed" or (truncated and "partial" or "verified")
+            local reason = not responseOk and "runtime_read_failed" or (truncated and (stoppedByLimit and "limit" or "max_scan") or nil)
+            local regionJson = "null"
+            if region then
+                regionJson = '{"x1":' .. jnum(region.x1) .. ',"y1":' .. jnum(region.y1)
+                    .. ',"x2":' .. jnum(region.x2) .. ',"y2":' .. jnum(region.y2) .. "}"
+            end
+            local encodedErrors = {}
+            for i = 1, #errors do encodedErrors[i] = jesc(errors[i]) end
+            local result = '{"ok":' .. (responseOk and "true" or "false") .. ',"action":"partsInventory","schema_version":"parts-inventory/v1"'
+                .. ',"correlation_id":' .. (correlationSafe and jesc(correlationId) or "null")
+                .. ',"timestamp":' .. (completedAt and jesc(completedAt) or "null")
+                .. ',"capture":{"started_at":' .. (startedAt and jesc(startedAt) or "null") .. ',"completed_at":' .. (completedAt and jesc(completedAt) or "null") .. ',"consistency":"handler_capture"}'
+                .. ',"cursor":' .. jnum(cursor) .. ',"cursor_next":' .. jnum(nextCursor) .. ',"done":' .. (done and "true" or "false")
+                .. ',"scanned":' .. jnum(scanned) .. ',"matched":' .. jnum(matched) .. ',"returned":' .. jnum(returned)
+                .. ',"partCount":' .. jnum(partCount) .. ',"truncated":' .. (truncated and "true" or "false")
+                .. ',"records":[' .. table.concat(records, ",") .. ']'
+                .. ',"filters":{"region":' .. regionJson .. ',"type":' .. (typeFilter and jnum(typeFilter) or "null") .. "}"
+                .. ',"limits":{"max_limit":256,"max_scan":4096,"slot_bound":' .. jnum(slotBound) .. ',"limit":' .. jnum(limit) .. ',"max_scan_requested":' .. jnum(maxScan) .. "}"
+                .. ',"provenance":' .. pProvenance()
+                .. ',"evidence":{"contract":"parts-inventory-evidence/v1","status":' .. jesc(status)
+                .. ',"postcondition_ok":' .. (responseOk and "true" or "false") .. ',"complete":' .. (complete and "true" or "false")
+                .. ',"strength":"atomic_runtime_read","correlation_id":' .. (correlationSafe and jesc(correlationId) or "null")
+                .. ',"requested":{"cursor":' .. jnum(cursor) .. ',"limit":' .. jnum(limit) .. ',"max_scan":' .. jnum(maxScan)
+                .. ',"region":' .. regionJson .. ',"type":' .. (typeFilter and jnum(typeFilter) or "null") .. "}"
+                .. ',"readback":{"action":"partsInventory","timestamp":' .. (completedAt and jesc(completedAt) or "null")
+                .. ',"cursor_next":' .. jnum(nextCursor) .. ',"returned":' .. jnum(returned) .. ',"scanned":' .. jnum(scanned)
+                .. ',"matched":' .. jnum(matched) .. ',"partCount":' .. jnum(partCount) .. "}"
+                .. ',"reason":' .. (reason and jesc(reason) or "null") .. "}"
+            if #errors > 0 then
+                result = result .. ',"errors":[' .. table.concat(encodedErrors, ",") .. "]"
+            end
+            return result .. "}"
+        elseif action == "spatialSnapshot" then
+            local function sInt(value, name)
+                if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge or math.floor(value) ~= value then return nil, (name or "value") .. " must be an integer" end
+                return value, nil
+            end
+            local function sNum(value)
+                if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then return "null" end
+                return tostring(value)
+            end
+            local function sStrings(values)
+                local out = {}
+                for i = 1, #values do out[i] = jesc(values[i]) end
+                return "[" .. table.concat(out, ",") .. "]"
+            end
+            local function sNumbers(values)
+                local out = {}
+                for i = 1, #values do out[i] = sNum(values[i]) end
+                return "[" .. table.concat(out, ",") .. "]"
+            end
+            local function sNow()
+                local ok, value = pcall(function() return os.date("!%Y-%m-%dT%H:%M:%SZ") end)
+                return ok and type(value) == "string" and value or nil
+            end
+            local cid = req.correlation_id
+            local cidSafe = type(cid) == "string" and #cid >= 1 and #cid <= 64 and cid:match("^[A-Za-z0-9_-]+$")
+            local function sError(code, detail)
+                local now = sNow()
+                return jerr(detail, ',"action":"spatialSnapshot","schema_version":"spatial-snapshot/v1","error_code":' .. jesc(code)
+                    .. ',"correlation_id":' .. (cidSafe and jesc(cid) or "null") .. ',"timestamp":' .. (now and jesc(now) or "null") .. ',"pid":null'
+                    .. ',"limits":{"max_region_area":12288,"max_samples":4096,"max_stride":128,"max_particles":256,"max_particle_ids":256,"max_response_bytes":262144}'
+                    .. ',"truncation":{"any":false,"fields":false,"particles":false,"reasons":[]}'
+                    .. ',"provenance":{"source_root":"D:/The-Powder-Toy","runtime_deploy":"D:/The-Powder-Toy/build/autorun.lua","runtime_host":"127.0.0.1","runtime_port":9876,"pid_source":"runtime_binding_or_unavailable"}'
+                    .. ',"evidence":{"contract":"spatial-evidence/v1","status":"failed","postcondition_ok":false,"complete":false,"strength":"absent","correlation_id":' .. (cidSafe and jesc(cid) or "null") .. ',"reason":' .. jesc(code) .. "}")
+            end
+            local allowedSnapshotKeys = {
+                token = true, action = true, correlation_id = true, space = true,
+                x = true, y = true, x1 = true, y1 = true, x2 = true, y2 = true,
+                fields = true, sample_fields = true, stride = true, sample_stride = true,
+                max_samples = true, allow_truncation = true, include_particles = true,
+                particle_ids = true, max_particles = true, max_response_bytes = true, discover_particles = true
+            }
+            local requestKeys = 0
+            for key, _ in pairs(req) do
+                requestKeys = requestKeys + 1
+                if requestKeys > 32 or type(key) ~= "string" or not allowedSnapshotKeys[key] then
+                    return sError("invalid_request", "unknown spatialSnapshot request key")
+                end
+            end
+            if cid ~= nil and not cidSafe then return sError("invalid_request", "correlation_id must be a safe identifier") end
+            local space = req.space
+            if type(space) ~= "string" or (space ~= "cell" and space ~= "pixel") then return sError("invalid_request", "space must be exactly pixel or cell") end
+            local xres, yres, xcells, ycells, cell = sim.XRES, sim.YRES, sim.XCELLS, sim.YCELLS, sim.CELL
+            if type(xres) ~= "number" or type(yres) ~= "number" or type(xcells) ~= "number" or type(ycells) ~= "number"
+                or xres < 1 or yres < 1 or xcells < 1 or ycells < 1
+                or xres ~= math.floor(xres) or yres ~= math.floor(yres) or xcells ~= math.floor(xcells) or ycells ~= math.floor(ycells) then
+                return sError("coordinate_bounds_unverified", "runtime coordinate bounds unavailable")
+            end
+            if type(cell) ~= "number" or cell < 1 or cell ~= math.floor(cell) then cell = nil end
+            local hasPoint = req.x ~= nil or req.y ~= nil
+            local hasRect = req.x1 ~= nil or req.y1 ~= nil or req.x2 ~= nil or req.y2 ~= nil
+            if hasPoint and hasRect then return sError("invalid_request", "provide x and y or x1, y1, x2, y2, not both") end
+            local x1, y1, x2, y2
+            if hasPoint then
+                if req.x == nil or req.y == nil then return sError("invalid_request", "x and y are required together") end
+                local err
+                x1, err = sInt(req.x, "x")
+                if err then return sError("invalid_request", err) end
+                y1, err = sInt(req.y, "y")
+                if err then return sError("invalid_request", err) end
+                x2, y2 = x1, y1
+            elseif hasRect then
+                if req.x1 == nil or req.y1 == nil or req.x2 == nil or req.y2 == nil then return sError("invalid_request", "x1, y1, x2, and y2 are required together") end
+                local err
+                x1, err = sInt(req.x1, "x1")
+                if err then return sError("invalid_request", err) end
+                y1, err = sInt(req.y1, "y1")
+                if err then return sError("invalid_request", err) end
+                x2, err = sInt(req.x2, "x2")
+                if err then return sError("invalid_request", err) end
+                y2, err = sInt(req.y2, "y2")
+                if err then return sError("invalid_request", err) end
+            else
+                return sError("invalid_request", "a point or inclusive rectangle is required")
+            end
+            local maxx, maxy = space == "cell" and xcells - 1 or xres - 1, space == "cell" and ycells - 1 or yres - 1
+            if x1 > x2 or y1 > y2 then return sError("invalid_request", "rectangle lower bounds exceed upper bounds") end
+            if x1 < 0 or y1 < 0 or x2 > maxx or y2 > maxy then return sError("coordinate_out_of_bounds", "region is outside coordinate bounds") end
+            local width, height, area = x2 - x1 + 1, y2 - y1 + 1, (x2 - x1 + 1) * (y2 - y1 + 1)
+            if area > 12288 then return sError("snapshot_limit_exceeded", "region area exceeds 12288") end
+            if req.fields ~= nil and req.sample_fields ~= nil then return sError("invalid_request", "provide fields or sample_fields, not both") end
+            local rawFields = req.fields ~= nil and req.fields or req.sample_fields
+            if rawFields == nil then rawFields = space == "cell" and {"temp", "pressure"} or {} end
+            if type(rawFields) ~= "table" then return sError("invalid_request", "fields must be an array") end
+            local fieldCount, fieldKeys = 0, 0
+            for key, _ in pairs(rawFields) do
+                fieldKeys = fieldKeys + 1
+                if fieldKeys > 2 or type(key) ~= "number" or key < 1 or key ~= math.floor(key) then return sError("invalid_request", "fields must be a dense array") end
+                if key > fieldCount then fieldCount = key end
+            end
+            if fieldCount ~= fieldKeys then return sError("invalid_request", "fields must be a dense array") end
+            if fieldCount > 2 then return sError("invalid_request", "fields must contain at most two entries") end
+            local fields, seen = {}, {}
+            for i = 1, fieldCount do
+                if rawFields[i] == nil or type(rawFields[i]) ~= "string" then return sError("invalid_request", "fields must be a dense string array") end
+                local field = rawFields[i] == "temperature" and "temp" or rawFields[i]
+                if field ~= "temp" and field ~= "pressure" then return sError("field_unavailable", "field is not available") end
+                if not seen[field] then
+                    seen[field] = true
+                    fields[#fields + 1] = field
+                end
+            end
+            if space == "pixel" and #fields > 0 then return sError("coordinate_domain_mismatch", "pixel coordinates cannot sample cell fields; no conversion performed") end
+            if req.stride ~= nil and req.sample_stride ~= nil then return sError("invalid_request", "provide stride or sample_stride, not both") end
+            local strideValue = req.stride ~= nil and req.stride or (req.sample_stride ~= nil and req.sample_stride or 1)
+            local stride, strideErr = sInt(strideValue, "stride")
+            if strideErr or stride < 1 or stride > 128 then return sError("invalid_request", strideErr or "stride is outside the allowed range") end
+            local maxSamples, maxSamplesErr = sInt(req.max_samples ~= nil and req.max_samples or 4096, "max_samples")
+            if maxSamplesErr or maxSamples < 1 or maxSamples > 4096 then return sError("invalid_request", maxSamplesErr or "max_samples is outside the allowed range") end
+            local maxResponseBytes, maxResponseErr = sInt(req.max_response_bytes ~= nil and req.max_response_bytes or 262144, "max_response_bytes")
+            if maxResponseErr or maxResponseBytes < 4096 or maxResponseBytes > 262144 then return sError("invalid_request", maxResponseErr or "max_response_bytes must be between 4096 and 262144") end
+            local allowTruncation = req.allow_truncation
+            if allowTruncation ~= nil and type(allowTruncation) ~= "boolean" then return sError("invalid_request", "allow_truncation must be boolean") end
+            allowTruncation = allowTruncation == true
+            local includeParticles = req.include_particles
+            if includeParticles ~= nil and type(includeParticles) ~= "boolean" then return sError("invalid_request", "include_particles must be boolean") end
+            includeParticles = includeParticles == true
+            local discoverParticles = req.discover_particles
+            if discoverParticles ~= nil and type(discoverParticles) ~= "boolean" then return sError("invalid_request", "discover_particles must be boolean") end
+            discoverParticles = discoverParticles == true
+            local rawIds = req.particle_ids
+            if rawIds == nil then rawIds = {} elseif type(rawIds) ~= "table" then return sError("invalid_request", "particle_ids must be an array") end
+            local idCount, idKeys = 0, 0
+            for key, _ in pairs(rawIds) do
+                idKeys = idKeys + 1
+                if idKeys > 256 or type(key) ~= "number" or key < 1 or key ~= math.floor(key) then return sError("invalid_request", "particle_ids must be a dense array") end
+                if key > idCount then idCount = key end
+            end
+            if idCount ~= idKeys then return sError("invalid_request", "particle_ids must be a dense array") end
+            if idCount > 256 then return sError("invalid_request", "particle_ids cannot exceed 256 entries") end
+            local particleIds, idSeen = {}, {}
+            for i = 1, idCount do
+                local id, idErr = sInt(rawIds[i], "particle_ids entry")
+                if idErr or id < 0 then return sError("invalid_request", idErr or "particle IDs must be non-negative") end
+                if not idSeen[id] then idSeen[id] = true; particleIds[#particleIds + 1] = id end
+            end
+            local explicitParticleIds = {}
+            for i = 1, #particleIds do explicitParticleIds[i] = particleIds[i] end
+            if #particleIds > 0 then includeParticles = true end
+            if includeParticles and #particleIds == 0 and not discoverParticles then return sError("invalid_request", "include_particles requires explicit particle_ids or discover_particles") end
+            local maxParticles, maxParticlesErr = sInt(req.max_particles ~= nil and req.max_particles or 256, "max_particles")
+            if maxParticlesErr or maxParticles < 1 or maxParticles > 256 then return sError("invalid_request", maxParticlesErr or "max_particles is outside the allowed range") end
+            table.sort(particleIds, function(a, b) return a < b end)
+            local discoverySlots = math.max(0, maxParticles - #particleIds)
+            local discoveredIds, discoveredSeen = {}, {}
+            local discoveryScanned, discoveryTruncated = 0, false
+            local pmapFailed, photonsFailed = false, false
+            if discoverParticles then
+                if space ~= "pixel" then return sError("coordinate_domain_mismatch", "discover_particles requires pixel space") end
+                includeParticles = true
+                if type(sim.pmap) ~= "function" or type(sim.photons) ~= "function" then
+                    return sError("runtime_unavailable", "pmap and photons occupancy APIs are required")
+                end
+                for yy = y1, y2 do
+                    for xx = x1, x2 do
+                        discoveryScanned = discoveryScanned + 1
+                        local mapIds = {}
+                        local pmapOk, pmapId = pcall(sim.pmap, xx, yy)
+                        if not pmapOk then pmapFailed = true elseif type(pmapId) == "number" then mapIds[#mapIds + 1] = pmapId end
+                        local photonsOk, photonsId = pcall(sim.photons, xx, yy)
+                        if not photonsOk then photonsFailed = true elseif type(photonsId) == "number" then mapIds[#mapIds + 1] = photonsId end
+                        for _, id in ipairs(mapIds) do
+                            if id >= 0 and not idSeen[id] then
+                                idSeen[id] = true
+                                discoveredSeen[id] = true
+                                if #discoveredIds < discoverySlots then
+                                    discoveredIds[#discoveredIds + 1] = id
+                                    particleIds[#particleIds + 1] = id
+                                else
+                                    discoveryTruncated = true
+                                end
+                            end
+                        end
+                    end
+                end
+            if discoveryTruncated and not allowTruncation then
+                return sError("snapshot_limit_exceeded", "discovered occupancy exceeds max_particles")
+            end
+            end
+            local columns, rows = math.floor((x2 - x1) / stride) + 1, math.floor((y2 - y1) / stride) + 1
+            local plannedSamples = columns * rows * #fields
+            local fieldTruncated = plannedSamples > maxSamples
+            if fieldTruncated and not allowTruncation then return sError("snapshot_limit_exceeded", "requested samples exceed max_samples") end
+            local particleTruncated = #particleIds > maxParticles
+            if particleTruncated and not allowTruncation then return sError("snapshot_limit_exceeded", "requested particles exceed max_particles") end
+            local startedAt = sNow()
+            local partCount
+            if type(sim.partCount) == "function" then
+                local countOk, countValue = pcall(sim.partCount)
+                if countOk and type(countValue) == "number" and countValue >= 0 then partCount = countValue end
+            end
+            local values, served, readErrors, sampleCount = {}, {}, {}, 0
+            for yy = y1, y2, stride do
+                if sampleCount >= maxSamples then break end
+                for xx = x1, x2, stride do
+                    if sampleCount >= maxSamples then break end
+                    for fi = 1, #fields do
+                        if sampleCount >= maxSamples then break end
+                        local field, readOk, value = fields[fi], false, nil
+                        if field == "temp" and type(sim.getTemp) == "function" then readOk, value = pcall(sim.getTemp, xx, yy)
+                        elseif field == "pressure" and type(sim.getPressure) == "function" then readOk, value = pcall(sim.getPressure, xx, yy) end
+                        local available = readOk and type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+                        if available then served[field] = true else readErrors[#readErrors + 1] = "field:" .. field .. ":" .. tostring(xx) .. "," .. tostring(yy) end
+                        values[#values + 1] = '{"field":' .. jesc(field) .. ',"space":"cell","x":' .. jnum(xx) .. ',"y":' .. jnum(yy) .. ',"value":' .. sNum(value) .. ',"available":' .. (available and "true" or "false") .. (available and "" or ',"reason":"runtime field read unavailable"') .. "}"
+                        sampleCount = sampleCount + 1
+                    end
+                end
+            end
+            local particles, missingIds, particleReturned, discoveredReturned = {}, {}, 0, 0
+            local particleLimit = math.min(#particleIds, maxParticles)
+            if includeParticles then
+                for i = 1, particleLimit do
+                    local id = particleIds[i]
+                    local existsOk, exists = false, false
+                    if type(sim.partExists) == "function" then existsOk, exists = pcall(sim.partExists, id) end
+                    if existsOk and exists and type(sim.partPosition) == "function" and type(sim.partProperty) == "function" then
+                        local posOk, px, py = pcall(sim.partPosition, id)
+                        if posOk and type(px) == "number" and type(py) == "number" then
+                            local typeOk, ptype = pcall(sim.partProperty, id, "type")
+                            local tempOk, ptemp = pcall(sim.partProperty, id, "temp")
+                            local lifeOk, life = pcall(sim.partProperty, id, "life")
+                            local vxOk, vx = pcall(sim.partProperty, id, "vx")
+                            local vyOk, vy = pcall(sim.partProperty, id, "vy")
+                            if typeOk and tempOk and lifeOk and vxOk and vyOk then
+                                particles[#particles + 1] = '{"id":' .. jnum(id)
+                                    .. ',"type":' .. sNum(ptype)
+                                    .. ',"x":' .. sNum(px)
+                                    .. ',"y":' .. sNum(py)
+                                    .. ',"temp":' .. sNum(ptemp)
+                                    .. ',"life":' .. sNum(life)
+                                    .. ',"vx":' .. sNum(vx)
+                                    .. ',"vy":' .. sNum(vy) .. "}"
+                                particleReturned = particleReturned + 1
+                                if discoveredSeen[id] then discoveredReturned = discoveredReturned + 1 end
+                            else
+                                missingIds[#missingIds + 1] = id
+                            end
+                        else
+                            missingIds[#missingIds + 1] = id
+                        end
+                    else
+                        missingIds[#missingIds + 1] = id
+                    end
+                end
+            end
+            local fieldsTruncated = plannedSamples > sampleCount
+            local particlesTruncated = #particleIds > particleLimit or discoveryTruncated
+            local truncated = fieldsTruncated or particlesTruncated
+            local responseOk = #readErrors == 0 and #missingIds == 0 and (not discoverParticles or (not pmapFailed and not photonsFailed))
+            local complete = responseOk and not truncated
+            local completedAt = sNow()
+            local status = not responseOk and "failed" or (truncated and "partial" or "verified")
+            local reasonList = {}
+            if discoveryTruncated then reasonList[#reasonList + 1] = "occupancy_max_particles" end
+            if particlesTruncated and not discoveryTruncated then reasonList[#reasonList + 1] = "max_particles" end
+            if fieldsTruncated then reasonList[#reasonList + 1] = "max_samples" end
+            if pmapFailed then reasonList[#reasonList + 1] = "pmap_read_failed" end
+            if photonsFailed then reasonList[#reasonList + 1] = "photons_read_failed" end
+            local reasons = sStrings(reasonList)
+            local function bounds(target)
+                local bx, by = target == "pixel" and xres or xcells, target == "pixel" and yres or ycells
+                return '{"x":{"min":0,"max":' .. jnum(bx - 1) .. ',"max_exclusive":' .. jnum(bx) .. ',"size":' .. jnum(bx) .. '},"y":{"min":0,"max":' .. jnum(by - 1) .. ',"max_exclusive":' .. jnum(by) .. ',"size":' .. jnum(by) .. "}}"
+            end
+            local regionJson = '{"space":' .. jesc(space) .. ',"x1":' .. jnum(x1) .. ',"y1":' .. jnum(y1) .. ',"x2":' .. jnum(x2) .. ',"y2":' .. jnum(y2) .. ',"width":' .. jnum(width) .. ',"height":' .. jnum(height) .. ',"area":' .. jnum(area) .. "}"
+            local domains = '{"pixel":' .. bounds("pixel") .. ',"cell":' .. bounds("cell") .. ',"pixel_per_cell":' .. (cell and '{"x":' .. jnum(cell) .. ',"y":' .. jnum(cell) .. "}" or "null") .. ',"active_space":' .. jesc(space) .. ',"region":' .. regionJson .. "}"
+            local servedFields = {}
+            for _, field in ipairs(fields) do if served[field] then servedFields[#servedFields + 1] = field end end
+            local particleReason
+            if not includeParticles then
+                particleReason = "particle_sampling_disabled"
+            elseif discoverParticles and #explicitParticleIds > 0 then
+                particleReason = "mixed"
+            elseif discoverParticles then
+                particleReason = "discovered"
+            else
+                particleReason = "explicit_ids"
+            end
+            if #missingIds > 0 then readErrors[#readErrors + 1] = "unknown_particle_ids:" .. sNumbers(missingIds) end
+            if pmapFailed then readErrors[#readErrors + 1] = "pmap_read_failed" end
+            if photonsFailed then readErrors[#readErrors + 1] = "photons_read_failed" end
+            local errorCode = #readErrors == 0 and "none" or (#missingIds > 0 and "particle_read_failed" or (pmapFailed or photonsFailed) and "occupancy_read_failed" or "field_read_failed")
+            local result = '{"ok":' .. (responseOk and "true" or "false") .. ',"action":"spatialSnapshot","schema_version":"spatial-snapshot/v1","correlation_id":' .. (cid and jesc(cid) or "null") .. ',"timestamp":' .. (completedAt and jesc(completedAt) or "null") .. ',"pid":null'
+                .. ',"capture":{"started_at":' .. (startedAt and jesc(startedAt) or "null") .. ',"completed_at":' .. (completedAt and jesc(completedAt) or "null") .. ',"duration_ms":null,"consistency":"handler_capture"}'
+                .. ',"coordinate_domains":' .. domains .. ',"bounds":' .. bounds(space) .. ',"partCount":' .. sNum(partCount) .. ',"part_count":' .. sNum(partCount)
+                .. ',"available_fields":{"requested":' .. sStrings(fields) .. ',"served":' .. sStrings(servedFields) .. ',"runtime_available":' .. (space == "cell" and '["temp","pressure"]' or "[]") .. ',"source_indexed":["temp","pressure"],"unsupported":[]}'
+                .. ',"sampled_fields":{"space":' .. jesc(space) .. ',"region":' .. regionJson .. ',"stride":' .. jnum(stride) .. ',"requested":' .. sStrings(fields) .. ',"items":[' .. table.concat(values, ",") .. '],"requested_count":' .. jnum(plannedSamples) .. ',"sample_count":' .. jnum(sampleCount) .. ',"returned_count":' .. jnum(sampleCount) .. ',"truncated":' .. (fieldsTruncated and "true" or "false") .. ',"limit":' .. jnum(maxSamples) .. '}'
+                .. ',"occupancy":{"requested":' .. (discoverParticles and "true" or "false") .. ',"space":"pixel","source_maps":["pmap","photons"],"scanned_points":' .. jnum(discoverParticles and discoveryScanned or 0) .. ',"discovered_ids":' .. jnum(discoverParticles and (#discoveredIds) or 0) .. ',"returned":' .. jnum(discoverParticles and discoveredReturned or 0) .. ',"truncated":' .. (discoveryTruncated and "true" or "false") .. ',"reasons":' .. (discoveryTruncated and '["max_particles"]' or "[]") .. '}'
+                .. ',"particles":{"coordinate_space":"pixel","items":[' .. table.concat(particles, ",") .. '],"requested_ids":' .. sNumbers(explicitParticleIds) .. ',"requested":' .. jnum(#explicitParticleIds) .. ',"returned":' .. jnum(particleReturned) .. ',"scanned":' .. jnum(particleLimit) .. ',"truncated":' .. (particlesTruncated and "true" or "false") .. ',"limit":' .. jnum(maxParticles) .. ',"missing_ids":' .. sNumbers(missingIds) .. ',"reason":' .. jesc(particleReason) .. '}'
+                .. ',"limits":{"max_region_area":12288,"max_samples":4096,"max_stride":128,"max_particles":256,"max_particle_ids":256,"max_response_bytes":262144},"truncated":' .. (truncated and "true" or "false") .. ',"truncation":{"any":' .. (truncated and "true" or "false") .. ',"fields":' .. (fieldsTruncated and "true" or "false") .. ',"particles":' .. (particlesTruncated and "true" or "false") .. ',"reasons":' .. reasons .. '},"truncation_reasons":' .. reasons
+                .. ',"provenance":{"source_root":"D:/The-Powder-Toy","runtime_deploy":"D:/The-Powder-Toy/build/autorun.lua","mcp_source_root":"D:/powder-toy","runtime_host":"127.0.0.1","runtime_port":9876,"coordinate_source":"runtime_constants","field_source":"runtime_handler","particle_source":"sim.partExists/partPosition/partProperty","pid_source":"runtime_binding_or_unavailable"}'
+                .. ',"evidence":{"contract":"spatial-evidence/v1","status":' .. jesc(status) .. ',"postcondition_ok":' .. (responseOk and "true" or "false") .. ',"complete":' .. (complete and "true" or "false") .. ',"strength":"atomic_runtime_read","correlation_id":' .. (cid and jesc(cid) or "null") .. ',"requested":{"space":' .. jesc(space) .. ',"region":' .. regionJson .. ',"fields":' .. sStrings(fields) .. '},"readback":{"action":"spatialSnapshot","timestamp":' .. (completedAt and jesc(completedAt) or "null") .. ',"pid":null,"returned_counts":{"samples":' .. jnum(sampleCount) .. ',"particles":' .. jnum(particleReturned) .. '}},"reason":' .. (responseOk and (truncated and '"snapshot_truncated"' or "null") or jesc(errorCode)) .. '}'
+            if #readErrors > 0 then
+                local encoded = {}
+                for i = 1, #readErrors do encoded[i] = jesc(readErrors[i]) end
+                result = result .. ',"errors":[' .. table.concat(encoded, ",") .. "]"
+            end
+            if not responseOk then result = result .. ',"error_code":' .. jesc(errorCode) .. ',"error":"one or more bounded reads failed"' end
+            if #result + 1 > maxResponseBytes then
+                return sError("snapshot_limit_exceeded", "encoded response exceeds max_response_bytes")
+            end
+            return result .. "}"
+        elseif action == "setFieldRegion" then
+            local field = string.lower(tostring(req.field or ""))
+            local x = tonumber(req.x) or 0
+            local y = tonumber(req.y) or 0
+            local w = tonumber(req.w) or 1
+            local h = tonumber(req.h) or 1
+            local value = tonumber(req.value)
+            if value == nil or x < 0 or y < 0 or w < 1 or h < 1 or x + w > sim.XCELLS or y + h > sim.YCELLS then
+                return jerr("field region outside cell domain")
+            end
+            if field == "temp" or field == "temperature" or field == "ambientheat" then
+                sim.ambientHeat(x, y, w, h, value)
+            elseif field == "pressure" then
+                sim.pressure(x, y, w, h, value)
+            elseif field == "velocityx" or field == "vx" then
+                sim.velocityX(x, y, w, h, value)
+            elseif field == "velocityy" or field == "vy" then
+                sim.velocityY(x, y, w, h, value)
+            elseif field == "fanvelocityx" or field == "fanvelocityy" then
+                if value < -256 or value > 256 then return jerr("fan velocity outside safe range") end
+                if field == "fanvelocityx" then
+                    sim.fanVelocityX(x, y, w, h, value)
+                else
+                    sim.fanVelocityY(x, y, w, h, value)
+                end
+            else
+                return jerr("unknown field", ',"field":' .. jesc(field))
+            end
+            return jok("setFieldRegion", ',"field":' .. jesc(field) .. ',"cells":' .. jnum(w * h))
+
+        elseif action == "listElements" then
+            local parts = {}
+            local count = 0
+            for name, idx in pairs(elements) do
+                if type(name) == "string" and type(idx) == "number" then
+                    count = count + 1
+                    parts[#parts + 1] = '{"id":' .. jnum(idx) .. ',"identifier":' .. jesc(name) .. "}"
+                    if count >= 40 then break end
+                end
+            end
+            return jok("listElements", ',"count":' .. jnum(count) .. ',"elements":[' .. table.concat(parts, ",") .. "]")
+
+        elseif action == "getSimulationState" then
+            local pc = 0
+            if sim.partCount then
+                pc = sim.partCount()
+            elseif sim.NUM_PARTS then
+                pc = sim.NUM_PARTS
+            end
+            return jok("getSimulationState", ',"partCount":' .. jnum(pc))
+
+        elseif action == "getParticle" then
+            local id = tonumber(req.id)
+            if not id or not sim.partExists(id) then
+                return jerr("unknown particle", ',"id":' .. jnum(id))
+            end
+            local px, py = sim.partPosition(id)
+            local info = '{"id":' .. jnum(id)
+                .. ',"type":' .. jnum(sim.partProperty(id, "type"))
+                .. ',"x":' .. jnum(px)
+                .. ',"y":' .. jnum(py)
+                .. ',"temp":' .. jnum(sim.partProperty(id, "temp"))
+                .. ',"life":' .. jnum(sim.partProperty(id, "life"))
+                .. ',"vx":' .. jnum(sim.partProperty(id, "vx"))
+                .. ',"vy":' .. jnum(sim.partProperty(id, "vy")) .. '}'
+            return jok("getParticle", ',"particle":' .. info)
+        elseif action == "createParticle" then
+            local elemId = resolveElem(req.element)
+            local x = tonumber(req.x)
+            local y = tonumber(req.y)
+            if not elemId then return jerr("unknown element") end
+            if not x or not y or x < 0 or y < 0 or x >= sim.XRES or y >= sim.YRES then
+                return jerr("particle position outside pixel domain")
+            end
+            local id = sim.partCreate(-1, x, y, elemId)
+            if id == nil or id < 0 then return jerr("particle allocation failed") end
+            return jok("createParticle", ',"id":' .. jnum(id))
+
+        elseif action == "changeParticleType" then
+            local id = tonumber(req.id)
+            local elemId = resolveElem(req.element)
+            if not id or not sim.partExists(id) then return jerr("unknown particle") end
+            if not elemId then return jerr("unknown element") end
+            sim.partChangeType(id, elemId)
+            return jok("changeParticleType", ',"id":' .. jnum(id) .. ',"element":' .. jnum(elemId))
+
+        elseif action == "setParticleProperty" then
+            local id = tonumber(req.id)
+            local property = tostring(req.property or "")
+            local allowed = {life=true, ctype=true, temp=true, vx=true, vy=true, tmp=true, tmp2=true, tmp3=true, tmp4=true, dcolour=true, dcolor=true}
+            local value = tonumber(req.value)
+            if not id or not sim.partExists(id) then return jerr("unknown particle") end
+            if not allowed[property] then return jerr("particle property not allowed") end
+            if value == nil or value ~= value or value == math.huge or value == -math.huge then
+                return jerr("particle property must be finite numeric")
+            end
+            if property == "temp" and (value < 0 or value > 9999) then return jerr("temperature outside range") end
+            if (property == "dcolour" or property == "dcolor") and (value < 0 or value > 4294967295) then return jerr("dcolour outside range") end
+            sim.partProperty(id, property, value)
+            return jok("setParticleProperty", ',"id":' .. jnum(id))
+
+        elseif action == "killParticle" then
+            local id = tonumber(req.id)
+            if not id or not sim.partExists(id) then return jerr("unknown particle") end
+            sim.partKill(id)
+            return jok("killParticle", ',"id":' .. jnum(id) .. ',"killed":true')
+
+        elseif action == "placeDecoPoint" then
+            local x = tonumber(req.x) or 0
+            local y = tonumber(req.y) or 0
+            local rx = math.max(0, math.min(100, tonumber(req.rx) or 5))
+            local ry = math.max(0, math.min(100, tonumber(req.ry) or 5))
+            local r = math.max(0, math.min(255, tonumber(req.r) or 255))
+            local g = math.max(0, math.min(255, tonumber(req.g) or 255))
+            local b = math.max(0, math.min(255, tonumber(req.b) or 255))
+            local a = math.max(0, math.min(255, tonumber(req.a) or 255))
+            local tool = tonumber(req.tool) or 0
+            local brush = tonumber(req.brush) or 0
+            if x < 0 or y < 0 or x >= sim.XRES or y >= sim.YRES then
+                return jerr("deco point outside pixel bounds")
+            end
+            sim.decoBrush(x, y, rx, ry, r, g, b, a, tool, brush)
+            return jok("placeDecoPoint")
+
+        elseif action == "setCustomGravity" then
+            local gx = tonumber(req.gx) or 0
+            local gy = tonumber(req.gy) or 0
+            if gx ~= gx or gy ~= gy or gx == math.huge or gy == math.huge then return jerr("custom gravity components must be finite numeric") end
+            if gx < -100 or gx > 100 or gy < -100 or gy > 100 then return jerr("custom gravity components out of safe range") end
+            sim.customGravity(gx, gy)
+            return jok("setCustomGravity")
+
+        elseif action == "setEdgePressure" then
+            local v = tonumber(req.value)
+            if v == nil or v ~= v or v == math.huge then return jerr("edge pressure must be finite numeric") end
+            if v < -256 or v > 256 then return jerr("edge pressure out of safe range") end
+            sim.edgePressure(v)
+            return jok("setEdgePressure")
+
+        elseif action == "setEdgeVelocity" then
+            local vx = tonumber(req.vx) or 0
+            local vy = tonumber(req.vy) or 0
+            if vx ~= vx or vy ~= vy or vx == math.huge or vy == math.huge then return jerr("edge velocity components must be finite numeric") end
+            if vx < -256 or vx > 256 or vy < -256 or vy > 256 then return jerr("edge velocity components out of safe range") end
+            sim.edgeVelocity(vx, vy)
+            return jok("setEdgeVelocity")
+        elseif action == "setSimulationModes" then
+            local edge = req.edgeMode ~= nil and tonumber(req.edgeMode) or nil
+            local gravity = req.gravityMode ~= nil and tonumber(req.gravityMode) or nil
+            local air = req.airMode ~= nil and tonumber(req.airMode) or nil
+            if edge ~= nil and (edge ~= math.floor(edge) or edge < 0 or edge > 2) then return jerr("edgeMode outside range 0..2") end
+            if gravity ~= nil and (gravity ~= math.floor(gravity) or gravity < 0 or gravity > 3) then return jerr("gravityMode outside range 0..3") end
+            if air ~= nil and (air ~= math.floor(air) or air < 0 or air > 4) then return jerr("airMode outside range 0..4") end
+            if req.paused ~= nil and type(req.paused) ~= "boolean" then return jerr("paused must be boolean") end
+            if edge ~= nil then sim.edgeMode(edge) end
+            if gravity ~= nil then sim.gravityMode(gravity) end
+            if air ~= nil then sim.airMode(air) end
+            if req.paused ~= nil then sim.paused(req.paused) end
+            return jok("setSimulationModes")
+        elseif action == "getSimulationModes" then
+            return jok("getSimulationModes",
+                ',"edgeMode":' .. jnum(sim.edgeMode())
+                .. ',"gravityMode":' .. jnum(sim.gravityMode())
+                .. ',"airMode":' .. jnum(sim.airMode())
+                .. ',"paused":' .. (sim.paused() and "true" or "false"))
+        elseif action == "clearAll" then
+            if sim.clearSim then pcall(sim.clearSim) end
+            return jok("clearAll")
+
+
+        elseif action == "executeLua" then
+            local code = req.code or req.lua
+            if not code then return jerr("missing code") end
+            local fn, err = loadstring(code)
+            if not fn then return jerr("load error", ',"detail":' .. jesc(err)) end
+            local rok, rval = pcall(fn)
+            if not rok then return jerr("runtime", ',"detail":' .. jesc(rval)) end
+            return jok("executeLua", ',"result":' .. jesc(rval))
+        else
+            return jerr("unknown action", ',"action":' .. jesc(action))
+        end
+    end)
+    if not ok then
+        log("HANDLER_ERR " .. tostring(res))
+        return jerr("handler exception", ',"detail":' .. jesc(res))
+    end
+    return res
+end
+
+local serverPort = 9876
+local server
+local listenOk, err = pcall(function()
+    server = net.listen(serverPort, handleRequest)
+end)
+if listenOk and server then
+    _G.POWDER_BRIDGE_SERVER = server
+    _G.POWDER_BRIDGE_HANDLER = handleRequest
+    log("[OK] HTTP API listening on port " .. tostring(serverPort))
+else
+    log("[WARN] Could not start HTTP server: " .. tostring(err))
+end

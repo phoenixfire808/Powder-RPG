@@ -1,0 +1,46 @@
+{
+ "id": "deep_bone_pit",
+ "category": "deep",
+ "description": "A shallow pit scattered with pale debris (this build has no dedicated bone element, see notes) with a larger mound at the centre -- reads as an old kill site / mass grave. 18x8px.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": -400,
+  "max": -80
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.05,
+ "min_spacing": 440,
+ "clearance": {
+  "top": 1,
+  "bottom": 1,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 0,
+  "y": 7
+ },
+ "width": 18,
+ "height": 8,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "B": "bone"
+ },
+ "grid": [
+  "                  ",
+  "                  ",
+  "                  ",
+  "..................",
+  "..................",
+  ".B...B...B...B....",
+  ".B.B.B.BBB.B.B.B..",
+  ".......BBB........"
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "'bone' resolves to SAND (pale, heat-tolerant, already used for desert fossil-bed strata in world.lua's strataAt) as a placeholder -- swap the resolve-table entry the moment a real bone/ivory-toned element exists in the materials catalog; do not hardcode SAND directly in case that changes."
+}

@@ -1,0 +1,107 @@
+{
+ "name": "neut_seed_pod",
+ "description": "Neutron seed pod: 2x2 PUMP block beside two 2x2 CLNE(NEUT) breeders with a NEUT sprinkle; place a row of these under a DEUT bed for an even, low-flux ignition curtain.",
+ "why": "Save 428137 (Deuterium Fission Reactor) seeds its DEUT bed with a single-row NEUT curtain (55 NEUT in a 3px-tall band y=260-263 spanning the bed) produced by pods at (133,260) and (216,260): PUMP 2x2 + CLNE(NEUT) 2x2 pairs. Flat curtain seeding ignites a shallow bed evenly instead of scattering NEUT through the volume. blueprint_lint flags the 2x2 PUMP as unwalled (pump_vacu_no_wall); accepted -- in the source it sits in the reactor chamber floor and its job is to push the NEUT curtain upward into the bed, so the pod must be placed inside an already-walled chamber (e.g. pressure_chamber).",
+ "source": "save 428137, (133,260)-(143,263)",
+ "params": {
+  "pods": 1,
+  "pitch": 84
+ },
+ "parts": [
+  {
+   "repeat": "pods",
+   "at": [
+    0,
+    0
+   ],
+   "step": [
+    "pitch",
+    0
+   ],
+   "part": {
+    "group": [
+     {
+      "box": "PUMP",
+      "at": [
+       0,
+       1
+      ],
+      "size": [
+       2,
+       2
+      ],
+      "props": {
+       "temp_c": 22
+      }
+     },
+     {
+      "box": "CLNE",
+      "at": [
+       3,
+       1
+      ],
+      "size": [
+       2,
+       2
+      ],
+      "props": {
+       "ctype": "NEUT"
+      }
+     },
+     {
+      "box": "CLNE",
+      "at": [
+       6,
+       1
+      ],
+      "size": [
+       2,
+       2
+      ],
+      "props": {
+       "ctype": "NEUT"
+      }
+     },
+     {
+      "box": "NEUT",
+      "at": [
+       1,
+       0
+      ],
+      "size": [
+       8,
+       1
+      ]
+     },
+     {
+      "box": "NEUT",
+      "at": [
+       5,
+       2
+      ],
+      "size": [
+       1,
+       1
+      ]
+     },
+     {
+      "box": "NEUT",
+      "at": [
+       4,
+       3
+      ],
+      "size": [
+       4,
+       1
+      ]
+     }
+    ],
+    "at": [
+     0,
+     0
+    ]
+   }
+  }
+ ],
+ "verified": true
+}

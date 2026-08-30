@@ -1,0 +1,34 @@
+{
+  "name": "lint fixture: trips most rules",
+  "origin": [10, 10],
+  "parts": [
+    {"box": "WATR", "at": [0, 0], "size": [4, 4]},
+    {"box": "METL", "at": [4, 0], "size": [4, 4]},
+
+    {"box": "WIFI", "at": [20, 0], "size": [3, 3]},
+    {"set": {"channel": 5}, "at": [20, 0], "size": [3, 3], "element": "WIFI"},
+
+    {"box": "PRTI", "at": [40, 0], "size": [2, 2]},
+    {"set": {"channel": 9}, "at": [40, 0], "size": [2, 2], "element": "PRTI"},
+    {"box": "PRTI", "at": [44, 0], "size": [2, 2]},
+    {"set": {"channel": 9}, "at": [44, 0], "size": [2, 2], "element": "PRTI"},
+    {"box": "PRTO", "at": [48, 0], "size": [2, 2]},
+    {"set": {"channel": 9}, "at": [48, 0], "size": [2, 2], "element": "PRTO"},
+
+    {"box": "LCRY", "at": [60, 0], "size": [6, 4]},
+
+    {"box": "CLNE", "at": [70, 0], "size": [2, 2]},
+
+    {"box": "PUMP", "at": [80, 0], "size": [4, 4]},
+
+    {"box": "PLSM", "at": [0, 20], "size": [3, 3]},
+    {"box": "WOOD", "at": [3, 20], "size": [3, 3]},
+
+    {"box": "PSCN", "at": [100, 0], "size": [90, 1]},
+
+    {"box": "LN2", "at": [0, 40], "size": [3, 3]},
+
+    {"box": "ICE", "at": [10, 40], "size": [3, 3]},
+    {"set": {"temp_c": 200}, "at": [10, 40], "size": [3, 3], "element": "ICE"}
+  ]
+}

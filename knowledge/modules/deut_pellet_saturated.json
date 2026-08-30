@@ -1,0 +1,39 @@
+{
+ "name": "deut_pellet_saturated",
+ "description": "TTAN-cased DEUT pellet with every particle at life=65535 (the concentration ceiling): a ready-to-detonate high-yield charge or a primed neutron initiator. Size is the DEUT core; the shell adds 1px each side.",
+ "why": "Two community saves use max-life DEUT as a static primed block rather than fuel to be bred: 1468603 (Deuterium Reactor v1.3) keeps its whole core (x297-338 y250-256, 34 particles) at l=65535 inside a TTAN vessel for a single high-yield pulse, and 2223794 uses a 3x3 patch (307-309,194-196) at l=65535 as the initiator at the centre of its pit. DEUT life is concentration (existing lesson); 65535 is the highest value seen in any harvested save. Handle like a charge: it goes off on any NEUT contact.",
+ "source": "save 1468603 x297-338 y250-256 (DEUT l=65535, TTAN vessel 249-386 x 272-326); save 2223794 (307,194)-(309,196)",
+ "params": {
+  "width": 8,
+  "height": 3
+ },
+ "parts": [
+  {
+   "box": "TTAN",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    "width+2",
+    "height+2"
+   ]
+  },
+  {
+   "box": "DEUT",
+   "at": [
+    1,
+    1
+   ],
+   "size": [
+    "width",
+    "height"
+   ],
+   "props": {
+    "life": 65535,
+    "temp_c": 22
+   }
+  }
+ ],
+ "verified": true
+}

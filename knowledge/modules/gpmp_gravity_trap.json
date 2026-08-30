@@ -1,0 +1,53 @@
+{
+ "name": "gpmp_gravity_trap",
+ "description": "Twin GPMP (gravity-pump) walls squeezing a hot-VOID 'reaction well' between them -- a gravitational fusion-confinement alternative to magnetic (FRAY/CONV) or electrostatic (DMND cage) designs.",
+ "why": "1732752 ('Infinite fushion reactor') confines its fusion 'star' with two facing GPMP walls (x202-217 and x425-440, spanning y71-309) pulling fuel toward the centerline, where a VOID region (247,116)-(395,264) held at ~9700C deletes whatever reaches it -- a cheap 'fusion consumes the fuel here' abstraction rather than simulated fusion byproducts. No existing module models confinement this way (deut_cell_mk2 and dmnd_throat both use portal/CLNE-based designs); this is mechanically simpler (two walls + a disposal-well core) and is flagged in the mechanisms doc as a good 'cheap fusion' option for FSN-3.",
+ "source": "save 1732752, GPMP walls x202-217/425-440 y71-309 (3096 GPMP particles total); VOID well (247,116)-(395,264) Tavg=9694C",
+ "params": {
+  "wall_w": 15,
+  "gap": 60,
+  "height": 60,
+  "well_r": 10
+ },
+ "parts": [
+  {
+   "id": "left_wall",
+   "box": "GPMP",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    "wall_w",
+    "height"
+   ]
+  },
+  {
+   "id": "right_wall",
+   "box": "GPMP",
+   "at": [
+    "wall_w+gap",
+    0
+   ],
+   "size": [
+    "wall_w",
+    "height"
+   ]
+  },
+  {
+   "box": "VOID",
+   "at": [
+    "wall_w+gap/2-well_r",
+    "height/2-well_r"
+   ],
+   "size": [
+    "well_r*2",
+    "well_r*2"
+   ],
+   "props": {
+    "temp_c": 9700
+   }
+  }
+ ],
+ "verified": true
+}

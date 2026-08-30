@@ -1,0 +1,52 @@
+{
+ "id": "deep_crystal_chamber",
+ "category": "deep",
+ "description": "A hollow stone chamber deep underground with large crystal clusters growing from multiple walls/corners -- a bright, valuable landmark room. 16x13px.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": -500,
+  "max": -100
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.08,
+ "min_spacing": 460,
+ "clearance": {
+  "top": 1,
+  "bottom": 1,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 0,
+  "y": 12
+ },
+ "width": 16,
+ "height": 13,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "F": "stone",
+  "Q": "crystal"
+ },
+ "grid": [
+  "                ",
+  "                ",
+  "FFFFFFFFFFFFFFFF",
+  "F..............F",
+  "F..QQ.......Q..F",
+  "F..............F",
+  "F......QQ......F",
+  "F.......QQ.....F",
+  "F..............F",
+  "F..QQ.......Q..F",
+  "F..............F",
+  "FFFFFFFFFFFFFFFF",
+  "                "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Scaled-up sibling of underground_shrine's crystal motif -- more clusters, bigger chamber, deeper band -- so descending reads as 'the crystal theme intensifies', matching world.lua's existing geodeZoneAt bias toward deeper/snow-biome crystal odds."
+}

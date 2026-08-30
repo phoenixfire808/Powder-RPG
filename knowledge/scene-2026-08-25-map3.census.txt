@@ -1,0 +1,17 @@
+total=30677 walls{12:5999,8:96} P[-0@48,352 .. 5@428,32] Air[22C@0,0 .. 22C@0,0] gravMode=0 ambientHeat=false edgeMode=0
+PUMP n=11441 box=(243,21)-(583,361) Tavg=727 Tmin=727 Tmax=727
+GPMP n=8760 box=(235,13)-(591,369) Tavg=-273 Tmin=-273 Tmax=-273
+DMND n=3207 box=(9,31)-(573,372) Tavg=1007 Tmin=22 Tmax=5547
+NBLE n=2834 box=(255,32)-(571,347) Tavg=1826 Tmin=794 Tmax=5177
+METL n=1210 box=(4,11)-(593,377) Tavg=27 Tmin=22 Tmax=70
+PLSM n=1001 box=(254,32)-(570,347) Tavg=1937 Tmin=849 Tmax=5132
+WWLD n=722 box=(22,212)-(183,248) Tavg=22 Tmin=22 Tmax=22
+HSWC n=510 box=(22,256)-(159,275) Tavg=26 Tmin=26 Tmax=26
+LCRY n=470 box=(5,359)-(71,376) Tavg=68 Tmin=64 Tmax=71
+FRAY n=345 box=(54,121)-(149,157) Tavg=22 Tmin=22 Tmax=22
+URAN n=81 box=(399,348)-(427,349) Tavg=1172 Tmin=1169 Tmax=1182
+PSCN n=57 box=(4,12)-(592,376) Tavg=36 Tmin=22 Tmax=68
+NSCN n=22 box=(72,10)-(594,376) Tavg=58 Tmin=22 Tmax=67
+SPRK n=8 box=(50,377)-(57,377) Tavg=72 Tmin=69 Tmax=80
+WIFI n=5 box=(57,9)-(595,373) Tavg=-250 Tmin=-250 Tmax=-250
+BHOL n=4 box=(260,152)-(260,155) Tavg=7106 Tmin=4608 Tmax=9726

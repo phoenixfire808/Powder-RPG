@@ -11,8 +11,25 @@ in a side-scrolling world made entirely of simulated particles. This repo is **n
 Powder Toy project; it is Drew's RPG fork (`phoenixfire808/Powder-RPG` on GitHub).
 
 **[Download the latest Windows build](https://github.com/phoenixfire808/Powder-RPG/releases/latest)**
-— unzip, then **double-click `PowderToyRPG.exe`**. No batch file, no extra steps.
-(`Play.bat` is only a legacy launcher if double-click ever fails on your PC.)
+— unzip, then **double-click `PowderToyRPG.exe`**. No batch file required.
+
+## Repo layout (everything is here)
+
+| Path | What |
+|------|------|
+| `src/` | Engine fork (C++ elements, bridge HTTP, game view) |
+| `scripts/lua/rpg.lua` | **Powder RPG** gameplay (survival, world gen, HUD) |
+| `scripts/lua/rpg_plugins/` | RPG plugins (machines, companion, save, UI, …) |
+| `bridge_src/` | Lua bridge modules (colony, realism, RPG loader) |
+| `build_autorun.py` | Builds `build/autorun.lua` from `bridge_src/` |
+| `powder_toy_mcp.py` | MCP server for Claude / agents (`python powder_toy_mcp.py`) |
+| `powder_ext/` | MCP tool implementations |
+| `knowledge/` | Design docs, modules, structures, build lessons |
+| `releases/` | Per-version release notes |
+| `CLAUDE.md` | Agent operating protocol for this project |
+
+Clone this repo, build the engine (`meson` + `ninja` — see wiki), run `python build_autorun.py`,
+then play from `build/PowderToyRPG.exe`. MCP: point Cursor at `.mcp.json` in the repo root.
 
 Table of contents
 ---------------------------------------------------------------------------

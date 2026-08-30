@@ -1,0 +1,49 @@
+{
+ "id": "surface_ruined_wall",
+ "category": "surface",
+ "description": "A crumbling brick/stone wall segment with a crenellated top, a collapsed gap at the base and an eroded corner -- a leftover fortification, not a full building. 18x10px.",
+ "biomes": [
+  "desert",
+  "forest"
+ ],
+ "depth_band": {
+  "min": -8,
+  "max": 2
+ },
+ "rest_on_solid": true,
+ "erodible": true,
+ "rarity": 0.13,
+ "min_spacing": 240,
+ "clearance": {
+  "top": 1,
+  "bottom": 0,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 0,
+  "y": 9
+ },
+ "width": 18,
+ "height": 10,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "F": "brick"
+ },
+ "grid": [
+  "                  ",
+  "F F  F  F  F  F  F",
+  "FFFFFFFFFFFFFFFFFF",
+  "F................F",
+  "F................F",
+  "F................F",
+  "F................F",
+  "F................F",
+  "F................F",
+  "FFFFFFFFFFFFFFFFFF"
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Crenellation motif directly from 304820/2390773 castle saves (alternating solid/gap merlons along the top edge). Erosion holes are hand-placed here rather than via the generic pass so the 'ruined' read is guaranteed even before the per-instance erosion roll runs."
+}

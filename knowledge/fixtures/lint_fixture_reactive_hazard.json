@@ -1,0 +1,12 @@
+{
+  "description": "NA (sodium metal, custom reactive element) placed directly touching WATR -> reacts violently on unpause. Pre-compiled primitive fixture (not raw blueprint DSL) because NA is a custom define_element material that only resolves against a live game; test_lint.py feeds this straight to knowledge_tools.lint_compiled.",
+  "rule": "reactive_hazard",
+  "compiled": {
+    "ok": true,
+    "bounds": {"x1": 0, "y1": 0, "x2": 11, "y2": 3},
+    "primitives": [
+      {"kind": "box", "path": "parts[0]", "element": "NA", "x1": 0, "y1": 0, "x2": 3, "y2": 3},
+      {"kind": "box", "path": "parts[1]", "element": "WATR", "x1": 4, "y1": 0, "x2": 7, "y2": 3}
+    ]
+  }
+}

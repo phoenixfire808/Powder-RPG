@@ -1,0 +1,97 @@
+{
+ "METL": {
+  "HighTemperature": 1811.15,
+  "HeatConduct": 120
+ },
+ "IRON": {
+  "HighTemperature": 1811.15,
+  "HeatConduct": 150
+ },
+ "BRCK": {
+  "HighTemperature": 1773.15,
+  "HeatConduct": 45
+ },
+ "STNE": {
+  "HighTemperature": 1523.15,
+  "HeatConduct": 90
+ },
+ "CNCT": {
+  "HighTemperature": 1573.15,
+  "HeatConduct": 30
+ },
+ "COAL": {
+  "Flammable": 40,
+  "HeatConduct": 20
+ },
+ "BCOL": {
+  "Flammable": 60,
+  "HeatConduct": 20
+ },
+ "WOOD": {
+  "HighTemperature": 573.15,
+  "HeatConduct": 12
+ },
+ "PLNT": {
+  "HeatConduct": 15
+ },
+ "ICE": {
+  "HighTemperature": 273.15
+ },
+ "SNOW": {
+  "HighTemperature": 273.15
+ },
+ "OIL": {
+  "HighTemperature": 623.15,
+  "HeatConduct": 30
+ },
+ "GLAS": {
+  "HeatConduct": 30
+ },
+ "BGLA": {
+  "HeatConduct": 30
+ },
+ "TTAN": {
+  "HeatConduct": 60
+ },
+ "TUNG": {
+  "HeatConduct": 210
+ },
+ "SALT": {
+  "HeatConduct": 40,
+  "HighTemperature": 1074.15
+ },
+ "SAND": {
+  "HeatConduct": 25
+ },
+ "DMND": {
+  "HeatConduct": 255
+ },
+ "LITH": {
+  "HeatConduct": 150
+ },
+ "MERC": {
+  "HeatConduct": 60
+ },
+ "H2": {
+  "HeatConduct": 40
+ },
+ "NBLE": {
+  "HeatConduct": 25
+ },
+ "WAX": {
+  "HeatConduct": 20
+ },
+ "CLST": {
+  "HeatConduct": 40,
+  "HighTemperature": 1873.15
+ },
+ "QRTZ": {
+  "HeatConduct": 45
+ },
+ "PQRT": {
+  "HeatConduct": 40
+ },
+ "GEL": {
+  "HeatConduct": 25
+ }
+}

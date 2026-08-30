@@ -1,0 +1,37 @@
+{
+ "description": "Reinforced-concrete bunker: an RCNC shell with a literal RBAR mesh layer embedded at wall mid-depth.",
+ "name": "rc_bunker",
+ "params": {
+  "height": 24,
+  "width": 30
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "RCNC",
+   "hollow": 4,
+   "id": "rcb_shell",
+   "size": [
+    "width",
+    "height"
+   ]
+  },
+  {
+   "at": [
+    2,
+    2
+   ],
+   "box": "RBAR",
+   "hollow": 1,
+   "id": "rcb_mesh",
+   "size": [
+    "width-4",
+    "height-4"
+   ]
+  }
+ ],
+ "why": "RCNC already models rebar-in-concrete conduction (PROP_CONDUCTS, k=1.7 W/mK) implicitly; this module makes the rebar layer an explicit RBAR sheet sandwiched inside the RCNC wall so it reads correctly as a real conductive path for channel/lint checks and can be tapped electrically. RCNC spalls at only 300 C (the rebar corrodes/expands under fire load) -- far below plain CNCR's 1200 C -- so use CNCR, not this module, for reactor biological shielding; use rc_bunker for ordinary blast/structural walls."
+}

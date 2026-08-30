@@ -1,0 +1,82 @@
+{
+ "name": "neut_cray_nozzle",
+ "description": "Aimable neutron-beam igniter: IRON/TTAN/CRMC nozzle body with an INWR signal pin down the middle ending in a CRAY(NEUT) emitter (tmp=beam length). Place with the CRAY face against the fuel bed.",
+ "why": "Save 2396223 (Nuclear Fission Power Plant) starts its POLO/DEUT bed with two of these 6x8 nozzles at (493,228)/(500,228) (click neutron beam to start); CRAY carries ctype=NEUT, tmp=45, standing at 1727C. INWR is used for the pin because it never leaks spark into the IRON body. The CRAY is at 1727C in the source (beam heat) so keep a 1px INSL gap to anything meltable.",
+ "source": "save 2396223, (493,228)-(498,235)",
+ "params": {
+  "beam": 45
+ },
+ "parts": [
+  {
+   "box": "IRON",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    6,
+    8
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    1,
+    0
+   ],
+   "size": [
+    1,
+    8
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    3,
+    0
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    5,
+    0
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    0
+   ],
+   "size": [
+    1,
+    7
+   ]
+  },
+  {
+   "box": "CRAY",
+   "at": [
+    4,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "NEUT",
+    "tmp": "beam"
+   }
+  }
+ ],
+ "verified": true
+}

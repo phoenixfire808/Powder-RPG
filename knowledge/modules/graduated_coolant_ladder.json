@@ -1,0 +1,81 @@
+{
+ "name": "graduated_coolant_ladder",
+ "description": "A vertical column of 4 PRTO cells on evenly-stepped channels (and thus evenly-stepped standing temperatures) inside a shared INSL jacket -- a multi-tier coolant relay instead of one single-hop portal pair.",
+ "why": "Five saves in the 2026-08-25 harvest build coolant relays this way instead of a single PRTI/PRTO hop: 3209222 has the cleanest 4-tier ladder (PRTO@355,216-223 climbing 1001C->2001C on channels 13/23, PRTO@231/291,238-244 climbing 3001C->4301C on channels 33-46); 2001108, 259948, 2396223 and 254630 all show the same graduated-hop pattern at smaller scale. None of the existing 30 modules expose a multi-tier portal ladder (portal_pair is a single hop); this generalizes the pattern the way wifi_bus_row generalized the WIFI channel bus.",
+ "source": "save 3209222, PRTO ladder x231-355 y216-244 (4 cells, channels 13/23/33/43, temps 1001C/2001C/3001C/4001C in even 1000C steps)",
+ "params": {
+  "channel_start": 13,
+  "channel_step": 10,
+  "pitch": 4
+ },
+ "parts": [
+  {
+   "box": "INSL",
+   "at": [
+    -1,
+    -1
+   ],
+   "size": [
+    3,
+    "pitch*4+2"
+   ]
+  },
+  {
+   "box": "PRTO",
+   "at": [
+    0,
+    "pitch*0"
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": "channel_start+0*channel_step"
+   }
+  },
+  {
+   "box": "PRTO",
+   "at": [
+    0,
+    "pitch*1"
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": "channel_start+1*channel_step"
+   }
+  },
+  {
+   "box": "PRTO",
+   "at": [
+    0,
+    "pitch*2"
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": "channel_start+2*channel_step"
+   }
+  },
+  {
+   "box": "PRTO",
+   "at": [
+    0,
+    "pitch*3"
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": "channel_start+3*channel_step"
+   }
+  }
+ ],
+ "verified": true
+}

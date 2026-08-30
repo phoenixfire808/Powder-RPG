@@ -1,0 +1,73 @@
+{
+ "name": "nscn_fuel_head",
+ "description": "PLUT fuel bed in an INSL-lined TTAN case, ballasted in a non-conductive NSCN mound.",
+ "why": "Save1 'how it works' #1: PLUT bed on top is the neutron source; the NSCN mound around it is ballast/heat mass that can never carry a spark to the case (NSCN will not pass SPRK to PSCN), so the fuel bed can't be triggered from outside -- only by the seeded DEUT/CLNE(NEUT) below it.",
+ "source": "save1, x226-290 y176-212 (PLUT n=1022 x237-277 y181-205, NSCN mound n=816, TTAN case, INSL liner)",
+ "params": {
+  "width": 64,
+  "height": 36,
+  "bed_inset": 11,
+  "bed_height": 25
+ },
+ "parts": [
+  {
+   "box": "NSCN",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    "width",
+    "height"
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    7,
+    2
+   ],
+   "size": [
+    "width-14",
+    "height-4"
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    10,
+    4
+   ],
+   "size": [
+    "width-20",
+    "height-8"
+   ]
+  },
+  {
+   "box": "PLUT",
+   "at": [
+    "bed_inset",
+    5
+   ],
+   "size": [
+    "width-2*bed_inset",
+    "bed_height"
+   ]
+  },
+  {
+   "box": "DEUT",
+   "at": [
+    "width//2-1",
+    5
+   ],
+   "size": [
+    3,
+    1
+   ],
+   "props": {
+    "life": 1000
+   }
+  }
+ ],
+ "verified": true
+}

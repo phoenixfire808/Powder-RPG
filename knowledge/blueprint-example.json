@@ -1,0 +1,98 @@
+{
+ "name": "mini reactor demo",
+ "origin": [
+  200,
+  150
+ ],
+ "clear_before": false,
+ "parts": [
+  {
+   "id": "vessel",
+   "box": "TTAN",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    60,
+    40
+   ],
+   "hollow": 3
+  },
+  {
+   "box": "water",
+   "at": [
+    "vessel.left+3",
+    "vessel.top+3"
+   ],
+   "size": [
+    54,
+    34
+   ]
+  },
+  {
+   "id": "heater",
+   "module": "insulated_box",
+   "at": [
+    "vessel.right+4",
+    "vessel.top"
+   ],
+   "params": {
+    "element": "HEAC",
+    "width": 6,
+    "height": 6,
+    "props": {
+     "temp_c": 800
+    }
+   }
+  },
+  {
+   "module": "wifi_node",
+   "at": [
+    "heater.right+2",
+    "heater.top"
+   ],
+   "params": {
+    "channel": 7
+   }
+  },
+  {
+   "repeat": 4,
+   "at": [
+    "vessel.left",
+    "vessel.bottom+6"
+   ],
+   "step": [
+    16,
+    0
+   ],
+   "part": {
+    "box": "brick",
+    "at": [
+     0,
+     0
+    ],
+    "size": [
+     12,
+     4
+    ]
+   }
+  },
+  {
+   "wall": "air",
+   "at": [
+    "vessel.left-6",
+    "vessel.top-6"
+   ],
+   "size": [
+    4,
+    52
+   ]
+  }
+ ],
+ "then": [
+  {
+   "step": 60
+  }
+ ]
+}

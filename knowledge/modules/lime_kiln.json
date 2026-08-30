@@ -1,0 +1,36 @@
+{
+ "description": "Lime kiln vessel: an FBRK shell holding a CAO (quicklime) charge, ready for field slaking.",
+ "name": "lime_kiln",
+ "params": {
+  "height": 16,
+  "width": 20
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "FBRK",
+   "hollow": 2,
+   "id": "kiln_shell",
+   "size": [
+    "width",
+    "height"
+   ]
+  },
+  {
+   "at": [
+    2,
+    2
+   ],
+   "box": "CAO",
+   "id": "kiln_charge",
+   "size": [
+    "width-4",
+    "height-4"
+   ]
+  }
+ ],
+ "why": "FBRK (fired clay brick, vitrifies ~1150 C) is a real historic kiln-shell material with a comfortable margin under CAO's own 2613 C melt point. The CAO charge here represents the finished quicklime product of a real kiln (limestone calcination itself needs LMST, not in the live element set) -- add WATR or DSTW to trigger the genuine exothermic slaking reaction (+300 K, converts to CLST hydrated lime). Do the water-add step in a ventilated/open cell: real quicklime slaking is vigorous and the vessel heats fast."
+}

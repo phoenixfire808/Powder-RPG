@@ -1,0 +1,917 @@
+{
+  "schema_version": 2,
+  "coverage": "source-backed native editor tools, wall types, and selected Lua brush/renderer/interface constants",
+  "native_tools": [
+    {
+      "name": "HEAT",
+      "identifier": "DEFAULT_TOOL_HEAT",
+      "id": 0
+    },
+    {
+      "name": "COOL",
+      "identifier": "DEFAULT_TOOL_COOL",
+      "id": 1
+    },
+    {
+      "name": "AIR",
+      "identifier": "DEFAULT_TOOL_AIR",
+      "id": 2
+    },
+    {
+      "name": "VAC",
+      "identifier": "DEFAULT_TOOL_VAC",
+      "id": 3
+    },
+    {
+      "name": "PGRV",
+      "identifier": "DEFAULT_TOOL_PGRV",
+      "id": 4
+    },
+    {
+      "name": "NGRV",
+      "identifier": "DEFAULT_TOOL_NGRV",
+      "id": 5
+    },
+    {
+      "name": "MIX",
+      "identifier": "DEFAULT_TOOL_MIX",
+      "id": 6
+    },
+    {
+      "name": "CYCL",
+      "identifier": "DEFAULT_TOOL_CYCL",
+      "id": 7
+    },
+    {
+      "name": "AMBM",
+      "identifier": "DEFAULT_TOOL_AMBM",
+      "id": 8
+    },
+    {
+      "name": "AMBP",
+      "identifier": "DEFAULT_TOOL_AMBP",
+      "id": 9
+    },
+    {
+      "name": "WIND",
+      "identifier": "DEFAULT_TOOL_WIND",
+      "id": 10
+    }
+  ],
+  "walls": [
+    {
+      "id": 0,
+      "name": "ERASE",
+      "identifier": "DEFAULT_WL_ERASE",
+      "description": "Erases walls."
+    },
+    {
+      "id": 1,
+      "name": "CONDUCTIVE WALL",
+      "identifier": "DEFAULT_WL_CNDTW",
+      "description": "Blocks everything. Conductive."
+    },
+    {
+      "id": 2,
+      "name": "EWALL",
+      "identifier": "DEFAULT_WL_EWALL",
+      "description": "E-Wall. Becomes transparent when electricity is connected."
+    },
+    {
+      "id": 3,
+      "name": "DETECTOR",
+      "identifier": "DEFAULT_WL_DTECT",
+      "description": "Detector. Generates electricity when a particle is inside."
+    },
+    {
+      "id": 4,
+      "name": "STREAMLINE",
+      "identifier": "DEFAULT_WL_STRM",
+      "description": "Streamline. Creates a line that follows air movement."
+    },
+    {
+      "id": 5,
+      "name": "FAN",
+      "identifier": "DEFAULT_WL_FAN",
+      "description": "Fan. Accelerates air. Use the line tool to set direction and strength."
+    },
+    {
+      "id": 6,
+      "name": "LIQUID WALL",
+      "identifier": "DEFAULT_WL_LIQD",
+      "description": "Allows liquids, blocks all other particles. Conductive."
+    },
+    {
+      "id": 7,
+      "name": "ABSORB WALL",
+      "identifier": "DEFAULT_WL_ABSRB",
+      "description": "Absorbs particles but lets air currents through."
+    },
+    {
+      "id": 8,
+      "name": "WALL",
+      "identifier": "DEFAULT_WL_WALL",
+      "description": "Basic wall, blocks everything."
+    },
+    {
+      "id": 9,
+      "name": "AIRONLY WALL",
+      "identifier": "DEFAULT_WL_AIR",
+      "description": "Allows air, but blocks all particles."
+    },
+    {
+      "id": 10,
+      "name": "POWDER WALL",
+      "identifier": "DEFAULT_WL_POWDR",
+      "description": "Allows powders, blocks all other particles."
+    },
+    {
+      "id": 11,
+      "name": "CONDUCTOR",
+      "identifier": "DEFAULT_WL_CNDTR",
+      "description": "Conductor. Allows all particles to pass through and conducts electricity."
+    },
+    {
+      "id": 12,
+      "name": "EHOLE",
+      "identifier": "DEFAULT_WL_EHOLE",
+      "description": "E-Hole. absorbs particles, releases them when powered."
+    },
+    {
+      "id": 13,
+      "name": "GAS WALL",
+      "identifier": "DEFAULT_WL_GAS",
+      "description": "Allows gases, blocks all other particles."
+    },
+    {
+      "id": 14,
+      "name": "GRAVITY WALL",
+      "identifier": "DEFAULT_WL_GRVTY",
+      "description": "Gravity wall. Newtonian Gravity has no effect inside a box drawn with this."
+    },
+    {
+      "id": 15,
+      "name": "ENERGY WALL",
+      "identifier": "DEFAULT_WL_ENRGY",
+      "description": "Allows energy particles, blocks all other particles."
+    },
+    {
+      "id": 16,
+      "name": "AIRBLOCK WALL",
+      "identifier": "DEFAULT_WL_NOAIR",
+      "description": "Allows all particles, but blocks air."
+    },
+    {
+      "id": 17,
+      "name": "ERASEALL",
+      "identifier": "DEFAULT_WL_ERASEA",
+      "description": "Erases walls, particles, and signs."
+    },
+    {
+      "id": 18,
+      "name": "STASIS WALL",
+      "identifier": "DEFAULT_WL_STASIS",
+      "description": "Freezes particles inside the wall in place until powered."
+    }
+  ],
+  "constants": [
+    {
+      "name": "AIRC_BOUSSINESQ",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "AIRC_LEGACY",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "AIRC_NONE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "AIR_NOUPDATE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "AIR_OFF",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "AIR_ON",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "AIR_PRESSUREOFF",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "AIR_VELOCITYOFF",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "BRUSH_CIRCLE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "BRUSH_SQUARE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "BRUSH_TRIANGLE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "CANMOVE_BOUNCE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "CANMOVE_BUILTIN",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "CANMOVE_ENTER",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "CANMOVE_SWAP",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "CELL",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "COLOUR_BASC",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "COLOUR_DEFAULT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "COLOUR_DEST",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "COLOUR_GRAD",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "COLOUR_HEAT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "COLOUR_LIFE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DECOSPACE_GAMMA18",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECOSPACE_GAMMA22",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECOSPACE_LINEAR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECOSPACE_SRGB",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECO_ADD",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECO_CLEAR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECO_DIVIDE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECO_DRAW",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECO_FIRE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DECO_MULTIPLY",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECO_SMUDGE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DECO_SUBTRACT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_AIR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_AIRC",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_AIRH",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_AIRP",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_AIRV",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_AIRW",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_EFFE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_PERS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "DISPLAY_WARP",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "EDGE_LOOP",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "EDGE_SOLID",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "EDGE_VOID",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "EFFECT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "EFFECT_DBGLINES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "EFFECT_GRAVIN",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "EFFECT_GRAVOUT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "EFFECT_LINES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "FIREMODE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "FIRE_ADD",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "FIRE_BLEND",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "FIRE_SPARK",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "FLAG_MOVABLE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "FLAG_PHOTDECO",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "FLAG_SKIPMOVE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "FLAG_STAGNANT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "GRAV_CUSTOM",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "GRAV_OFF",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "GRAV_RADIAL",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "GRAV_VERTICAL",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "ISTP",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "JUSTMODE_LEFT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "JUSTMODE_MIDDLE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "JUSTMODE_NONE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "JUSTMODE_RIGHT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "MAX_PARTS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "MAX_SIGNS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "MOUSEUP_BLUR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaInterface.cpp"
+      ]
+    },
+    {
+      "name": "MOUSEUP_DRAWEND",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaInterface.cpp"
+      ]
+    },
+    {
+      "name": "MOUSEUP_NORMAL",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaInterface.cpp"
+      ]
+    },
+    {
+      "name": "NCELL",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NO_DECO",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "NT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_AIRMODES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_BRUSHES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_CANMOVEMODES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_CONVMODES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_DECOSPACES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_DEFAULTBRUSHES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_EDGEMODES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_GRAVMODES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_JUSTMODES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_TEMPSCALES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "NUM_TOOLINDICES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaInterface.cpp"
+      ]
+    },
+    {
+      "name": "NUM_WALLS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "OPTIONS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMAPBITS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "PMAPMASK",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "PMODE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_ADD",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_BLEND",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_BLOB",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_BLUR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_FLARE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_FLAT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_GLOW",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_LFLARE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_NONE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PMODE_SPARK",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PSPEC_STICKMAN",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "PT_NUM",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "RENDER_BASC",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "RENDER_BLOB",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "RENDER_BLUR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "RENDER_EFFE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "RENDER_FIRE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "RENDER_GLOW",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "RENDER_NONE",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaRenderer.cpp"
+      ]
+    },
+    {
+      "name": "ST",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "TEMPSCALE_CELSIUS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "TEMPSCALE_FAHRENHEIT",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "TEMPSCALE_KELVIN",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "XCELLS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "XCNTR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "XRES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "YCELLS",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "YCNTR",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    },
+    {
+      "name": "YRES",
+      "sources": [
+        "D:/The-Powder-Toy/src/lua/LuaSimulation.cpp"
+      ]
+    }
+  ],
+  "counts": {
+    "native_tools": 11,
+    "walls": 19,
+    "constants": 121
+  },
+  "notes": [
+    "Native tools are editor operations; they are not automatically safe in HTTP context.",
+    "Tool identifiers are DEFAULT_TOOL_* names used by tools.index.",
+    "Wall types require typed, main-thread-safe wrappers before MCP execution.",
+    "Constants are cataloged for plan generation and validation, not arbitrary code execution.",
+    "LCONST macro placeholders k and v are excluded from the exported constant inventory."
+  ]
+}

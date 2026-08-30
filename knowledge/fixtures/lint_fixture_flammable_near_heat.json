@@ -1,0 +1,12 @@
+{
+  "description": "KERO (kerosene, flammable=300 in materials-catalog.json) placed within 2px of FIRE -> critical. FIRE is an always-hot native element (_HEAT_SOURCE_ALWAYS), no accompanying set/props needed.",
+  "rule": "flammable_near_heat",
+  "compiled": {
+    "ok": true,
+    "bounds": {"x1": 0, "y1": 0, "x2": 13, "y2": 3},
+    "primitives": [
+      {"kind": "box", "path": "parts[0]", "element": "KERO", "x1": 5, "y1": 0, "x2": 8, "y2": 3},
+      {"kind": "box", "path": "parts[1]", "element": "FIRE", "x1": 10, "y1": 0, "x2": 13, "y2": 3}
+    ]
+  }
+}

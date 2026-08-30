@@ -1,0 +1,109 @@
+{
+ "name": "dmnd_throat",
+ "version": 2,
+ "description": "DMND funnel throat between a TTAN plenum plate and a URAN liner, with a cryo PRTI/PRTO pair and a NEUT/CLNE seed.",
+ "why": "Save1 'how it works' #2-3: neutrons drop through the DMND throat from the fuel bed into the chamber below; PRTI ch-1 brings cryo feed in on the west side, PRTO ch-1 sends it back out the east side, and a WIFI/PSCN tap ignites the CLNE(NEUT) seed that starts the chain. v2 hardening (blueprint_lint had 3 critical findings): (1) PRTO gets a plain 4-side INSL wrap -- nothing else in the module touches it, so no signal path needed preserving; (2) the WIFI ignition tap is widened by 1 column (away from the PSCN it touches) so a full INSL ring can wrap it while the original PSCN contact -- the actual ignition signal entry -- stays touching WIFI exactly as captured; (3) the conductive_floor_span finding on the full-width TTAN plenum plate is fixed by splitting it into two TTAN halves with a 2px INSL gap at the midpoint (the rule's own suggested fix), well clear of the DMND funnel and URAN liner which sit on rows below it. Note: PRTI is not covered by the heat_source_uninsulated rule (it only checks WIFI/PRTO/HEAC) so it is left unjacketed, matching the rule's own scope. Re-verified: blueprint_lint reports zero critical findings, compile ok.",
+ "source": "save1, x226-290 y228-239 (TTAN plenum y224-227, METL shoulders x244-253/262-271, DMND core x254-261, URAN row y237-239)",
+ "params": {
+  "width": 64,
+  "throat_width": 8,
+  "height": 16
+ },
+ "parts": [
+  {
+   "box": "TTAN",
+   "at": [0, 0],
+   "size": ["width//2-1", 4]
+  },
+  {
+   "box": "INSL",
+   "at": ["width//2-1", 0],
+   "size": [2, 4]
+  },
+  {
+   "box": "TTAN",
+   "at": ["width//2+1", 0],
+   "size": ["width//2-1", 4]
+  },
+  {
+   "box": "METL",
+   "at": [18, 4],
+   "size": ["width//2-22", 10]
+  },
+  {
+   "box": "METL",
+   "at": ["width//2+4", 4],
+   "size": ["width//2-22", 10]
+  },
+  {
+   "box": "DMND",
+   "at": ["width//2-throat_width//2", 4],
+   "size": ["throat_width", "height-4"]
+  },
+  {
+   "box": "URAN",
+   "at": [18, "height-2"],
+   "size": ["width-36", 2]
+  },
+  {
+   "box": "NEUT",
+   "at": ["width//2-1", 6],
+   "size": [2, 1]
+  },
+  {
+   "box": "CLNE",
+   "at": ["width//2-1", 8],
+   "size": [2, 1],
+   "props": {"ctype": "NEUT"}
+  },
+  {
+   "box": "PRTI",
+   "at": [13, 4],
+   "size": [1, 4],
+   "props": {"channel": 1}
+  },
+  {
+   "box": "INSL",
+   "at": ["width-14", 3],
+   "size": [3, 6]
+  },
+  {
+   "box": "PRTO",
+   "at": ["width-13", 4],
+   "size": [1, 4],
+   "props": {"channel": 1}
+  },
+  {
+   "box": "WIFI",
+   "at": ["width-13", 12],
+   "size": [2, 1],
+   "props": {"channel": 3}
+  },
+  {
+   "box": "PSCN",
+   "at": ["width-13", 13],
+   "size": [1, 1]
+  },
+  {
+   "box": "INSL",
+   "at": ["width-14", 12],
+   "size": [1, 1]
+  },
+  {
+   "box": "INSL",
+   "at": ["width-11", 12],
+   "size": [1, 1]
+  },
+  {
+   "box": "INSL",
+   "at": ["width-13", 11],
+   "size": [2, 1]
+  },
+  {
+   "box": "INSL",
+   "at": ["width-12", 13],
+   "size": [1, 1]
+  }
+ ],
+ "verified": true
+}

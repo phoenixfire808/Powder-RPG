@@ -1,0 +1,42 @@
+{
+ "id": "detail_campfire_small",
+ "category": "detail",
+ "description": "A minimal stone-ringed campfire with a glow ember -- the standalone version of the fire prop baked into surface_campsite, for scattering alone. 4x3px.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": -1,
+  "max": 0
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.14,
+ "min_spacing": 100,
+ "clearance": {
+  "top": 0,
+  "bottom": 0,
+  "left": 0,
+  "right": 0
+ },
+ "anchor": {
+  "x": 1,
+  "y": 2
+ },
+ "width": 4,
+ "height": 3,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "K": "stone",
+  "V": "glow"
+ },
+ "grid": [
+  "    ",
+  " V  ",
+  " KK "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "Kept separate from surface_campsite so world.lua can place a bare campfire far more often (min_spacing 100) than a full camp scene (min_spacing 300)."
+}

@@ -1,10 +1,8 @@
 # Misc extensions, system files
 *.zip
-*.txt
 *.gz
 *.out
 *.sh
-*.py
 *.png
 *.ppm
 *.swp
@@ -27,15 +25,29 @@ config.log
 /site_scons/
 /generated/
 
-# User data
+# User data (stock TPT local clutter — not the RPG mod tree)
 /stamps/
 /Saves/
-/scripts/
 /recordings/
 *.def
 *.pref
-*.lua
 screenshot_*
+
+# Knowledge: too large / personal / generated locally
+knowledge/saves/
+knowledge/previews/
+knowledge/rpg-save.json
+knowledge/rpg-save.json.bak*
+knowledge/*.parts.jsonl
+knowledge/experiments*.jsonl
+
+# Local runtime (never commit)
+lab_instance/
+logs/
+*.token
+powder-bridge.token
+__pycache__/
+*.pyc
 
 # Visual studio
 /Debug/

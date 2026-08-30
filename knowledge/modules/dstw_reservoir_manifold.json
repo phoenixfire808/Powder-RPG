@@ -1,0 +1,74 @@
+{
+ "name": "dstw_reservoir_manifold",
+ "description": "Hollow BRCK/INSL basin filled with DSTW, draining through N PIPE(DSTW) offtakes.",
+ "why": "Build-lessons 'use DSTW, not WATR, for coolant that touches conductors or logic': the plant runs its whole condenser/reservoir loop on DSTW because it does not conduct SPRK; this module is the generic non-conductive reservoir with a manifold of pipe offtakes armed to the same ctype.",
+ "source": "save2, DSTW reservoir + PIPE manifold x480-600 y302-330",
+ "params": {
+  "width": 120,
+  "height": 28,
+  "pipes": 4,
+  "pipe_length": 20
+ },
+ "parts": [
+  {
+   "box": "BRCK",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    "width",
+    "height"
+   ],
+   "hollow": 3
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    "height-4"
+   ],
+   "size": [
+    "width-6",
+    2
+   ]
+  },
+  {
+   "box": "DSTW",
+   "at": [
+    3,
+    3
+   ],
+   "size": [
+    "width-6",
+    "height-8"
+   ]
+  },
+  {
+   "repeat": "pipes",
+   "at": [
+    "width",
+    4
+   ],
+   "step": [
+    0,
+    6
+   ],
+   "part": {
+    "box": "PIPE",
+    "at": [
+     0,
+     0
+    ],
+    "size": [
+     "pipe_length",
+     2
+    ],
+    "props": {
+     "ctype": "DSTW"
+    }
+   }
+  }
+ ],
+ "verified": true
+}

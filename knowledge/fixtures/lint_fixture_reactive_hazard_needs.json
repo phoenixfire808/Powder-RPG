@@ -1,0 +1,21 @@
+{
+  "description": "MG (magnesium, custom reactive element) touching FIRE with O2 also adjacent -> the 'needs' clause of its reactive rule ('FIRE>STNE,SELF:900:.35:O2:FIRE') is satisfied, so it should still fire reactive_hazard. A control case without O2 nearby is exercised separately in test_lint.py to confirm 'needs' actually gates the finding.",
+  "rule": "reactive_hazard",
+  "compiled": {
+    "ok": true,
+    "bounds": {"x1": 0, "y1": 0, "x2": 11, "y2": 3},
+    "primitives": [
+      {"kind": "box", "path": "parts[0]", "element": "MG", "x1": 0, "y1": 0, "x2": 3, "y2": 3},
+      {"kind": "box", "path": "parts[1]", "element": "FIRE", "x1": 4, "y1": 0, "x2": 7, "y2": 3},
+      {"kind": "box", "path": "parts[2]", "element": "O2", "x1": 0, "y1": 4, "x2": 3, "y2": 6}
+    ]
+  },
+  "compiled_no_o2": {
+    "ok": true,
+    "bounds": {"x1": 0, "y1": 0, "x2": 7, "y2": 3},
+    "primitives": [
+      {"kind": "box", "path": "parts[0]", "element": "MG", "x1": 0, "y1": 0, "x2": 3, "y2": 3},
+      {"kind": "box", "path": "parts[1]", "element": "FIRE", "x1": 4, "y1": 0, "x2": 7, "y2": 3}
+    ]
+  }
+}

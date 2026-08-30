@@ -1,0 +1,58 @@
+{
+ "name": "inwr_pylon",
+ "description": "X-truss METL pylon with an INWR anchor point at the apex for a crossing-safe catenary wire run.",
+ "why": "Build-lessons 'INWR for buried and overhead signal runs': INWR conducts SPRK only along itself, never to neighbouring conductors, so it can hang between two conductive METL pylons without shorting the truss. Connect two instances with {\"line\": \"INWR\", \"from\": \"p1.top\", \"to\": \"p2.top\"}.",
+ "source": "save2, METL X-truss pylons x36-100 y246-306 with INWR catenaries y265-299",
+ "params": {
+  "width": 24,
+  "height": 60
+ },
+ "parts": [
+  {
+   "line": "METL",
+   "from": [
+    0,
+    0
+   ],
+   "to": [
+    "width-1",
+    "height-3"
+   ]
+  },
+  {
+   "line": "METL",
+   "from": [
+    "width-1",
+    0
+   ],
+   "to": [
+    0,
+    "height-3"
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    0,
+    "height-2"
+   ],
+   "size": [
+    "width",
+    2
+   ]
+  },
+  {
+   "id": "top",
+   "box": "INWR",
+   "at": [
+    "width//2",
+    0
+   ],
+   "size": [
+    1,
+    1
+   ]
+  }
+ ],
+ "verified": true
+}

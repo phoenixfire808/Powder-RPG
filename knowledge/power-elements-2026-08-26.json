@@ -1,0 +1,268 @@
+[
+ {
+  "name": "UO2",
+  "description": "Uranium dioxide fuel pellet: slow spontaneous fission (NEUT emitter), melts 2865 C, poor heat conductor (8 W/mK). Clad it in ZIRC.",
+  "colour": "0x2B2B30",
+  "type": "SOLID",
+  "properties": [
+   "PROP_NEUTPENETRATE",
+   "PROP_RADIOACTIVE"
+  ],
+  "temperature": 293.15,
+  "highTemperature": 3138.15,
+  "highTemperatureTransition": "LAVA",
+  "hardness": 90,
+  "weight": 100,
+  "heatConduct": 30,
+  "behavior": {
+   "kind": "emitter",
+   "params": {
+    "emits": "NEUT",
+    "interval": 120,
+    "count": 1,
+    "temperature": 0,
+    "speed": 0
+   }
+  }
+ },
+ {
+  "name": "ZIRC",
+  "description": "Zircaloy-4 cladding: neutron-transparent, conducts heat (22 W/mK) and electricity, melts 1852 C.",
+  "colour": "0xB4BCC4",
+  "type": "SOLID",
+  "properties": [
+   "PROP_NEUTPENETRATE",
+   "PROP_CONDUCTS"
+  ],
+  "temperature": 293.15,
+  "highTemperature": 2125.15,
+  "highTemperatureTransition": "LAVA",
+  "hardness": 60,
+  "weight": 100,
+  "heatConduct": 60,
+  "behavior": {
+   "kind": "inert"
+  }
+ },
+ {
+  "name": "GRPH",
+  "description": "Nuclear graphite moderator: neutron-transparent, very high thermal conductivity (~120 W/mK), sublimes ~3600 C.",
+  "colour": "0x3C3C3C",
+  "type": "SOLID",
+  "properties": [
+   "PROP_NEUTPENETRATE"
+  ],
+  "temperature": 293.15,
+  "highTemperature": 3873.15,
+  "highTemperatureTransition": "SMKE",
+  "hardness": 50,
+  "weight": 100,
+  "heatConduct": 140,
+  "behavior": {
+   "kind": "inert"
+  }
+ },
+ {
+  "name": "B4C",
+  "description": "Boron carbide control rod / neutron poison: absorbs NEUT (90%/frame per neighbour), warms 4 K per capture, melts 2763 C.",
+  "colour": "0x1C1C2E",
+  "type": "SOLID",
+  "properties": [],
+  "temperature": 293.15,
+  "highTemperature": 3036.15,
+  "highTemperatureTransition": "LAVA",
+  "hardness": 85,
+  "weight": 100,
+  "heatConduct": 40,
+  "behavior": {
+   "kind": "absorber",
+   "params": {
+    "absorbs": "NEUT",
+    "chance": 0.9,
+    "heatPerHit": 4
+   }
+  }
+ },
+ {
+  "name": "CU",
+  "description": "Copper busbar: best practical conductor, 400 W/mK, melts 1085 C. Use for generator output lines.",
+  "colour": "0xC87A3A",
+  "type": "SOLID",
+  "properties": [
+   "PROP_CONDUCTS"
+  ],
+  "temperature": 293.15,
+  "highTemperature": 1358.15,
+  "highTemperatureTransition": "LAVA",
+  "hardness": 30,
+  "weight": 100,
+  "heatConduct": 251,
+  "behavior": {
+   "kind": "reactive",
+   "params": {
+    "rules": "AIR>BRMT,SELF:2:.001"
+   }
+  }
+ },
+ {
+  "name": "STEL",
+  "description": "SA-508 reactor pressure-vessel steel: conducts, 40 W/mK, melts 1500 C, hardness 80.",
+  "colour": "0x8A9098",
+  "type": "SOLID",
+  "properties": [
+   "PROP_CONDUCTS"
+  ],
+  "temperature": 293.15,
+  "highTemperature": 1773.15,
+  "highTemperatureTransition": "LAVA",
+  "hardness": 80,
+  "weight": 100,
+  "heatConduct": 100,
+  "behavior": {
+   "kind": "conductor",
+   "params": {
+    "delay": 0
+   }
+  }
+ },
+ {
+  "name": "CNCR",
+  "description": "Heavy shielding concrete: non-conductive, 1.5 W/mK, spalls to STNE above 1200 C, hardness 95.",
+  "colour": "0x9C9A8E",
+  "type": "SOLID",
+  "properties": [],
+  "temperature": 293.15,
+  "highTemperature": 1473.15,
+  "highTemperatureTransition": "STNE",
+  "hardness": 95,
+  "weight": 100,
+  "heatConduct": 12,
+  "behavior": {
+   "kind": "inert"
+  }
+ },
+ {
+  "name": "LEAD",
+  "description": "Lead gamma shielding: heavy, 35 W/mK, melts 327 C - keep it off the hot side.",
+  "colour": "0x5A5A6A",
+  "type": "SOLID",
+  "properties": [],
+  "temperature": 293.15,
+  "highTemperature": 600.15,
+  "highTemperatureTransition": "LAVA",
+  "hardness": 40,
+  "weight": 100,
+  "heatConduct": 90,
+  "behavior": {
+   "kind": "inert"
+  }
+ },
+ {
+  "name": "NAK",
+  "description": "Liquid sodium coolant (fast-reactor primary loop): excellent heat carrier (140 W/mK), boils 883 C, burns in air (flammable).",
+  "colour": "0xD9DCE6",
+  "type": "LIQUID",
+  "properties": [],
+  "temperature": 393.15,
+  "highTemperature": 1156.15,
+  "highTemperatureTransition": "SMKE",
+  "lowTemperature": 371.15,
+  "lowTemperatureTransition": "SALT",
+  "hardness": 0,
+  "weight": 25,
+  "gravity": 0.3,
+  "diffusion": 0,
+  "flammable": 400,
+  "heatConduct": 220,
+  "behavior": {
+   "kind": "reactive",
+   "params": {
+    "rules": "WATR>NONE,SLTW:650:.7::H2;DSTW>NONE,SLTW:650:.7::H2"
+   }
+  }
+ },
+ {
+  "name": "AERO",
+  "description": "Silica aerogel insulation: 0.02 W/mK (best insulator), fragile, decomposes above 1200 C. Power-saving lagging for pipes and tanks.",
+  "colour": "0xE4F0FA",
+  "type": "SOLID",
+  "properties": [],
+  "temperature": 293.15,
+  "highTemperature": 1473.15,
+  "highTemperatureTransition": "NONE",
+  "hardness": 5,
+  "weight": 100,
+  "heatConduct": 1,
+  "behavior": {
+   "kind": "inert"
+  }
+ },
+ {
+  "name": "TRBN",
+  "description": "Steam turbine stage: condenses adjacent WTRV to DSTW (25%/frame) and sparks touching conductors per unit of work; tmp = cumulative work. Steel body, melts 1400 C.",
+  "colour": "0x6E7E90",
+  "type": "SOLID",
+  "properties": [
+   "PROP_CONDUCTS"
+  ],
+  "temperature": 293.15,
+  "highTemperature": 1673.15,
+  "highTemperatureTransition": "LAVA",
+  "hardness": 70,
+  "weight": 100,
+  "heatConduct": 100,
+  "behavior": {
+   "kind": "turbine",
+   "params": {
+    "input": "WTRV",
+    "output": "DSTW",
+    "chance": 0.25,
+    "cool": 60
+   }
+  }
+ },
+ {
+  "name": "TEG",
+  "description": "Thermoelectric generator (Bi2Te3): above 100 C it pulses SPRK into touching conductors every 20 frames, shedding 2 K per pulse. Waste-heat recovery / power saving.",
+  "colour": "0x3FAA6A",
+  "type": "SOLID",
+  "properties": [
+   "PROP_CONDUCTS"
+  ],
+  "temperature": 293.15,
+  "highTemperature": 858.15,
+  "highTemperatureTransition": "BMTL",
+  "hardness": 40,
+  "weight": 100,
+  "heatConduct": 80,
+  "behavior": {
+   "kind": "teg",
+   "params": {
+    "onTemp": 373.15,
+    "period": 20,
+    "drop": 2
+   }
+  }
+ },
+ {
+  "name": "LEDL",
+  "description": "LED indicator: low-power glow lamp (glower period 30), no heat, for status panels instead of hot LCRY/WIFI.",
+  "colour": "0xFFE066",
+  "type": "SOLID",
+  "properties": [],
+  "temperature": 293.15,
+  "highTemperature": 573.15,
+  "highTemperatureTransition": "BMTL",
+  "hardness": 20,
+  "weight": 100,
+  "heatConduct": 20,
+  "behavior": {
+   "kind": "glower",
+   "params": {
+    "period": 30,
+    "minLife": 0,
+    "maxLife": 100
+   }
+  }
+ }
+]

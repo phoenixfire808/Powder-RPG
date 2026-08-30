@@ -1,0 +1,45 @@
+{
+ "id": "surface_bridge_wood",
+ "category": "surface",
+ "description": "Flat stone-deck footbridge on two end piers plus a mid-span pier, spanning a gap (ravine/cave mouth/water). 24x6px, deck 2px thick.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": -2,
+  "max": 4
+ },
+ "rest_on_solid": false,
+ "erodible": true,
+ "rarity": 0.09,
+ "min_spacing": 260,
+ "clearance": {
+  "top": 1,
+  "bottom": 3,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 0,
+  "y": 4
+ },
+ "width": 24,
+ "height": 6,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "F": "stone",
+  "S": "stone"
+ },
+ "grid": [
+  "                        ",
+  "                        ",
+  "           FF           ",
+  "  SSSSSSSSSFFSSSSSSSSS  ",
+  "FFSSSSSSSSSSSSSSSSSSSSFF",
+  "FFF                  FFF"
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "rest_on_solid=false deliberately: bridges are exactly the case where the placement check should instead verify a GAP (open air/cave/ravine) under the middle third, per finding from 58442/1108906 (deck over air/water, not fill). README documents the alternate 'spans-a-gap' placement rule for this one structure."
+}

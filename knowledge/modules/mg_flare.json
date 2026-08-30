@@ -1,0 +1,46 @@
+{
+ "description": "Magnesium flare: an MG rod in an OXYG atmosphere with a small FIRE igniter touching its tip.",
+ "name": "mg_flare",
+ "params": {
+  "height": 14
+ },
+ "parts": [
+  {
+   "at": [
+    3,
+    0
+   ],
+   "box": "OXYG",
+   "id": "mgf_o2",
+   "size": [
+    6,
+    "height"
+   ]
+  },
+  {
+   "at": [
+    0,
+    "height-10"
+   ],
+   "box": "MG",
+   "id": "mgf_rod",
+   "size": [
+    3,
+    10
+   ]
+  },
+  {
+   "at": [
+    0,
+    "height-12"
+   ],
+   "box": "FIRE",
+   "id": "mgf_igniter",
+   "size": [
+    2,
+    2
+   ]
+  }
+ ],
+ "why": "Magnesium will not casually ignite (needs real heat input) but once past ~630 C it burns at ~3100 C, consuming its own OXYG neighbours per the reactive rule and producing STNE ash and PROP_HOT_GLOW white light -- the classic flare/thermite-starter reaction, and the reason this needs a dedicated OXYG pocket rather than relying on ambient air. Real magnesium fires cannot be put out with water (it reacts with burning Mg to make more hydrogen) or CO2 -- keep any suppression system away from this module."
+}

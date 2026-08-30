@@ -1,0 +1,57 @@
+{
+ "description": "Stainless pipe rack: parallel S316 tube runs between two S316 support posts.",
+ "name": "stainless_pipe_rack",
+ "params": {
+  "length": 30,
+  "rows": 4
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "S316",
+   "id": "spr_post_left",
+   "size": [
+    2,
+    "rows*4"
+   ]
+  },
+  {
+   "at": [
+    "length-2",
+    0
+   ],
+   "box": "S316",
+   "id": "spr_post_right",
+   "size": [
+    2,
+    "rows*4"
+   ]
+  },
+  {
+   "at": [
+    2,
+    1
+   ],
+   "part": {
+    "at": [
+     0,
+     0
+    ],
+    "box": "S316",
+    "size": [
+     "length-4",
+     2
+    ]
+   },
+   "repeat": "rows",
+   "step": [
+    0,
+    4
+   ]
+  }
+ ],
+ "why": "316 stainless resists chlorides and acids far better than plain STEL or RBAR thanks to its molybdenum alloying -- use this rack for coolant, brine, or acid-service pipe runs in marine or chemical-process cells where ordinary steel would corrode away. It still only melts around 1400 C, so it is not a substitute for reactor-grade STEL inside a high-flux core."
+}

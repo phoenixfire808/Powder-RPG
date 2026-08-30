@@ -1,0 +1,1738 @@
+{
+  "schema": 1,
+  "part": "B-logic",
+  "miner": "MINER-B",
+  "source_root": "D:/The-Powder-Toy/src/simulation/elements/",
+  "notes": "Source-only extraction from live TPT C++ source tree. Every formula cites a file:line. Fields not directly observed in source are marked \"unverified\": true. VACU and COOL do not exist as elements in this source tree (searched, not found) - SING and QRTZ exist instead and are out of this miner's assigned list, not included. STKM is a creature/AI element (772 lines of stick-figure physics), not a signal-carrying logic element in the WIFI/PRTI/etc sense; only its SPAWN-relevant and portal-relevant touchpoints are summarized, marked unverified for anything beyond that.",
+  "constants": {
+    "CHANNELS": {
+      "value": "int(MAX_TEMP-73)/100+2 = int(9999-73)/100+2 = 101",
+      "src": "Simulation.h:24, ElementDefs.h:5(MAX_TEMP=9999)"
+    },
+    "MAX_TEMP": {
+      "value": 9999,
+      "src": "ElementDefs.h:5"
+    },
+    "MIN_TEMP": {
+      "value": 0,
+      "src": "ElementDefs.h:6"
+    },
+    "MAX_PRESSURE": {
+      "value": 256.0,
+      "src": "ElementDefs.h:10"
+    },
+    "MIN_PRESSURE": {
+      "value": -256.0,
+      "src": "ElementDefs.h:11"
+    },
+    "IPL/IPH/ITL/ITH": {
+      "meaning": "sentinel 'infinite' pressure/temp transition thresholds so element never transitions; IPL=MIN_PRESSURE-1, IPH=MAX_PRESSURE+1, ITL=MIN_TEMP-1, ITH=MAX_TEMP+1",
+      "src": "TransitionConstants.h:4-7"
+    },
+    "TYP(r)/ID(r)": {
+      "meaning": "pmap cell r packs (particleID<<PMAPBITS)|elementType. TYP(r)=r&PMAPMASK (low 9 bits), ID(r)=r>>9. PMAPBITS=9, PT_NUM=512",
+      "src": "ElementDefs.h:64-82"
+    },
+    "PROP_LIFE_DEC": {
+      "meaning": "generic engine rule: every frame, if particle.life>0 and element has PROP_LIFE_DEC flag (and not on a WL_STASIS wall with emap<8), life-- automatically before the element's own Update() runs. SPRK, PIPE, PPIP, BCLN, FILT, INST, INWR, PSCN, NSCN, ETRD, PHOT, GRAV, EMP, VIBR all set this flag so their life countdowns are engine-driven, not hand-rolled in each Update().",
+      "src": "Simulation.cpp:3396-3403"
+    },
+    "IsWallBlocking": {
+      "meaning": "wall-type gate used by CRAY/PSTN-style ray/stack logic: WL_ALLOWGAS/LIQUID/POWDER/ENERGY block unless particle type matches; WL_ALLOWAIR, WL_WALL, WL_WALLELEC always block; WL_EWALL blocks unless emap>0 (electrified); WL_DETECT blocks TYPE_SOLID only.",
+      "src": "Simulation.cpp:1076-1099"
+    },
+    "parts_avg(ci,ni,PT_INSL)": {
+      "meaning": "returns the element type sitting at the midpoint cell between particles ci and ni (used to test whether INSL or RSSS insulation sits between a spark source and a sensor/conductor, blocking the interaction if so)",
+      "src": "Simulation.cpp:985-1005"
+    }
+  },
+  "elements": {
+    "WIFI": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "none special; HighPressureTransition=PT_BRMT at 15.0",
+      "defaults": {},
+      "props": {
+        "temp": "Sets the transmit/receive channel. channel = floor((temp-73.15)/100)+1, clamped to [0, CHANNELS-1]. Written into .tmp every frame (not stored directly as an integer field elsewhere).",
+        "tmp": "Recomputed every frame as the clamped channel number: tmp=(int)((temp-73.15)/100+1); if tmp>=CHANNELS tmp=CHANNELS-1; if tmp<0 tmp=0.",
+        "wireless[][0]/[1]": "Simulation-global per-channel double-buffer, NOT a particle field: wireless[ch][0]=active this frame, wireless[ch][1]=should be active next frame (set when a WIFI sees SPRK with ctype!=PSCN and life>=3 in its own channel)."
+      },
+      "transitions": {
+        "high_pressure": "PT_BRMT at 15.0 pressure"
+      },
+      "signals": [
+        {
+          "in": "any of 8 neighbors is PSCN/NSCN/INWR with life==0, AND sim->wireless[my_channel][0] is true",
+          "out": "that neighbor's ctype is set to its own former type and it is converted to SPRK with life=4",
+          "delay_frames": 0,
+          "src": "WIFI.cpp:52-74"
+        },
+        {
+          "in": "a neighboring SPRK has ctype!=PT_NSCN and life>=3",
+          "out": "sets sim->wireless[my_channel][1]=1 (armed for NEXT frame) and sim->ISWIRE=2",
+          "delay_frames": 1,
+          "src": "WIFI.cpp:75-79"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Broadcast radio: transmits/receives spark on a shared global per-channel bus keyed by temperature-derived channel, buffered one frame (activity detected this frame arms transmission for next frame) so multiple WIFI on the same channel network without adjacency.",
+      "builder_notes": "Set the exact channel by setting particle temp to 73.15 + (channel-1)*100 (+ up to 99.99 slack before rounding truncates to next channel). To fire a receiver you must have SPRK with ctype not PSCN itself touching a WIFI on the matching channel with life>=3; because life counts 4->3->2->1, only frames where life==3 or 4 register (the check is life>=3)."
+    },
+    "PRTI": {
+      "menu_section": "SC_SPECIAL",
+      "state": "TYPE_SOLID, immobile, portal-in endpoint",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "tmp": "channel = (int)((temp-73.15)/100+1), clamped [0,CHANNELS-1] -- identical formula/derivation to WIFI, recomputed every frame.",
+        "life/ctype": "Used ONLY as a 60-bit 'orbital parts' packed encoding (via orbitalparts_get/orbitalparts_set) for a decorative visual effect showing queued particles orbiting the portal; not a logic signal.",
+        "sim->portalp[channel][slot][0..79]": "Simulation-global 8-directional x80-deep particle storage array shared by ALL PRTI/PRTO on the same channel. slot 0..7 follows the 'count' geometry: 0 1 2 / 7 . 3 / 6 5 4 (relative 3x3 offset index the particle entered from)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "a particle (or SPRK, STOR-held-particle) touches one of PRTI's 8 neighbor cells",
+          "out": "the particle is captured into sim->portalp[my_channel][entry_slot][first_free_index] and removed from the grid (SPRK becomes its ctype element again first)",
+          "delay_frames": 0,
+          "src": "PRTI.cpp:74-118"
+        },
+        {
+          "in": "STKM/STKM2/FIGH neighbor",
+          "out": "ignored here -- handled elsewhere in STKM_interact()",
+          "delay_frames": 0,
+          "src": "PRTI.cpp:90-91",
+          "unverified": true
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Portal entrance keyed by same temperature-channel formula as WIFI; captures particles into a shared global buffer indexed by channel and entry-direction slot for a matching PRTO to emit.",
+      "builder_notes": "PRTI/PRTO pair by matching temperature-derived channel only, not by proximity. PRTO reads slot (count+/-1+4)%8 -- i.e. roughly the opposite side plus jitter -- so particles usually (not always) exit the geometrically opposite direction from where they entered."
+    },
+    "PRTO": {
+      "menu_section": "SC_SPECIAL",
+      "state": "TYPE_SOLID, immobile, portal-out endpoint",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "tmp": "channel, identical formula to PRTI/WIFI: (int)((temp-73.15)/100+1) clamped to [0,CHANNELS-1].",
+        "life/ctype": "orbital decoration packing only, same mechanism as PRTI (grows toward full over time then resets), not a logic signal."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "an adjacent cell is empty and sim->portalp[my_channel][randomized_slot][n].type is set for some n",
+          "out": "the stored particle is created at that neighbor cell with its original saved properties (velocity preserved if nonzero, else the new particle's spawn velocity is used); slot index = (count + rng(-1..1) + 4) % 8, i.e. roughly opposite side of entry plus +/-1 jitter to reduce jamming",
+          "delay_frames": 0,
+          "src": "PRTO.cpp:66-137"
+        },
+        {
+          "in": "stored slot entry is type PT_SPRK",
+          "out": "instead of emitting the SPRK, PRTO creates a ring of 8 SPRK particles around itself (visual pop) and discards the entry",
+          "delay_frames": 0,
+          "src": "PRTO.cpp:79-90"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Emits from the shared sim->portalp buffer for its channel, preferring the geometrically-opposite direction from entry with random jitter of one slot to avoid queue starvation.",
+      "builder_notes": "SPRK does not pass through PRTI->PRTO as SPRK; it either reverts to its ctype element before entering PRTI, or produces a decorative spark-ring burst on exit at PRTO, never travels as a live SPRK signal end-to-end."
+    },
+    "PCLN": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile, PROP_PHOTPASS|PROP_NOCTYPEDRAW",
+      "flags": "CarriesTypeIn = FIELD_CTYPE",
+      "defaults": {},
+      "props": {
+        "ctype": "the element type this PCLN clones once armed. Auto-acquired from any qualifying neighbor (not CLNE/PCLN/BCLN/SPRK/NSCN/PSCN/STKM/STKM2/PBCN and <PT_NUM) if not already valid.",
+        "tmp": "for ctype==PT_LIFE or PT_LAVA only, stores the sub-type (LIFE species / molten-of element) copied from the source particle's own ctype.",
+        "life": "activation counter: SPRK with ctype==PSCN sets life=10 ('armed', clone fires every frame while life==10); SPRK with ctype==NSCN sets life=9 (armed-but-decaying, counts down to 0 = off). Also propagates: a PSCN-armed (life==10) PCLN sets a neighboring life==0 PCLN to life=10 directly (chain activation without a spark)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "SPRK (from PSCN) within +/-2 cells, ID(r).life in (0,4)",
+          "out": "parts[i].life = 10 (armed)",
+          "delay_frames": 0,
+          "src": "PCLN.cpp:70-76"
+        },
+        {
+          "in": "SPRK (from NSCN) within +/-2, life in (0,4)",
+          "out": "parts[i].life = 9 (armed, decaying toward off)",
+          "delay_frames": 0,
+          "src": "PCLN.cpp:70-76"
+        },
+        {
+          "in": "life==10 every frame",
+          "out": "creates a copy of ctype-element near self (offset by rng(-1,1) in x/y); PHOT and LIFE have special multi-cell spawn logic; LAVA clone also copies the molten sub-element via tmp",
+          "delay_frames": 0,
+          "src": "PCLN.cpp:113-155"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Powered CLNE: only duplicates while its life counter reads 10 (set by PSCN spark or by an already-armed neighbor PCLN), decays to off via NSCN spark setting life=9 then engine PROP_LIFE_DEC-style manual countdown in its own code (life-- each frame unless life==10).",
+      "builder_notes": "Because armed PCLN directly sets neighboring life==0 PCLN to life=10 (no spark needed), a solid block of touching PCLN all activate together once any one is sparked."
+    },
+    "PBCN": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile, PROP_PHOTPASS|PROP_NOCTYPEDRAW",
+      "flags": "CarriesTypeIn = FIELD_CTYPE",
+      "defaults": {},
+      "props": {
+        "ctype": "element to clone, auto-acquired like PCLN (excludes CLNE/PCLN/BCLN/SPRK/NSCN/PSCN/STKM/STKM2/PBCN).",
+        "life": "10 = armed and cloning every frame; propagates to neighboring PBCN at life=9 the same chain-activation way as PCLN; decrements toward 0 otherwise.",
+        "tmp2": "'breaking' countdown, randomly (80..119) set once local cell pressure sim->pv>4.0; while nonzero the particle gets a velocity kick each frame (ADVECTION=0.1 * cell velocity field) and decrements; hits 0 -> kill_part (self-destructs, 'breakable' clone)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "high pressure (pv>4.0) while tmp2==0",
+          "out": "tmp2 = rng.between(80,119): starts self-destruct countdown",
+          "delay_frames": 0,
+          "src": "PBCN.cpp:59-60"
+        },
+        {
+          "in": "neighboring PBCN at life==10 (armed)",
+          "out": "sets my life=10 directly (chain activation) when currently 0; sets to 9 if partially decayed and neighbor is fully armed",
+          "delay_frames": 0,
+          "src": "PBCN.cpp:112-118"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Same cloning logic as PCLN (armed at life==10, cloning ctype element every frame) but additionally breakable: any cell with pressure above 4.0 arms a countdown that eventually destroys the particle. NOTE: unlike PCLN, PBCN's arming from SPRK/PSCN-NSCN isn't shown as its own explicit code path in this file -- it relies purely on ctype/life chain-propagation from another already-armed PBCN and generic conduction pathways; treat spark-triggering of a lone PBCN as unverified from this file alone.",
+      "builder_notes": "unverified: whether an isolated PBCN can be armed directly by adjacent PSCN/SPRK (the SPRK.cpp receiver switch lists PT_PBCN alongside PT_PUMP/PT_GPMP/PT_HSWC as one of the standard 'life=10 on PSCN spark' targets, so it IS spark-armable via SPRK.cpp:248-254, not via its own file)."
+    },
+    "BCLN": {
+      "menu_section": "SC_SPECIAL",
+      "state": "TYPE_SOLID, immobile, PROP_PHOTPASS|PROP_LIFE_DEC|PROP_LIFE_KILL_DEC|PROP_NOCTYPEDRAW",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; unpowered variant (always cloning, no arming state)",
+      "defaults": {},
+      "props": {
+        "ctype": "element to clone, same auto-acquire rule as CLNE (excludes CLNE/PCLN/BCLN/STKM/PBCN/STKM2).",
+        "life": "breakable countdown: high pressure (pv>4.0) with life==0 sets life=rng(80,119); while nonzero applies a velocity kick (0.1x cell velocity) each frame; PROP_LIFE_DEC auto-decrements it to 0, and PROP_LIFE_KILL_DEC kills the particle when life hits 0 from that decay (engine-level, not hand-coded kill here)."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "always clones ctype every frame (no arming needed) unless ctype invalid, in which case it scans neighbors to re-acquire ctype"
+        }
+      ],
+      "behaviour": "Unpowered, always-on clone that self-destructs once pressure exceeds 4.0 somewhere in its cell (breakable), unlike CLNE which is permanent.",
+      "builder_notes": "No spark/arming logic at all -- BCLN is a continuously-active BCLN unless/until it breaks from pressure."
+    },
+    "CLNE": {
+      "menu_section": "SC_SPECIAL",
+      "state": "TYPE_SOLID, immobile, PROP_PHOTPASS|PROP_NOCTYPEDRAW",
+      "flags": "CarriesTypeIn = FIELD_CTYPE",
+      "defaults": {},
+      "props": {
+        "ctype": "element to clone; auto-acquired from a neighbor via sim->photons[] first (so it can 'learn' from energy particles) then pmap[], excluding CLNE/PCLN/BCLN/STKM/PBCN/STKM2.",
+        "tmp": "for ctype==PT_LIFE or PT_LAVA, stores the sub-species/molten-source element."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "unconditionally clones ctype every frame once acquired (no power/arming input at all)"
+        }
+      ],
+      "behaviour": "Permanent, unpowered, indestructible clone -- the baseline for PCLN (powered), BCLN (breakable) and PBCN (powered+breakable).",
+      "builder_notes": "Because it draws from sim->photons[] first, CLNE placed next to a PHOT/energy particle will happily copy that species even though the cell also physically contains it via the pmap grid."
+    },
+    "PVOD": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "CtypeDraw=basicCtypeDraw (ctype field drawable but otherwise unused by logic)",
+      "defaults": {},
+      "props": {
+        "life": "arming counter, identical mechanism to PCLN: SPRK w/ ctype PSCN sets life=10, ctype NSCN sets life=9; chain-activates neighboring life==0 PVOD to 10 when self is at 10; otherwise counts down."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "SPRK w/ctype PSCN in life(0,4) within +/-2 cells",
+          "out": "life=10 (armed = actively deleting)",
+          "delay_frames": 0,
+          "src": "PVOD.cpp:68-72"
+        },
+        {
+          "in": "SPRK w/ctype NSCN in life(0,4)",
+          "out": "life=9",
+          "delay_frames": 0,
+          "src": "PVOD.cpp:68-72"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "IMPORTANT: this file's own update() only manages the life/arming counter -- the actual particle-deletion behavior described by the element ('destroys entering particles' per its own Description string) is NOT implemented in PVOD.cpp's update function shown here; deletion presumably happens via the generic solid-collision/displacement path when life==10 makes it act like VOID, but this specific mechanism is unverified from this file.",
+      "builder_notes": "unverified: exact mechanism by which an armed (life==10) PVOD destroys particles -- not present in PVOD.cpp itself, likely handled by shared VOID-family code elsewhere in Simulation.cpp; flag for experimenter verification."
+    },
+    "VOID": {
+      "menu_section": "SC_SPECIAL",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "CtypeDraw=basicCtypeDraw; no Update function at all",
+      "defaults": {},
+      "props": {
+        "ctype": "if set (via ctypeDraw / console), restricts VOID to only eating that specific element type; if 0/PT_NONE, eats everything. (Mechanism lives outside this file -- VOID.cpp itself has no code beyond element registration.)"
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [],
+      "behaviour": "Always-on particle sink; ctype acts as an optional species filter. Actual deletion logic is implemented generically elsewhere (not in VOID.cpp, which defines properties only), same caveat as PVOD.",
+      "builder_notes": "unverified: exact deletion/filter code path (outside elements/VOID.cpp)."
+    },
+    "DLAY": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "DefaultProperties.temp = 4.0+273.15",
+      "defaults": {
+        "temp": "277.15 (4 C)"
+      },
+      "props": {
+        "life": "the running delay countdown, decremented by 1 every frame (engine auto-decrement is NOT used here -- DLAY hand-decrements in its own update). Delay length in frames = (int)(temp - 273.15 + 0.5), i.e. temp in Celsius, rounded, set when a PSCN spark first triggers life==0.",
+        "temp": "sets the delay length in whole Celsius degrees; clamped to a floor of 1.0+273.15 (min 1 frame delay)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "neighboring SPRK with ctype==PSCN, life in (0,4), AND my life==0",
+          "out": "life = (int)(temp-273.15+0.5) -- starts the delay countdown",
+          "delay_frames": 0,
+          "src": "DLAY.cpp:71-74"
+        },
+        {
+          "in": "neighboring DLAY",
+          "out": "if my life==0 and theirs is nonzero, copy their life (minus 1 if their particle index > mine, to compensate for update order) -- propagates a running delay chain across touching DLAY so they countdown in lockstep; symmetric push the other direction too",
+          "delay_frames": 0,
+          "src": "DLAY.cpp:75-91"
+        },
+        {
+          "in": "life was exactly 1 on the PREVIOUS frame (oldl==1, i.e. this frame it reaches 0) and a neighboring cell is NSCN",
+          "out": "creates a SPRK at that NSCN cell -- this is the delayed output pulse",
+          "delay_frames": 0,
+          "src": "DLAY.cpp:93-96"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Programmable delay line: PSCN input starts a countdown of temp-273.15 frames (integer, rounded); when the countdown reaches 0 (transition from life==1 to 0) it fires SPRK onto any adjacent NSCN as the output.",
+      "builder_notes": "delay_frames = round(temp_Celsius). Chain multiple DLAY together and they synchronize their countdowns via the DLAY-to-DLAY life-copy rule so a chain of N DLAY with different temps still fires when the LOWEST one in the chain (the one that started first / has least life) reaches 0 -- verify: the copy logic takes the nonzero life from a neighbor if self is 0, so this only seeds new DLAY, does not average multiple independent timers; treat multi-DLAY chain timing as needing experimental confirmation. HEAT/COOL tools set temp directly to program delay length."
+    },
+    "FILT": {
+      "menu_section": "SC_SOLIDS",
+      "state": "TYPE_SOLID, immobile, PROP_PHOTPASS|PROP_NOAMBHEAT|PROP_LIFE_DEC",
+      "flags": "no Update() -- purely reactive via helper functions called by PHOT/BRAY/CRAY/DTEC/LDTC/TSNS/PSNS/HSWC/PUMP",
+      "defaults": {},
+      "props": {
+        "tmp": "MODE selector for Element_FILT_interactWavelengths, set at creation from the tool's 'v' parameter (Create() -> tmp=v). Values: 0=assign colour (replace incoming wavelength mask with FILT's own), 1=filter (AND), 2=add (OR), 3=filter-inverse (AND NOT), 4=red-shift (left-shift by int((temp-273)*0.025), min 1), 5=blue-shift (right-shift, same amount), 6=no change (pass-through), 7=XOR, 8=invert (NOT), 9=random RGB jitter +/-2 per channel, 10=multiply-by-lowest-set-bit-of-filtWl (red shift), 11=divide-by-lowest-set-bit-of-filtWl (blue shift). Any other value (default) = assign colour.",
+        "ctype": "30-bit wavelength bitmask (bits 0..29, masked with 0x3FFFFFFF). If ctype has any of those bits set, Element_FILT_getWavelengths() returns ctype directly; otherwise it derives a wavelength band from temperature: temp_bin = clamp((int)((temp-273.0)*0.025), 0, 25), returns 0x1F << temp_bin (a 5-bit-wide band that slides with temperature across the 30-bit space).",
+        "life": "set to 4 (or 2 for CRAY beams) each time a passing ray/beam/photon interacts with this FILT, used only for a graphical alpha-fade effect in Graphics()."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "Element_FILT_interactWavelengths(sim, filtPart, origWl) is the entry point every other element calls; behavior depends on tmp mode (see props.tmp)"
+        },
+        {
+          "note": "Element_FILT_getWavelengths(cpart) is the entry point for 'what colour is this FILT displaying/emitting' used both by FILT's own Graphics and by callers wanting FILT's colour without going through a full mode interaction"
+        }
+      ],
+      "behaviour": "Optical/signal colour-filter used by PHOT (light), BRAY/CRAY (deco colour tagging of created rays/particles), and reused as a generic 30-bit data channel by DTEC/LDTC/TSNS/PSNS/HSWC/PUMP to smuggle an arbitrary integer (photon wavelength, temperature, pressure, or an encoded new-temperature value) through a chain of touching FILT particles via repeated assignment of parts[ID(r)].ctype while stepping outward through consecutive FILT cells.",
+      "builder_notes": "Because sensors like TSNS/PSNS/DTEC/LDTC write raw integers into a FILT's ctype with a 0x10000000 tag bit added (e.g. HSWC reads back ctype-0x10000000 as a temperature), FILT is effectively TPT's general-purpose 'data bus' element for passing non-boolean values (not just colour) between logic blocks -- treat any FILT.ctype value >= 0x10000000 as tagged sensor data rather than a colour mask (src: TSNS.cpp:122, PSNS.cpp:98, HSWC.cpp:82-84)."
+    },
+    "ARAY": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "life": "if >0 at emission time, used as a fixed lifetime override for created BRAY particles (both short 'point' and long 'trail' life values); if 0, defaults short_bray_life=30, long_bray_life=1020."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "neighboring SPRK with life==3 (i.e. exactly 3 frames after being sparked)",
+          "out": "fires a ray outward (opposite direction from the spark) creating a chain of PT_BRAY particles until it hits an obstacle, FILT (picks up colour), STOR (releases stored particle), or a non-conducting solid (creates SPRK there and stops unless the trigger spark's ctype was PT_INST, which lets it pass through any conductor)",
+          "delay_frames": 0,
+          "src": "ARAY.cpp:64-217"
+        },
+        {
+          "in": "triggering spark's ctype == PT_PSCN",
+          "out": "'destroy' mode: BRAY created has tmp=2 (red/short-life), and existing obstacles along the path are converted to red BRAY / destroyed rather than stopping the ray outright, letting it punch through certain elements (STOR resets, FILT still colours it, other conductors/INWR/ARAY/WIFI/SWCH(life>=10) let it continue)",
+          "delay_frames": 0,
+          "src": "ARAY.cpp:67-68,181-210"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Ray-gun: converts a 3-frames-old spark into a directional beam of BRAY 'point' particles; FILT in the path colours the beam (deco colour), STOR in the path is triggered to release its held particle, solid non-conductors stop the beam and leave a spark.",
+      "builder_notes": "The trigger window is narrow: only life==3 exactly (not life<4 like most conductors) fires ARAY, so it reacts one frame later than most PSCN-driven logic."
+    },
+    "BRAY": {
+      "menu_section": "SC_ELEC (MenuVisible=0, internal)",
+      "state": "TYPE_SOLID|PROP_LIFE_DEC|PROP_LIFE_KILL, immobile, DefaultProperties.life=30",
+      "flags": "auto-decrements and self-kills via PROP_LIFE_DEC|PROP_LIFE_KILL when life hits 0",
+      "defaults": {
+        "life": 30
+      },
+      "props": {
+        "tmp": "mode: 0=normal white ray-point (fades via life*7 alpha, colour from ctype bitmask if set), 1=long-life mode set when a subsequent ARAY beam passes through an existing tmp==0 point twice (extends its life to long_bray_life and tags colour), 2=red/destructive mode created when trigger spark ctype was PSCN.",
+        "ctype": "when nonzero, decoded as a 30-bit RGB-ish colour bitmask (same bit-counting scheme as FILT/PHOT) picked up from a FILT the beam passed through."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [],
+      "behaviour": "Purely a passive marker/point particle created and consumed by ARAY's beam-walking logic; carries colour and life-mode set by ARAY, fades out via PROP_LIFE_DEC/PROP_LIFE_KILL.",
+      "builder_notes": "Not directly interactive with SPRK; only ARAY (creating), SWCH (isRedBRAY check for tmp==2 diagonal activation), and FILT (colouring) touch BRAY's fields."
+    },
+    "CRAY": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; CtypeDraw sets ctype and pulls DefaultProperties.temp from the chosen element",
+      "defaults": {},
+      "props": {
+        "ctype": "the particle element type this ray emitter fires, encoded as TYP(ctype) for the base type and ID(ctype) as extra data (e.g. LIFE species) via the packed PMAPID scheme. Auto-acquired from neighbors excluding CRAY/PSCN/INST/METL/SPRK if invalid.",
+        "tmp": "maximum number of particles to fire per activation (partsRemaining); 0 = unlimited (255 used as effective cap).",
+        "tmp2": "number of empty spaces to skip in front of the emitter before the beam starts creating particles (spacesRemaining)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "neighboring SPRK with life==3",
+          "out": "fires a beam of TYP(ctype) particles starting tmp2 cells away, up to tmp particles, stopping at the first occupied non-FILT/non-CRAY cell (or when tmp exhausted); FILT cells along the path colour subsequent particles (dcolour) and are consumed with a life=4 flash; ctype==PSCN spark ('destroy' mode) instead deletes existing particles (except DMND) up to the count limit; ctype==INST spark lets the beam pass through obstacles without stopping (nostop)",
+          "delay_frames": 0,
+          "src": "CRAY.cpp:89-140"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Particle-material ray emitter/matter-gun keyed by ctype; range and burst-size are separately programmable via tmp (count) and tmp2 (standoff distance).",
+      "builder_notes": "Because it uses IsWallBlocking(..., TYP(ctype)) to test the emission cell, wall types matching the target element's TYPE_* category will still block CRAY output even though CRAY itself is not blocked by that wall (src CRAY.cpp:104)."
+    },
+    "DRAY": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; CtypeDraw=ctypeDrawVInCtype",
+      "defaults": {},
+      "props": {
+        "ctype": "TYP(ctype)=stop-marker element (the ray copies particles until it sees this element again, unless tmp overrides with a fixed length), ID(ctype)=extra data used only for the special case ctype==PT_LIFE (must match copied LIFE's own ctype to count as the stop marker).",
+        "tmp": "copyLength: if >0, overrides the ctype-based stop condition with a fixed particle count to copy (and increments copySpaces internally as a compatibility hack); if <0, clamped to 0.",
+        "tmp2": "copySpaces: number of empty cells to leave between the sensed source line and the pasted copy (i.e. offset distance for the duplicate); clamped to >=0."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "neighboring SPRK with life==3",
+          "out": "scans backward along the spark's incoming direction to find a line of particles (stopping at the ctype element, or after tmp count, whichever first), then duplicates that entire line at an offset of copySpaces cells further along the same axis; spark ctype==PSCN makes it overwrite (kill) anything already at the destination first; INWR-triggered sparks are ignored on diagonal directions",
+          "delay_frames": 0,
+          "src": "DRAY.cpp:70-193"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Line-duplicator: copies a run of particles (stopping at a marker element or fixed length) to a parallel offset position, akin to a 1D copy-paste triggered by spark.",
+      "builder_notes": "SPRK-type particles in the source line are specially handled: they're recreated as PT_METL then immediately converted back to PT_SPRK ('spark hack') so the copy preserves spark state rather than copying the transient METL underlay incorrectly; STKM/STKM2 in the source line are skipped (non-copyable)."
+    },
+    "CONV": {
+      "menu_section": "SC_SPECIAL",
+      "state": "TYPE_SOLID, immobile, PROP_NOCTYPEDRAW",
+      "flags": "CarriesTypeIn = FIELD_CTYPE | FIELD_TMP; CtypeDraw=ctypeDrawVInCtype",
+      "defaults": {},
+      "props": {
+        "ctype": "the target element to convert neighbors INTO. Auto-acquired from a neighbor (excluding CLNE/PCLN/BCLN/STKM/PBCN/STKM2/CONV) if invalid; LIFE species packed via PMAPID into ctype.",
+        "tmp": "optional restriction element: if IsElement(tmp), only applies the restriction test below; else no restriction (restrictElement=0).",
+        "tmp2": "restriction sense flag: tmp2==1 means EXCLUDE neighbors of type==tmp from conversion (protect them); tmp2!=1 (i.e. any other value incl. 0) means ONLY convert neighbors of type==tmp -- read from CONV.cpp:89 as `(TYP(r)==restrictElement) == (tmp2==1)` gating a skip, so effectively: tmp2==1 -> skip matches (protect that type), tmp2!=1 -> skip non-matches (only convert that type)."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "every frame (no spark trigger needed), converts every qualifying neighbor (not itself, not DMND, not already ctype) into TYP(ctype)/ID(ctype), subject to the tmp/tmp2 restriction filter",
+          "src": "CONV.cpp:79-100"
+        }
+      ],
+      "behaviour": "Always-on Midas-touch converter: turns everything adjacent into its programmed ctype element every frame, optionally restricted to only-affect or never-affect one additional element type via tmp/tmp2.",
+      "builder_notes": "Unlike CLNE, CONV mutates particles IN PLACE (via create_part at the same coordinate/ID) rather than spawning new ones, and requires no spark -- it is continuously active once ctype is valid."
+    },
+    "DTEC": {
+      "menu_section": "SC_SENSOR",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; DefaultProperties.tmp2=2",
+      "defaults": {
+        "tmp2": 2
+      },
+      "props": {
+        "ctype": "the element type to detect (or PT_LIFE with tmp giving the required LIFE sub-species) within radius tmp2.",
+        "tmp": "for ctype==PT_LIFE only, the required LIFE sub-species (ctype of the LIFE particle) to match; 0 = match any LIFE.",
+        "tmp2": "detection radius in cells, clamped to a max of 25; also doubles as the +/-2 conduction radius check range for arming its own SPRK output.",
+        "life": "0/1 boolean detect-flag set true (1) the frame something matching ctype is found within radius tmp2; on the NEXT frame (life truthy), it resets life to 0 and fires SPRK onto any adjacent qualifying conductor (excluding WATR/SLTW/NTCT/PTCT/INWR, and only life==0 conductors) -- i.e. one-frame-delayed edge trigger."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "particle of type ctype (matching LIFE sub-species via tmp if applicable) within +/-tmp2 cells",
+          "out": "life=1 is set this frame",
+          "delay_frames": 0,
+          "src": "DTEC.cpp:98-99"
+        },
+        {
+          "in": "life==1 from previous frame (checked at top of update before the detection scan)",
+          "out": "sparks all adjacent qualifying conductors (life=4, ctype=their own type, converted to SPRK) and resets life=0",
+          "delay_frames": 1,
+          "src": "DTEC.cpp:58-84"
+        },
+        {
+          "in": "PHOT/BRAY(tmp!=2)/BIZR/BIZRG/BIZRS within radius",
+          "out": "propagates that particle's wavelength (ctype) into any adjacent FILT chain (walking outward through consecutive FILT cells) instead of/in addition to the spark trigger",
+          "delay_frames": 0,
+          "src": "DTEC.cpp:100-133"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Proximity/species detector with a one-frame-delayed spark output (detect on frame N sets life=1, output spark fires on frame N+1), plus a secondary photon/energy-wavelength-to-FILT relay function independent of the spark path.",
+      "builder_notes": "Output delay is always exactly 1 frame regardless of settings (detect-then-fire-next-frame architecture), unlike LDTC which fires the same frame it detects."
+    },
+    "LDTC": {
+      "menu_section": "SC_SENSOR",
+      "state": "TYPE_SOLID, immobile, PROP_NOCTYPEDRAW",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; CtypeDraw=ctypeDrawVInCtype",
+      "defaults": {},
+      "props": {
+        "ctype": "TYP(ctype)=target element to scan for (0/NONE = wildcard, matches anything); ID(ctype)=required LIFE sub-species when target is PT_LIFE.",
+        "life": "number of pixels to skip before the scan starts (0 = start immediately adjacent).",
+        "tmp": "maximum number of particles to examine along the ray before giving up (0 = unbounded).",
+        "tmp2": "bitfield: 0x1 FLAG_INVERT_FILTER (trigger on NOT matching ctype instead of matching), 0x2 FLAG_IGNORE_ENERGY (skip sim->photons[] layer, solids only), 0x4 FLAG_NO_COPY_COLOR (disable FILT colour-relay mode), 0x8 FLAG_KEEP_SEARCHING (continue scanning past a non-matching particle instead of stopping the ray there)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "8-directional ray scan (one direction per touching conductor-or-FILT neighbor) finds a life==0 conductor (excluding WATR/SLTW/NTCT/PTCT/INWR) matching the ctype filter (or its inversion via FLAG_INVERT_FILTER)",
+          "out": "immediately (same frame) sparks that found particle: life=4, ctype=its own type, PT_SPRK",
+          "delay_frames": 0,
+          "src": "LDTC.cpp:106-145"
+        },
+        {
+          "in": "ray hits a photon-family particle (PHOT/BRAY/BIZR/BIZRG/BIZRS) or a FILT cell while FLAG_NO_COPY_COLOR is unset",
+          "out": "relays that particle's wavelength (or FILT's own getWavelengths()) into the adjacent FILT chain on LDTC's own side, same walk-outward mechanism as DTEC",
+          "delay_frames": 0,
+          "src": "LDTC.cpp:148-167"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Directional linear scanner along all 8 rays simultaneously (one per touching seed cell), same-frame trigger (no 1-frame detect/fire split like DTEC), with configurable start offset (life), max range (tmp), and matching polarity/energy-inclusion/keep-searching behavior via tmp2 flags.",
+      "builder_notes": "LDTC's ctype filter of 0/NONE means 'match anything' (wildcard) -- this differs from DTEC where ctype==0 is simply invalid/unset. Combine tmp2 flags by OR-ing the bit values (0x1,0x2,0x4,0x8) as documented in the file's own header comment (LDTC.cpp:56-64)."
+    },
+    "PSTN": {
+      "menu_section": "SC_FORCE",
+      "state": "TYPE_SOLID, immobile piston base; extends a chain of PT_PSTN arm segments",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; DefaultProperties.temp=10+273.15",
+      "defaults": {
+        "temp": "283.15 (10 C)"
+      },
+      "props": {
+        "life": "0 = piston HEAD (the moving business end, created fresh with life=1 for each new arm segment... actually per code: base/root has life 0 and does the sensing; created arm segments get life=1 marking them as 'arm', while the piston head found at the end of an arm chain (life==0 again) is the pusher); a nonzero-life PSTN segment is 'arm', a life==0 PSTN is either the root controller or the head, distinguished by scan position.",
+        "tmp": "maxSize -- maximum size (in cells) of the block being pushed/pulled at once; 0 => DEFAULT_LIMIT=0x1F=31.",
+        "tmp2": "armLimit -- maximum total arm length (in units of ~10C-per-piston-temp increments, see below) the piston is allowed to extend to; 0 => DEFAULT_ARM_LIMIT=0xFF=255.",
+        "tmp3": "bitfield of behavior flags: 0x1 FLAG_EXT_OBSTACLE (abort extend entirely if any obstacle would truncate movement, rather than partially extending), 0x2 FLAG_EXT_ARMLIMIT (refuse to extend at all if it would exceed armLimit, rather than extending only up to the limit), 0x4 FLAG_RET_OBSTACLE (abort retract if FRME blocks it), 0x8 FLAG_RET_TOOSHORT (refuse to retract if the arm is shorter than the requested retraction amount).",
+        "ctype": "the element type used as a movement-blocking marker (passed as 'block' to CanMoveStack/MoveStack) -- a stack push/pull stops upon hitting a particle of this type.",
+        "temp": "controls arm-count contribution per existing PSTN segment: pistonCount += floor((temp-268.15)/10) -- i.e. every 10 C above -5C(268.15K) on an ARM segment's temp adds one unit of extend/retract distance; can go negative for cold segments."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "orthogonal-only neighbor (rx,ry with exactly one nonzero) is SPRK with life==3 and ctype==PSCN",
+          "out": "state=PISTON_EXTEND",
+          "delay_frames": 0,
+          "src": "PSTN.cpp:99-102"
+        },
+        {
+          "in": "same but ctype!=PSCN (i.e. NSCN)",
+          "out": "state=PISTON_RETRACT",
+          "delay_frames": 0,
+          "src": "PSTN.cpp:103-104"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Mechanical extend/retract actuator gated by PSCN(extend)/NSCN(retract) spark on any orthogonal neighbor; walks its own PSTN arm chain to find length/obstacles, then calls MoveStack to shove or pull a block of particles, with FRME (frame) elements getting special 'push everything resting on the frame too' treatment and their own recursive obstacle checks.",
+      "builder_notes": "The active/head PSTN only trigger-checks orthogonal neighbors (rx||ry with exactly one nonzero -- i.e. up/down/left/right only, not diagonals) for the PSCN/NSCN spark; life must be 0 on the base for it to process at all (`if (parts[i].life) return 0;` at top)."
+    },
+    "FRME": {
+      "menu_section": "SC_FORCE",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "no Update function",
+      "defaults": {},
+      "props": {
+        "tmp": "purely cosmetic in FRME.cpp itself (brightens colour by +30/+30/+30 when nonzero); consulted by PSTN.cpp for the 'sticky' flag when recursing across frame segments (`!sim->parts[ID(...)].tmp` used as the sticky argument), so tmp==0 frame segments propagate push 'stickily' and nonzero tmp segments do not -- unverified beyond this inference."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [],
+      "behaviour": "Passive structural element consumed entirely by PSTN's MoveStack logic: lets a piston push/pull an entire chain of FRME (and whatever rests on/around it) as a rigid unit, up to MAX_FRAME=0x0F(15) segments in each direction from the contact point.",
+      "builder_notes": "FRME itself has no signal/logic behavior; all its interesting behavior is implemented inside PSTN.cpp's MoveStack/CanMoveStack functions, not here."
+    },
+    "PIPE": {
+      "menu_section": "SC_FORCE",
+      "state": "TYPE_SOLID, immobile transport tube; PROP_LIFE_DEC",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; DefaultProperties.temp=295.15, DefaultProperties.life=60; HighPressureTransition=PT_BRMT@10.0",
+      "defaults": {
+        "temp": 295.15,
+        "life": 60
+      },
+      "props": {
+        "ctype": "stores the type of particle currently held inside this PIPE segment (0 = empty). Auto-cleared if that element becomes Disabled.",
+        "tmp": "packed bitfield: bit0(0x1)=PFLAG_CAN_CONDUCT (heat mixes with held particle instead of pipe keeping its own temp), bit1(0x2)=PFLAG_PARTICLE_DECO (dcolour came from the held particle, not the pipe segment itself), bits 16-25 auto-pattern flags: 0x10000 PFLAG_NORMALSPEED (skip-one-push flag to normalize throughput), 0x20000 PFLAG_INITIALIZING (colour not yet assigned during BRCK-bordering setup), 0x40000/0x80000/0xC0000 PFLAG_COLOR_RED/GREEN/BLUE (3-colour segment identity used for automatic pipe-network pattern generation and single-pixel-pipe direction), 0x100 = single-pixel-pipe flag, 0x200/0x1C00 = forward single-pixel transfer flag + 3-bit forward direction index, 0x2000/0x1C000 = reverse single-pixel transfer flag + 3-bit reverse direction index. PPIP additionally uses 0x1000000 REVERSED, 0x2000000 PAUSED, 0x4000000 TRIGGER_REVERSE, 0x8000000 TRIGGER_OFF, 0x10000000 TRIGGER_ON (the trigger bits are consumed and cleared every frame after being applied).",
+        "tmp2": "held particle's life field (mirrors what a real particle of ctype would have).",
+        "tmp3": "held particle's tmp field.",
+        "tmp4": "held particle's ctype field (so a held particle can itself carry a further ctype, e.g. a held LAVA's molten-source).",
+        "life": "generic countdown used during BRCK-bordering/auto-initialization sequencing (life<=10 triggers border-build; life==5 detects single-pixel pipe; life==2 assigns first colour RED and resets life=6); once colour-initialized, life==3 re-triggers the automatic-pattern-propagation scan to newly adjacent PIPE/PPIP segments."
+      },
+      "transitions": {
+        "high_pressure": "PT_BRMT at 10.0"
+      },
+      "signals": [
+        {
+          "in": "PPIP only: PSCN spark hits any PIPE/PPIP network cell (via Element_PPIP_flood_trigger)",
+          "out": "TRIGGER_ON bit propagates via flood fill across the whole contiguous PIPE/PPIP network, clearing PPIP_TMPFLAG_PAUSED on all of them; NSCN sets TRIGGER_OFF (sets PAUSED); INST sets TRIGGER_REVERSE (flips PPIP_TMPFLAG_REVERSED and swaps colour phase on all of them, also flipping single-pixel-pipe direction bits)",
+          "delay_frames": 0,
+          "src": "PIPE.cpp:711-717 (PPIP_flood_trigger), PIPE.cpp:111-164 (consuming the trigger next Update)"
+        },
+        {
+          "in": "HEAC neighbor detected during colour-init scan",
+          "out": "propagates PFLAG_CAN_CONDUCT via flood_trigger so the whole connected pipe network starts heat-mixing with its held particles",
+          "delay_frames": 0,
+          "src": "PIPE.cpp:183-188, 222-223"
+        }
+      ],
+      "reacts": [
+        {
+          "note": "when unpaused and colour-initialized (life==3 special-cased for pattern setup, else normal transport frame): pushes its held particle toward a same-colour-family neighbor pipe segment (pushParticle, recursive, capped at speed 2/frame normally or via single-pixel forced direction), or emits it into free space / eats a new particle from an adjacent cell if this is a network endpoint (has non-pipe neighbor 'nt')",
+          "src": "PIPE.cpp:224-267"
+        },
+        {
+          "note": "PT_PRTI neighbor: pipe contents are pushed directly into the portal's sim->portalp buffer instead of a normal cell, giving a 'speed increase' shortcut",
+          "src": "PIPE.cpp:572-586"
+        }
+      ],
+      "behaviour": "Segmented one-particle-per-cell conveyor built from an auto-colour-tagged 3-colour relay network (RED/GREEN/BLUE cycling, single-pixel-pipe end segments get an explicit baked-in direction); PPIP variant adds PSCN/NSCN/INST-spark pause/reverse control that floods instantly across the entire connected pipe network via a scanline flood-fill (Element_PPIP_flood_trigger), not just locally.",
+      "builder_notes": "PIPE/PPIP self-assemble by growing a BRCK (brick) border first (auto-generated, erase to open an inlet/outlet), then colour-tag themselves RED/GREEN/BLUE in sequence so adjacent segments always differ, forming the transport chain automatically -- this is why the element's own Description says 'erase some [BRCK] for the exit, then PIPE generates and is usable'."
+    },
+    "PPIP": {
+      "menu_section": "SC_POWERED",
+      "state": "identical internals to PIPE (shares Element_PIPE_update/graphics); TYPE_SOLID|PROP_LIFE_DEC",
+      "flags": "same field layout as PIPE plus the TRIGGER_* bits documented under PIPE",
+      "defaults": {
+        "temp": 295.15,
+        "life": 60
+      },
+      "props": {
+        "see": "PIPE entry -- PPIP is PIPE with spark-controllable pause/reverse via Element_PPIP_flood_trigger"
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "PSCN spark touches a PIPE or PPIP cell",
+          "out": "Element_PPIP_flood_trigger scanline-flood-fills the ENTIRE contiguous run of same-type (PIPE or PPIP) cells (4-connected via horizontal spans + vertical adjacency, matching classic flood-fill), OR-ing (TRIGGER_ON<<3) into every cell's tmp so next frame they all unpause simultaneously -- this is a same-tick, whole-network-wide, not-locally-propagated signal",
+          "delay_frames": 1,
+          "src": "ETRD.cpp N/A; PIPE.cpp:695-786 (Element_PPIP_flood_trigger), invoked from SPRK.cpp:262-268 case PT_PPIP"
+        },
+        {
+          "in": "NSCN spark",
+          "out": "floods TRIGGER_OFF<<3 (pause) the same way",
+          "delay_frames": 1,
+          "src": "PIPE.cpp:711-717"
+        },
+        {
+          "in": "INST spark",
+          "out": "floods TRIGGER_REVERSE<<3 the same way (direction flip)",
+          "delay_frames": 1,
+          "src": "PIPE.cpp:713"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "PPIP = PIPE + instantaneous whole-network pause/reverse control via a single spark touch anywhere on the network (flood-fill, not step-by-step conduction), applied on the frame AFTER the trigger bit is set (bits consumed and cleared at the top of the shared Element_PIPE_update the following frame).",
+      "builder_notes": "Because the flood fill only spans cells of the exact same type (t == PT_PIPE or t == PT_PPIP, whichever the trigger cell is), a mixed PIPE+PPIP network segments the flood at the type boundary unless sparkedBy==PT_HEAC (heat-conduct flag propagates across PIPE<->PPIP boundaries too, per the `t != PT_PPIP && sparkedBy != PT_HEAC` early-return check at PIPE.cpp:716)."
+    },
+    "SWCH": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID, immobile latching switch",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "life": ">=10 = ON (conducts); the standard convention across the codebase is life==10 fully on, life==9 decaying-but-still-on (treated as on by `>=10` checks... note: code checks `life>=10` for 'is on' and separately decays via life-- when not exactly 10, so life values 1..9 are transitional 'still on, decaying' and life==0 is fully OFF); PSCN spark sets life=10; NSCN spark sets life=9 (also clears ctype); two touching SWCH sync toward whichever has the higher life (propagation, not just direct on/off); a diagonal pair of red BRAY beams (one vertically adjacent, one horizontally adjacent, with the two orthogonal corner cells empty) toggles SWCH between (life==10 -> 9) and (life<=5 -> 14, an over-10 kick that reads as 'super on' before natural decay brings it back down).",
+        "ctype": "when a SPRK sits on the switch with life==10 (fully on) and a foreign SPRK arrives with life>0 and ctype not PSCN/NSCN, the switch is converted to SPRK itself, tagged ctype=PT_SWCH, life=4 -- i.e. SWCH becomes a conductor for arbitrary sparks while fully on."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "SPRK within +/-2 (through non-INSL/RSSS midpoint), ctype checked via general SPRK.cpp receiver rules -- PSCN sets life=10",
+          "out": "life=10 (ON, latches)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:219-220 (receiver case PT_SWCH)"
+        },
+        {
+          "in": "same, NSCN sender",
+          "out": "life=9 (turning OFF, ctype cleared)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:222-226"
+        },
+        {
+          "in": "diagonal double red-BRAY (isRedBRAY(x,y-1) or (x,y+1)) AND (isRedBRAY(x+1,y) or (x-1,y)), with both orthogonal corners (x-1,y-1) and (x-1,y+1)... code actually checks (x-1,y-1) and (x+1,y-1) empty",
+          "out": "toggles: life==10 -> 9 (turn off); life<=5 -> 14 (turn on, above the normal 10)",
+          "delay_frames": 0,
+          "src": "SWCH.cpp:92-98"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Latching (bistable) switch: PSCN sets ON (life=10) and stays on (decaying slowly toward off only if not continuously refreshed by a neighbor at >=10 or another spark); NSCN forces OFF; can also be flipped by a diagonal pair of red BRAY beams, giving it a light-triggered toggle mode in addition to electrical set/reset.",
+      "builder_notes": "SWCH conducts real signal through only when fully on (`life>=10` in the general SPRK conduction table, SPRK.cpp:353-356: PSCN passes through unless sender is NSCN) -- i.e. SWCH gates PSCN-type current but always lets NSCN through per that specific rule, worth flagging to experimenter as it is non-obvious/asymmetric."
+    },
+    "HSWC": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile heat-only switch",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "life": "10=ON (conducts HEAT to touching HSWC only, does not conduct electricity itself per its own file); PSCN spark elsewhere in SPRK.cpp's generic 'life=10 on PSCN' table (SPRK.cpp:248-254) arms it; propagates to neighboring HSWC (life<10,>0 -> 9 for self; life==0 neighbor -> 10) the same chain-style as PCLN/PVOD/PUMP/GPMP.",
+        "tmp": "1 = 'deserializeTemp' mode: while ON, reads an adjacent FILT's ctype as an encoded absolute temperature (ctype - 0x10000000) within +/-1 cell and, if in [MIN_TEMP,MAX_TEMP], sets HSWC's own temp to that value directly."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "neighboring HSWC with life in (0,10)",
+          "out": "life=9 (chain decay)",
+          "delay_frames": 0,
+          "src": "HSWC.cpp:73-74"
+        },
+        {
+          "in": "neighboring HSWC with life==0",
+          "out": "sets THAT neighbor's life=10 (chain activation)",
+          "delay_frames": 0,
+          "src": "HSWC.cpp:75-76"
+        },
+        {
+          "in": "tmp==1 and adjacent FILT within +/-1",
+          "out": "temp = FILT.ctype - 0x10000000 (data-bus read, see FILT builder_notes)",
+          "delay_frames": 0,
+          "src": "HSWC.cpp:78-85"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Heat-only conduction gate: does not touch electrical conduction itself (that's governed generically by SPRK.cpp's shared receiver table using PT_HSWC alongside PUMP/GPMP/PBCN for the arm/disarm rule) but while armed (life==10) can additionally slurp a temperature value out of an adjacent FILT acting as a data bus.",
+      "builder_notes": "The actual 'conducts heat only when activated' behavior described by HSWC's own Description string is implemented via the general heat-conduction system checking HSWC's life/type elsewhere (not shown in HSWC.cpp) -- unverified from this file alone; flag for experimenter."
+    },
+    "LCRY": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile; HighTemperatureTransition=PT_BGLA@1273",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "tmp": "4-state charge machine: 0=fully discharged/idle, 1=discharging (life-=2/frame until life<=0 then tmp->0), 2=charging (life+=2/frame until life>=10 then tmp->3), 3=fully charged/idle. State transition also propagates: neighbors in state `check` get pushed to state `setto` every frame (0<->1 pairs and 2<->3 pairs) -- i.e. tmp acts as a 2-phase clocked shift register across touching LCRY.",
+        "life": "charge level 0..10, ramped by 2 per frame while tmp==1(discharging) or tmp==2(charging); doubles as tmp2 mirror for the decorative colour-darkening effect.",
+        "tmp2": "mirrors life at the moment of the last charge/discharge step (used purely for the graphics dimming effect, `10-tmp2` divisor)."
+      },
+      "transitions": {
+        "high_temp": "PT_BGLA at 1273 K"
+      },
+      "signals": [
+        {
+          "in": "neighboring SPRK, sender==PSCN, and my tmp==0",
+          "out": "tmp=2 (start charging)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:255-259 (receiver case PT_LCRY, general rule, not in LCRY.cpp itself)"
+        },
+        {
+          "in": "sender==NSCN and my tmp==3",
+          "out": "tmp=1 (start discharging)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:255-259"
+        },
+        {
+          "in": "neighboring LCRY in state `check` (0 when self is 1/0-pair or 3 when self is 2/3-pair)",
+          "out": "pushes that neighbor to `setto` (1 or 2 respectively), i.e. propagates a charge/discharge pulse outward across a connected LCRY chain",
+          "delay_frames": 0,
+          "src": "LCRY.cpp:88-103"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "4-phase charge/discharge state machine (0 idle-off -> 2 charging -> 3 idle-on -> 1 discharging -> 0) driven by PSCN(charge)/NSCN(discharge) spark on the switch's OWN neighbors handled in SPRK.cpp (not in LCRY.cpp), with the charge/discharge PULSE itself propagating outward to neighboring LCRY particles that are in the complementary idle state, letting a chain of LCRY sequentially charge/discharge like a shift register.",
+      "builder_notes": "Actual PSCN/NSCN triggering logic lives in SPRK.cpp's receiver switch (case PT_LCRY at line 255), NOT in LCRY.cpp's own update() -- LCRY.cpp only implements the chain-propagation and ramping once tmp is already 1 or 2."
+    },
+    "INST": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID, PROP_LIFE_DEC, Meltable=1",
+      "flags": "no Update() function at all -- pure passive conductor",
+      "defaults": {},
+      "props": {},
+      "transitions": {
+        "high_temp": "PT_LAVA at 1687"
+      },
+      "signals": [
+        {
+          "in": "adjacent SPRK conducts to INST",
+          "out": "special-cased in SPRK.cpp: instead of the normal single-cell spark-conversion, calls sim->FloodINST(x,y) which scanline-flood-fills SPARK onto every contiguous, still-unsparked (life==0) INST cell at once -- the entire connected INST network ignites in the same frame, not cell-by-cell",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:377-382, Simulation.cpp:586-630 (FloodINST)"
+        },
+        {
+          "in": "INST conducting further (as a sender)",
+          "out": "per the sender-specific rule in SPRK.cpp's tryConduct(), INST-as-sender only passes to NSCN (`case PT_INST: if (receiver==PT_NSCN) return true; return false;`), i.e. an already-sparked INST cell only forwards current onward into NSCN, not other conductors directly (the flood-fill already handled the rest of the INST network)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:299-302"
+        },
+        {
+          "in": "as receiver, INST only accepts current from a PSCN sender per the receiver-specific rule",
+          "out": "`case PT_INST: if (sender==PT_PSCN) return true; return false;`",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:345-348"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Instant-conduction wire: an entire contiguous blob of INST sparks simultaneously in one frame via flood-fill (not the usual cell-to-cell spark hop), giving effectively zero propagation delay across arbitrarily long/complex INST networks. Only conducts INPUT from PSCN and OUTPUT to NSCN -- it cannot receive from or forward to itself/other conductors directly except via that flood mechanism.",
+      "builder_notes": "This is the fastest conductor in the game by design: use INST wherever propagation delay across many cells must be avoided (e.g. large combinational logic), reserving PSCN/METL wire for places where the 1-cell-per-frame spark crawl delay is acceptable or desired."
+    },
+    "INWR": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC, Meltable=1",
+      "flags": "no Update() function -- passive conductor",
+      "defaults": {},
+      "props": {},
+      "transitions": {
+        "high_temp": "PT_LAVA at 1687"
+      },
+      "signals": [
+        {
+          "in": "as sender, INWR-as-sender rule: `case PT_INWR: if (receiver==NSCN||receiver==PSCN) return true; return false;`",
+          "out": "only forwards current to PSCN or NSCN, nothing else",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:319-322"
+        },
+        {
+          "in": "as receiver, symmetric rule: `case PT_INWR: if (sender==NSCN||sender==PSCN) return true; return false;`",
+          "out": "only accepts current from PSCN or NSCN",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:341-344"
+        },
+        {
+          "in": "WIFI's own scan also explicitly treats INWR as sparkable like PSCN/NSCN (same wireless trigger eligibility)",
+          "out": "see WIFI entry",
+          "delay_frames": 0,
+          "src": "WIFI.cpp:68"
+        },
+        {
+          "in": "diagonal geometry restriction",
+          "out": "when DRAY is triggered by an INWR-ctype spark on a diagonal (rx&&ry), it explicitly skips ('INWR doesn't spark from diagonals')",
+          "delay_frames": 0,
+          "src": "DRAY.cpp:76-77"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Insulated wire: conducts ONLY between PSCN and NSCN (both directions) and nothing else -- it will not pass current to/from METL, other INWR, SWCH directly, etc. (per its own Description, though the code additionally shows WIFI/SWCH interplay elsewhere e.g. SPRK.cpp:269 groups NTCT/PTCT/INWR for a METL-heating side-effect at 473K).",
+      "builder_notes": "Effectively a 'PSCN<->NSCN only' wire, useful for crossing other conductor traces without shorting to them; the Description's claim that it also conducts to WIFI and SWCH is only partially reflected in SPRK.cpp's generic tryConduct table (which lists just PSCN/NSCN for INWR) -- the WIFI and SWCH interactions happen via those elements' OWN code explicitly checking for PT_INWR type (WIFI.cpp:68) rather than via the generic conduction table; flag as needing experimental confirmation of full interaction surface."
+    },
+    "PSCN": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC, Meltable=1",
+      "flags": "no Update() function -- passive conductor",
+      "defaults": {},
+      "props": {},
+      "transitions": {
+        "high_temp": "PT_LAVA at 1687"
+      },
+      "signals": [
+        {
+          "in": "generic receiver rule for PSCN: `case PT_PSCN: if (sender != NSCN) return true; return false;`",
+          "out": "PSCN accepts current from ANY sender except NSCN",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:353-356"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "P-type conductor: 'positive' signal wire, the universal SPRK-conducting default; enables/activates the majority of powered elements when it sparks adjacent to them (arming rule: `sender==PT_PSCN -> life=10` appears throughout PUMP/GPMP/HSWC/PBCN/PCLN/PVOD/SWCH/PSTN-extend/LCRY-charge/etc).",
+      "builder_notes": "PSCN is the default 'ON'/'set' signal across virtually every powered element in this list; NSCN is specifically excluded from feeding PSCN (SPRK.cpp:355), meaning a NSCN-sourced spark cannot cross a PSCN wire back into more PSCN, one of the few directionality rules in the base conduction table."
+    },
+    "NSCN": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC, Meltable=1",
+      "flags": "no Update() function -- passive conductor",
+      "defaults": {},
+      "props": {},
+      "transitions": {
+        "high_temp": "PT_LAVA at 1687"
+      },
+      "signals": [
+        {
+          "in": "NSCN has NO special-case entry in either the sender-switch or receiver-switch of SPRK.cpp's tryConduct() -- it falls through to the default `return true` for both roles",
+          "out": "NSCN conducts to/from everything not otherwise explicitly restricted (i.e. it is the 'universal default' conductor in the general graph, EXCEPT wherever another element's rule explicitly excludes it, e.g. SWCH's sender-rule excludes conducting FROM SWCH TO NSCN: `case PT_SWCH: if (receiver==PSCN||receiver==NSCN||receiver==WATR||receiver==SLTW||receiver==NTCT||receiver==PTCT||receiver==INWR) return false;`)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:303-306, 360 (default true)"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "N-type conductor: 'negative'/'reset' signal wire; disables/deactivates most powered elements (arming rule: `sender==PT_NSCN -> life=9` pattern, i.e. one less than PSCN's life=10, letting engine decay eventually turn it fully off) and is excluded from being fed BY SWCH specifically (see PSCN builder_notes for the PSCN<-NSCN exclusion, which is the converse: NSCN itself is not blocked from receiving from most things).",
+      "builder_notes": "IMPORTANT for signal_rules: NSCN is NOT symmetric with PSCN. PSCN explicitly refuses to receive from NSCN (`sender!=NSCN` required, SPRK.cpp:353-356), while NSCN has no such general restriction against receiving from PSCN -- meaning current CAN flow PSCN->NSCN generically but NOT NSCN->PSCN generically via the base conduction table. This asymmetry is central to how set/reset logic works throughout the elements in this file and deserves live verification."
+    },
+    "PTCT": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC, Meltable=1; HighTemperatureTransition=PT_LAVA@1687",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "temp": "self-cools toward 295K: `if temp>295.0 then temp -= 2.5` every frame (PTC thermistor passive cooling, independent of any spark)."
+      },
+      "transitions": {
+        "high_temp": "PT_LAVA at 1687"
+      },
+      "signals": [
+        {
+          "in": "as sender: `case PT_PTCT: if (receiver==PSCN || (receiver==NSCN && parts[i].temp<373.0)) return true; return false;`",
+          "out": "PTCT conducts to PSCN always, and to NSCN only while below 373K (100C)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:315-318"
+        },
+        {
+          "in": "as receiver: `case PT_PTCT: if (sender==NSCN || (sender==PSCN && parts[ID(r)].temp<373.0)) return true; return false;`",
+          "out": "PTCT accepts from NSCN always, and from PSCN only while below 373K",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:337-340"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "PTC (positive temperature coefficient) thermistor: conducts PSCN<->NSCN normally only while COLD (<100C); above 100C it stops conducting with NSCN (its own passive cooling toward 295K means it will usually recover conduction unless actively kept hot).",
+      "builder_notes": "A METL-sourced spark heats a touching PTCT/NTCT/INWR to 473K directly (SPRK.cpp:270-275), which is well above PTCT's 373K cutoff -- so a METL trigger can be used to deliberately disable a PTCT gate."
+    },
+    "NTCT": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC, Meltable=1; HighTemperatureTransition=PT_LAVA@1687",
+      "flags": "Update = Element_NTCT_update (exported, also called directly from SPRK.cpp for the shared PT_NTCT/PT_PTCT SPRK case)",
+      "defaults": {},
+      "props": {
+        "temp": "self-cools toward 295K identically to PTCT: `if temp>295.0 then temp -= 2.5` every frame."
+      },
+      "transitions": {
+        "high_temp": "PT_LAVA at 1687"
+      },
+      "signals": [
+        {
+          "in": "as sender: `case PT_NTCT: if (receiver==PSCN || (receiver==NSCN && parts[i].temp>373.0)) return true; return false;`",
+          "out": "conducts to PSCN always, to NSCN only while HOT (>100C) -- inverse of PTCT",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:311-314"
+        },
+        {
+          "in": "as receiver: `case PT_NTCT: if (sender==NSCN || (sender==PSCN && parts[ID(r)].temp>373.0)) return true; return false;`",
+          "out": "accepts from NSCN always, from PSCN only while hot",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:333-336"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "NTC (negative temperature coefficient) thermistor: complementary to PTCT -- only conducts PSCN<->NSCN normally while HOT (>100C).",
+      "builder_notes": "Pair PTCT and NTCT to build a temperature-band gate (e.g. AND-like: both feed a common line, only the matching one passes at a given temperature)."
+    },
+    "TSNS": {
+      "menu_section": "SC_SENSOR",
+      "state": "TYPE_SOLID, immobile; DefaultProperties.tmp2=2",
+      "flags": "none",
+      "defaults": {
+        "tmp2": 2
+      },
+      "props": {
+        "tmp": "mode: 0=trigger when a neighbor within radius tmp2 is HOTTER than self; 2=trigger when a neighbor is COLDER than self; 1=continuously relay the temperature of any qualifying neighbor into an adjacent FILT chain as data (ctype = 0x10000000+temp), independent of the spark-trigger path.",
+        "tmp2": "detection radius, clamped to max 25.",
+        "life": "0/1 detect-flag, same one-frame-delayed edge-trigger pattern as DTEC: set to 1 the frame a qualifying temperature difference is found; reset to 0 and fires SPRK on all adjacent qualifying conductors on the NEXT frame."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "tmp==0, neighbor within +/-tmp2 (excluding other TSNS/METL) has temp>self.temp",
+          "out": "life=1 this frame",
+          "delay_frames": 0,
+          "src": "TSNS.cpp:97-98"
+        },
+        {
+          "in": "tmp==2, neighbor colder than self",
+          "out": "life=1 this frame",
+          "delay_frames": 0,
+          "src": "TSNS.cpp:99-100"
+        },
+        {
+          "in": "life==1 from previous frame",
+          "out": "sparks all adjacent qualifying conductors (same exclusion list as DTEC: not WATR/SLTW/NTCT/PTCT/INWR, and only life==0)",
+          "delay_frames": 1,
+          "src": "TSNS.cpp:57-84"
+        },
+        {
+          "in": "tmp==1, qualifying neighbor present",
+          "out": "relays int(neighbor.temp) into adjacent FILT chain via 0x10000000+temp tag",
+          "delay_frames": 0,
+          "src": "TSNS.cpp:101-105, 107-132"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Relative temperature comparator with the same one-frame-delayed edge-trigger architecture as DTEC (detect on frame N, spark on frame N+1); mode 1 repurposes it as a temperature-to-FILT data broadcaster instead of a spark sensor.",
+      "builder_notes": "TSNS excludes both other TSNS AND METL from being valid comparison targets (`TYP(r) != PT_TSNS && TYP(r) != PT_METL`), presumably to avoid trivial self-triggering chains and METL's high heat conductivity swamping the comparison."
+    },
+    "PSNS": {
+      "menu_section": "SC_SENSOR",
+      "state": "TYPE_SOLID, immobile; DefaultProperties.temp=4+273.15",
+      "flags": "none",
+      "defaults": {
+        "temp": 277.15
+      },
+      "props": {
+        "temp": "the pressure threshold, in Celsius-equivalent (compared as `sim->pv - (temp-273.15)`).",
+        "tmp": "mode: 0=trigger when local cell pressure > threshold; 2=trigger when pressure < threshold; 1=continuously relay the raw local pressure value into an adjacent FILT chain (ctype = 0x10000000 + round(pressure) - MIN_PRESSURE)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "tmp==0 and sim->pv[cell] > temp-273.15",
+          "out": "immediately (SAME frame, no 1-frame delay unlike TSNS/DTEC) sparks all adjacent qualifying conductors within +/-2",
+          "delay_frames": 0,
+          "src": "PSNS.cpp:53-77"
+        },
+        {
+          "in": "tmp==2 and sim->pv[cell] < temp-273.15",
+          "out": "same immediate spark",
+          "delay_frames": 0,
+          "src": "PSNS.cpp:53"
+        },
+        {
+          "in": "tmp==1",
+          "out": "relays current cell pressure into adjacent FILT chain, tag-offset by -MIN_PRESSURE so the encoded value is always non-negative",
+          "delay_frames": 0,
+          "src": "PSNS.cpp:79-108"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Pressure threshold sensor. UNLIKE TSNS/DTEC, PSNS fires its spark output on the SAME frame the threshold condition is met -- there is no life==1-then-fire-next-frame indirection; this is a real behavioral difference worth flagging.",
+      "builder_notes": "Zero propagation delay for PSNS's own detect-to-spark step (0 frames) versus TSNS/DTEC's 1-frame delay -- important for anyone chaining sensors expecting uniform timing across the SC_SENSOR family."
+    },
+    "BTRY": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID, immobile; HighTemperatureTransition=PT_PLSM@2273",
+      "flags": "none",
+      "defaults": {},
+      "props": {},
+      "transitions": {
+        "high_temp": "PT_PLSM at 2273"
+      },
+      "signals": [
+        {
+          "in": "continuously, every frame, no trigger needed",
+          "out": "sparks every qualifying conductor within Manhattan distance <4 (i.e. the +/-2 box minus the 4 farthest corners: `abs(rx)+abs(ry)<4`), excluding WATR/SLTW/NTCT/PTCT/INWR and requiring the target's life==0",
+          "delay_frames": 0,
+          "src": "BTRY.cpp:52-73"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Infinite, unconditional power source: continuously (re-)sparks every valid conductor in its neighborhood every single frame, forever, with no input signal required at all.",
+      "builder_notes": "BTRY's range test is Manhattan distance <4 within a +/-2 box, NOT a plain radius-2 square -- the 4 diagonal-most corners (rx=+/-2,ry=+/-2) are excluded (abs(2)+abs(2)=4, not <4), so its footprint is a distance-3 diamond clipped to the 5x5 box, not the full 5x5 square."
+    },
+    "ETRD": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC, immobile",
+      "flags": "ChangeType hook maintains a running count of life==0 ETRD particles for fast nearest-neighbor search",
+      "defaults": {},
+      "props": {
+        "tmp": "MINIMUM distance (exclusive, `checkDistance > tmp`) another life==0 ETRD must be from this one to be considered a valid arc target -- lets you enforce a minimum arc length.",
+        "tmp2": "MAXIMUM distance (inclusive-ish via min-clamp) another ETRD may be to be a valid target; 0 = unlimited (capped at hypot(XRES,YRES)). If tmp2 is set and tmp>tmp2, no valid range exists at all and the search short-circuits to 'nothing found'.",
+        "life": "0 = idle/available as an arc target; 1 = 'about to fire' state used by SPRK.cpp's PT_ETRD case to actually search for and create the PLSM arc; the SENDING electrode goes to life=20 after firing, the RECEIVING electrode is set to SPRK with life=9, ctype=PT_ETRD (marks it as freshly hit, decays normally); ETRD-as-sender in the base conduction table only fires onward to another electrode at exactly life==5 (SPRK.cpp:398, a special odd-timing carve-out: `sender==PT_ETRD && parts[i].life==5`)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "an ETRD particle carrying SPRK reaches life==1",
+          "out": "Element_ETRD_nearestSparkablePart() finds the nearest OTHER life==0 ETRD (respecting tmp/tmp2 min/max distance, using a spatial-sorted delta-list search for large particle counts or brute-force scan otherwise), and if not blocked by INSL/RSSS at the midpoint, draws a CreateLine PT_PLSM arc between them, sets the SENDER's life=20 (long cooldown) and ctype=NONE, and converts the RECEIVER to SPRK life=9 ctype=ETRD",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:97-116, ETRD.cpp:93-181"
+        },
+        {
+          "in": "as sender in the general conduction table, ETRD only reaches METL/BMTL/BRMT/LRBD/RBDM/PSCN/NSCN",
+          "out": "conducts (else refuses)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:307-310"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Tesla-arc electrode pair: when sparked, seeks out the nearest other unused (life==0) electrode within an optional min/max range band and draws a visible plasma bolt to it, arcing electricity across open space rather than through a wire.",
+      "builder_notes": "tmp/tmp2 let you build electrodes that specifically skip nearby targets (minimum range) or refuse to reach far ones (maximum range), enabling deliberate arc-routing in dense electrode fields."
+    },
+    "STOR": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile, PROP_NOCTYPEDRAW",
+      "flags": "CarriesTypeIn = FIELD_CTYPE | FIELD_TMP",
+      "defaults": {},
+      "props": {
+        "tmp": "the TYPE of the currently-captured particle (0 = empty/ready-to-capture). This is the field PIPE-compatible functions (Element_PIPE_transfer_pipe_to_part etc) read as 'the pipe's ctype equivalent' -- STOR intentionally reuses PIPE's storage-format functions.",
+        "tmp2/tmp3/tmp4": "captured particle's life/tmp/ctype respectively (same layout convention as PIPE's tmp2/tmp3/tmp4).",
+        "ctype": "optional capture FILTER: if set, STOR will only capture a particle of that specific type; 0 = capture anything non-solid.",
+        "life": "if a capture ctype filter mismatch causes tmp to stay unset for a while... actually: life decrements only while tmp==0 (empty) and life>0, functioning as a brief cooldown/recharge timer after releasing before it can capture again (set to 10 immediately after a release)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "non-solid particle (matching ctype filter if set) touches within +/-2, and STOR is currently empty (tmp==0) and not cooling down (life==0)",
+          "out": "captures it: tmp=type, temp/tmp2/tmp3/tmp4 mirror the particle's temp/life/tmp/ctype, original particle killed",
+          "delay_frames": 0,
+          "src": "STOR.cpp:73-83"
+        },
+        {
+          "in": "SPRK with ctype==PSCN, life in (0,4), touches within +/-2, AND STOR currently holds something (tmp!=0)",
+          "out": "releases the captured particle into a nearby free cell (oscillating search pattern y:1,0,-1 then x:0,1,-1,...), resets tmp=0 and starts a life=10 cooldown",
+          "delay_frames": 0,
+          "src": "STOR.cpp:84-103"
+        },
+        {
+          "in": "PRTI/PIPE/AR AY/CRAY etc reading STOR directly (special-cased throughout the codebase, e.g. PRTI.cpp:99-107, PIPE.cpp:261-264, ARAY.cpp:141-168)",
+          "out": "these elements bypass the normal PSCN-release trigger and pull/push STOR's contents directly using the shared PIPE-format transfer functions",
+          "delay_frames": 0,
+          "src": "multiple, see cross-refs"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Single-particle capture-and-hold buffer: auto-captures any qualifying free-floating particle when empty, and releases it on a PSCN spark (with a 10-frame cooldown before it can capture again); doubles as a PIPE-format data source/sink for several other elements (PRTI, PIPE, ARAY) that read/write its tmp/tmp2/tmp3/tmp4 fields directly.",
+      "builder_notes": "Because STOR shares its data layout with PIPE (tmp=held-type, tmp2=life, tmp3=tmp, tmp4=ctype), any code that manipulates PIPE's held-particle format can usually manipulate STOR too via the same helper functions -- this is an intentional format-compatibility design, not a coincidence."
+    },
+    "STKM": {
+      "menu_section": "n/a (creature, not a logic element)",
+      "state": "TYPE_SOLID-ish humanoid stick figure controlled by the player or scripted",
+      "flags": "unverified -- 772-line file covering movement/AI/inventory physics, largely out of scope for signal/logic mining",
+      "defaults": {},
+      "props": {
+        "unverified_note": "Not analyzed in depth (out of scope: STKM is a creature/player-avatar element, not a WIFI/PRTI/PCLN-style signal element). Known cross-references from other mined files: SPAWN.cpp sets sim->player.spawnID to mark where STKM (re)spawns; PRTI/PRTO explicitly skip STKM/STKM2/FIGH in their normal particle-capture path and note 'Handling these is a bit more complicated, and is done in STKM_interact()' (PRTI.cpp:90-91) -- i.e. STKM has bespoke portal-interaction code elsewhere in STKM.cpp not reviewed here."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [],
+      "behaviour": "unverified in this pass -- recommend a separate dedicated mining pass on STKM.cpp if the framework needs STKM/portal/spawn interaction details.",
+      "builder_notes": "Flagged as out-of-depth for MINER-B; SPAWN.cpp (fully mined below) is the STKM-adjacent element actually covered."
+    },
+    "SPRK": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_LIFE_DEC, immobile, transient (auto-reverts)",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; this is the core signal-carrier particle used by essentially every element above",
+      "defaults": {},
+      "props": {
+        "ctype": "the ORIGINAL element type this SPRK used to be (or is currently 'sparking' on top of) -- e.g. a sparked PSCN becomes SPRK with ctype=PSCN. When life reaches 0, part_change_type reverts the particle back to ctype (or PT_METL if ctype is invalid/disabled).",
+        "life": "the spark's remaining lifetime, PROP_LIFE_DEC auto-decrements every frame (engine-level). Life is initialized based on ctype: 4 for most conductors, 64 for WATR, 54 for SLTW, 14 for SWCH; RSST sparks are killed outright at life<=0 rather than reverting. Conduction eligibility to most receivers requires `parts[ID(r)].life==0` (i.e. can't re-spark something already sparking) and the SENDER'S `parts[i].life<4` (i.e. the very first frame of a NEW spark, life==4, generally does NOT conduct onward -- conduction happens on frames life==3,2,1); several elements instead gate specifically on sender life==3 (ARAY, CRAY, PSTN, DRAY) treating that as the 'just fired' edge."
+      },
+      "transitions": {
+        "life_reaches_0": "reverts to ctype element (or PT_METL if ctype invalid), except ctype==PT_RSST which is killed instead"
+      },
+      "signals": [
+        {
+          "in": "SPRK.ctype==PT_SPRK (a spark literally sitting on another spark)",
+          "out": "immediately kill_part (sparks cannot stack on themselves)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:90-92"
+        },
+        {
+          "in": "SPRK.ctype==PT_ETRD, life==1",
+          "out": "special electrode-arc firing, see ETRD entry",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:97-116"
+        },
+        {
+          "in": "SPRK.ctype==PT_NBLE, life<=1, tmp&0x1==0",
+          "out": "converts to PT_PLSM (unrelated to logic, nitrogen/noble-gas ionization side effect)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:117-129"
+        },
+        {
+          "in": "SPRK.ctype==PT_TESC",
+          "out": "chance-based LIGH (lightning) bolt emission scaled by accumulated tmp charge, self-cools afterward",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:130-168"
+        },
+        {
+          "in": "neighbor receiver==PT_SWCH, sender pavg not INSL/RSSS, sender life<4",
+          "out": "PSCN->life=10 (on), NSCN->ctype=NONE+life=9 (off)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:216-228"
+        },
+        {
+          "in": "neighbor receiver==PT_SPRK whose OWN ctype==PT_SWCH (i.e. spark currently sitting ON a switch), sender==PT_NSCN",
+          "out": "reverts that spark back to SWCH type with ctype=NONE, life=9 (forced off even mid-spark)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:229-240"
+        },
+        {
+          "in": "neighbor receiver in {PUMP, GPMP, HSWC, PBCN}, sender life<4",
+          "out": "PSCN->life=10; NSCN (only if life>=10 already)->life=9 -- the standardized 'PROP_PTOGGLE-style' arm/disarm rule used across newer powered elements",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:248-254"
+        },
+        {
+          "in": "neighbor receiver==PT_LCRY, within radius<2, sender life<4",
+          "out": "PSCN(if tmp==0)->tmp=2 (charge); NSCN(if tmp==3)->tmp=1 (discharge)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:255-261"
+        },
+        {
+          "in": "neighbor receiver==PT_PPIP, sender life==3, sender in {NSCN,PSCN,INST}",
+          "out": "Element_PPIP_flood_trigger(sim,x+rx,y+ry,sender) -- whole-network pipe pause/reverse",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:262-268"
+        },
+        {
+          "in": "neighbor receiver in {NTCT,PTCT,INWR}, sender==PT_METL, sender life<4",
+          "out": "sets receiver's temp=473.0K directly (heats it, used to disable PTCT/enable NTCT gates); for NTCT/PTCT this ALSO skips normal spark conduction for this pair (continue) -- METL heating INWR does NOT skip normal conduction",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:269-276"
+        },
+        {
+          "in": "neighbor receiver==PT_EMP, receiver life==0, sender life in (0,4)",
+          "out": "sim->emp_trigger_count++ and eventually calls Element_EMP_Trigger which does probabilistic damage across the whole board to nearby electronics (BREC/NTCT conversion of active sparks, METL->BMTL->BRMT, WIFI channel randomize/break, SWCH/ARAY break, DLAY randomize) -- receiver.life set to 220 (cooldown before it can trigger again)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:277-286, EMP.cpp:75-214"
+        },
+        {
+          "in": "generic conduction gate (applies to all receivers not special-cased above)",
+          "out": "blocked entirely if the INSL/RSSS midpoint average blocks it (`pavg==PT_INSL || pavg==PT_RSSS` -> continue); blocked if receiver lacks PROP_CONDUCTS (unless receiver is INST or QRTZ, special-cased exceptions); blocked beyond Manhattan distance 4 unless sender or receiver is SWCH (`abs(rx)+abs(ry)>=4 && sender!=SWCH && receiver!=SWCH` -> continue) -- i.e. NORMAL conduction range is the 5x5 box minus corners (same diamond as BTRY), but SWCH extends reach to the full 5x5",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:289-291"
+        },
+        {
+          "in": "tryConduct() lambda -- the core sender/receiver compatibility matrix",
+          "out": "`receiver==sender` always conducts (except to/from INST or QRTZ, which need their special-case rules even for same-type contact); sender-specific overrides for INST/SWCH/ETRD/NTCT/PTCT/INWR (see each element's own entry above); receiver-specific overrides for QRTZ/NTCT/PTCT/INWR/INST/NBLE/PSCN; default fallthrough (no override matched) is `return true` (conducts)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:293-361"
+        },
+        {
+          "in": "after tryConduct() passes: receiver==WATR or SLTW, receiver life==0, sender life<3",
+          "out": "converts to SPRK with life=6(WATR)/5(SLTW), ctype=own original type",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:368-376"
+        },
+        {
+          "in": "after tryConduct() passes: receiver==INST, receiver life==0, sender life<4",
+          "out": "sim->FloodINST(x+rx,y+ry) -- see INST entry",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:377-382"
+        },
+        {
+          "in": "after tryConduct() passes: receiver==RSST, receiver life==0, sender life<4",
+          "out": "converts to SPRK life=5, ctype=RSST",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:383-390"
+        },
+        {
+          "in": "after tryConduct() passes: generic receiver, receiver life==0, sender life<4",
+          "out": "converts to SPRK life=4, ctype=receiver's own type; ALSO if the receiver is METL/BMTL/BRMT/PSCN/NSCN/ETRD/NBLE/IRON and not legacy mode and temp+10<673, gives it a +10K heat bump (real electrical heating side-effect)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:391-397"
+        },
+        {
+          "in": "special ETRD-as-sender-onward case: receiver life==0, sender==ETRD, sender life==5 exactly",
+          "out": "sender itself reverts to its own element (ctype=NONE, life=20 self-cooldown) WHILE ALSO sparking the receiver (life=4, ctype=receiver type) -- ETRD both stops being a spark and passes current onward in the same step, at the odd life==5 timing (not the usual life<4)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:398-406"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "SPRK is the universal 'this cell is currently carrying current' marker particle. Its ctype remembers the underlying conductor element so it can revert; its life is the shared spark-lifetime clock (auto-decremented by the engine) whose exact value at any moment gates which element-specific behaviors fire (life==4=freshly created/does not yet conduct further, life==3=the single frame most 'edge-triggered' elements like ARAY/CRAY/DRAY/PSTN fire on, life<4=the general window during which ordinary conductor-to-conductor conduction happens, life==0=reverts to ctype). Sparks cannot re-enter a cell that is already sparking (receiver life must be 0), giving a natural 4-frame refractory/cooldown period per conductor cell before it can be sparked again.",
+      "builder_notes": "THIS FILE IS THE GROUND TRUTH for essentially all cross-element conduction rules; see the top-level `signal_rules` array below for a condensed, deduplicated summary suitable for a fast lookup table. Key numbers to remember: sender must have life<4 to conduct (except ETRD at exactly life==5, and edge-triggered ray/piston elements which key off sender life==3); receiver must have life==0 to be sparkable; default conduction range is a distance-4 Manhattan diamond in a 5x5 box, extended to full 5x5 only for SWCH; INSL/RSSS sitting at the midpoint between sender and receiver blocks everything (including special-cased paths) except where noted."
+    },
+    "GRAV": {
+      "menu_section": "SC_POWDERS",
+      "state": "TYPE_PART|PROP_LIFE_DEC, falling dust -- NOT a logic/signal element",
+      "flags": "included per task's element list but has no ctype/tmp/tmp2 signal semantics",
+      "defaults": {},
+      "props": {
+        "life": "purely a decorative glow-trail timer: set to 48 when moving fast (speed^2>=0.1) with 1/512 chance per frame; auto-decrements (PROP_LIFE_DEC) and drives a fire/glow graphics effect while nonzero.",
+        "vx/vy": "used directly (not via tmp/ctype) to drive a velocity-based colour-cycling graphics effect; no logic meaning."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [],
+      "behaviour": "Very light falling dust that occasionally glows when moving fast; purely cosmetic/physical, not part of the signal/logic system. Included here only because it was in the assigned element list.",
+      "builder_notes": "Do not expect GRAV to interact with SPRK/PSCN/NSCN or carry any programmable state -- it has none."
+    },
+    "EMP": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_LIFE_DEC, immobile",
+      "flags": "no per-particle Update(); its effect is Element_EMP_Trigger(sim, triggerCount), invoked externally (from SPRK.cpp's PT_EMP receiver case) rather than from EMP.cpp's own per-frame loop",
+      "defaults": {},
+      "props": {
+        "life": "cooldown set to 220 when triggered (SPRK.cpp:284); also drives a purely cosmetic colour ramp in Graphics()."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "SPRK touches an EMP with life==0, sender life in (0,4)",
+          "out": "increments sim->emp_trigger_count and calls Element_EMP_Trigger(sim, triggerCount) (aggregated once per frame across ALL triggering sparks that tick, using a binomial-probability model so multiple simultaneous triggers compound realistically rather than linearly); sets the EMP's own life=220 (long cooldown)",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:277-286"
+        },
+        {
+          "in": "Element_EMP_Trigger effect, scanning the WHOLE simulation for every SPRK / (SWCH mid-cycle) / (WIRE with ctype set)",
+          "out": "probabilistically converts nearby PSCN/NSCN/PTCT/NTCT/INST/SWCH/WIRE spark-carriers to BREC or NTCT (prob ~1/48 per trigger), heats/breaks nearby METL->BMTL->BRMT (prob ~1/300, ~1/160 chained), heats/breaks BMTL->BRMT (~1/160), randomizes/breaks WIFI channel (~1/8 randomize, ~1/16 break to BREC), breaks SWCH to BREC (~1/100) with heat, breaks ARAY to BREC (~1/60) with heat, randomizes DLAY's temp/delay (~1/70)",
+          "delay_frames": 0,
+          "src": "EMP.cpp:75-214"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Electromagnetic pulse bomb: a single spark trigger runs a probabilistic, board-wide 'damage nearby electronics' pass (scaled by how many EMP-triggering events occurred that frame via triggerCount, using proper binomial compounding rather than naive per-event probability), specifically targeting semiconductors, wire, WIFI, SWCH, ARAY, and DLAY.",
+      "builder_notes": "Because EMP's damage is board-wide (iterates all active particles), placing EMP near dense logic will probabilistically corrupt distant unrelated circuits too, not just its immediate neighbors -- design shielding (INSL walls) accordingly, though note the metal-heating/breaking neighbor-radius effects (+/-2 cells) ARE local, only the 'is_elec' spark/SWCH/WIRE detection and its associated 1/48 BREC/NTCT conversion chance are global."
+    },
+    "LIGH": {
+      "menu_section": "SC_EXPLOSIVE",
+      "state": "TYPE_SOLID, immobile-but-self-propagating bolt segment",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "life": "remaining 'power'/segment budget; each new segment gets roughly life/1.5 - rng(0,1) of its parent's life; segment removed once life<=1.",
+        "tmp": "bolt angle in degrees (counterclockwise from +x), with +/-30 degree random wander applied each step to produce the jagged look.",
+        "tmp2": "state machine: 4=first pixel (spawned by Create()); 0/1=bending (1=deferred one extra frame because the next segment's particle index is numerically before this one, avoiding update-order artifacts); 2/3=branching (same deferred-vs-not distinction); 5=marks a segment for removal (checked at top of update, kills itself); 6/7/8=countdown-then-normal-segment states (8 counts down to 5 over 3 frames before removal, giving the visible bolt a brief lingering existence after it stops extending)."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "LIGH touches any conductor (PROP_CONDUCTS) with life==0",
+          "out": "immediately sparks it (`sim->create_part(...,PT_SPRK)`)",
+          "delay_frames": 0,
+          "src": "LIGH.cpp:157-158"
+        },
+        {
+          "in": "LIGH touches VOID / PVOD(life>=10 with matching ctype channel-parity check) / BHOL / NBHL while extending toward a new pixel",
+          "out": "the bolt is absorbed/stopped there (create_LIGH returns true, halting the line-draw)",
+          "delay_frames": 0,
+          "src": "LIGH.cpp:229-234"
+        }
+      ],
+      "reacts": [
+        {
+          "note": "heats/ignites nearby Flammable materials into FIRE, dumps heat and pressure into HEAC (possibly melting it to LAVA), converts DEUT/PLUT to NEUT, damages STKM/STKM2 (unless that player's own avatar element IS lighh), and always deposits ambient heat/pressure into the surrounding cells -- these are physical/thermal reactions, not logic signals per se, but LIGH DOES spark any conductor it touches, making it usable as a chaotic/random SPRK generator"
+        }
+      ],
+      "behaviour": "Self-propagating jagged lightning bolt that recursively spawns child segments (bending or branching) until its power (life) budget is exhausted; every segment sparks any adjacent life==0 conductor it touches, so a LIGH bolt effectively fires SPRK onto anything conductive in its path as a side effect.",
+      "builder_notes": "Because it can spark ARBITRARY conductors in its path indiscriminately (no PSCN/NSCN distinction, no ctype gating), LIGH is a chaotic/unreliable trigger source unsuitable for precise logic, but useful as a 'random activation' element or lightning-rod damage source."
+    },
+    "ANAR": {
+      "menu_section": "SC_POWDERS",
+      "state": "TYPE_PART, anti-gravity dust -- NOT a logic element",
+      "flags": "NewtonianGravity=-1 (repels from gravity sources)",
+      "defaults": {},
+      "props": {},
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "touching CFLM (cold flame) has 1/4 chance to convert self to CFLM and cool the CFLM+self to 0K, pulling local pressure down -- purely thermal/physical",
+          "src": "ANAR.cpp:60-67"
+        }
+      ],
+      "behaviour": "Anti-gravity powder with cold-flame interaction; no signal/logic role. Included only because it was on the assigned element list (likely confused with logic elements due to alphabetic proximity or menu grouping).",
+      "builder_notes": "Not a signal-carrying element; no ctype/tmp/life logic semantics beyond the CFLM reaction noted."
+    },
+    "TESC": {
+      "menu_section": "SC_ELEC",
+      "state": "TYPE_SOLID|PROP_CONDUCTS|PROP_LIFE_DEC|PROP_HOT_GLOW, immobile",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "tmp": "'charge' level, clamped to max 300 at creation (Create() reads the tool's 'v' parameter directly into tmp) and re-clamped to 300 every update while sparking. Higher tmp = more frequent and more powerful LIGH bolt emission and stronger self-cooling per bolt."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "TESC itself becomes SPRK (i.e. gets sparked by an adjacent conductor per the generic rules)",
+          "out": "for each of its 8 neighboring EMPTY cells, with probability 1/(tmp^2/20+6) (only if tmp>4), emits a PT_LIGH bolt outward from that direction; the bolt's life (power) derives from tmp (`rng(0,2+tmp/15)+tmp/7`, capped 60), its temp from `life*tmp/2.5`, and firing self-cools TESC's own temp by `tmp*2 + temp/5`",
+          "delay_frames": 0,
+          "src": "SPRK.cpp:130-167"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Tesla coil: while actively sparking, has a per-frame chance (scaling with its own charge level tmp) to fire a lightning bolt (PT_LIGH) out of each open adjacent direction, self-cooling each time it does.",
+      "builder_notes": "This behavior lives inside SPRK.cpp's `case PT_TESC` (i.e. it only fires while TESC IS the spark, meaning it must be continuously re-sparked to keep firing, not TESC.cpp's own file, which contains only the Create() charge-clamp)."
+    },
+    "HEAC": {
+      "menu_section": "SC_SOLIDS",
+      "state": "TYPE_SOLID, immobile; Meltable=1; special HighTemperature=1887.15 with no auto-transition (used by other elements for custom melt logic)",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "temp": "not a logic signal, but drives a specialized long-range (4-cell radius diagonal rays) heat-averaging algorithm: every frame, HEAC line-of-sight-samples (via a Bresenham CheckLine that stops at heat-insulators) the 8 cells at +/-4 offset in each of the 8 principal/diagonal directions, computes a heat-capacity-weighted average temperature across all sampled cells plus itself, and then WRITES that averaged temperature back out to all the same sampled cells -- effectively acting as a fast long-distance heat pipe/equalizer."
+      },
+      "transitions": {
+        "high_temp": "1887.15 K (HighTemperature set but HighTemperatureTransition=NT, i.e. no automatic engine-driven transition)",
+        "note": "HighTemperature=1887.15 is set but HighTemperatureTransition=NT (no direct transition); melting behavior is driven by OTHER elements checking against HEAC's HighTemperature threshold externally (per the file's own comment), e.g. LIGH.cpp:147-152 converts HEAC to LAVA(HEAC) once its temp exceeds elements[PT_HEAC].HighTemperature"
+      },
+      "signals": [],
+      "reacts": [],
+      "behaviour": "Rapid long-range heat conductor/equalizer: not a spark-based logic element but a thermal one, useful for synchronizing temperature (and thus temperature-dependent logic like WIFI channel, PRTI channel, DLAY delay, PSTN extend distance) across distant points instantly.",
+      "builder_notes": "Because HEAC's averaging reaches 4 cells in 8 directions and updates symmetrically, a HEAC grid can be used to broadcast a temperature-encoded value (as used by WIFI/PRTI channel selection or DLAY delay length) across a board faster than normal conduction; PIPE/PPIP also specifically detect adjacent HEAC during their colour-init scan and flag PFLAG_CAN_CONDUCT across the whole connected pipe network (PIPE.cpp:184-188,222-223)."
+    },
+    "PUMP": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile; DefaultProperties.temp=273.15",
+      "flags": "DefaultProperties.life=10",
+      "defaults": {
+        "temp": 273.15,
+        "life": 10
+      },
+      "props": {
+        "life": "10=armed/active (drives pressure every frame); arming/disarming via PSCN/NSCN spark is handled generically in SPRK.cpp's shared PUMP/GPMP/HSWC/PBCN case (life=10 on PSCN, life=9 on NSCN if already>=10); chain-propagates to neighboring PUMP the same way as PCLN/PVOD (life==10 neighbor with life==0 self -> self becomes 10; life<10,>0 neighbor -> self set to 9).",
+        "temp": "sets the TARGET pressure (in Celsius-equivalent) that surrounding cells are driven toward while active, clamped to [MIN_PRESSURE,MAX_PRESSURE]+273.15.",
+        "tmp": "mode: 0=actively drive local 3x3 cell pressure toward temp-273.15 each frame (`pv += 0.1*(target-pv)`, orthogonal-only, skips diagonal cells `!(rx&&ry)`); 1=instead read pressure values OUT of adjacent FILT cells (ctype-0x10000000) and directly SET that cell's pressure -- a data-bus read mode, same tagging convention as HSWC's temperature read."
+      },
+      "transitions": {},
+      "signals": [
+        {
+          "in": "life==10 (armed), tmp==0",
+          "out": "every orthogonal (and self) cell in the local 3x3 gets pv nudged 10% of the way toward (temp-273.15) each frame -- exponential-decay approach to target pressure, not an instant set",
+          "delay_frames": 0,
+          "src": "PUMP.cpp:71-75"
+        },
+        {
+          "in": "life==10, tmp==1, adjacent FILT",
+          "out": "directly SETS (not nudges) that FILT-adjacent cell's pressure from the FILT's tagged ctype value",
+          "delay_frames": 0,
+          "src": "PUMP.cpp:76-86"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Pressure actuator: while armed, either smoothly drives local pressure toward a programmed target (temp field) or, in tmp==1 mode, snaps pressure directly to a value read from an adjacent FILT data-bus cell.",
+      "builder_notes": "Note the asymmetry: tmp==0 mode is a smooth 10%-per-frame approach (never instantly reaches target), while tmp==1 mode is an instant absolute set -- these behave very differently for anyone trying to build a precise pressure-value transfer circuit."
+    },
+    "GPMP": {
+      "menu_section": "SC_POWERED",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "DefaultProperties.life=10",
+      "defaults": {
+        "life": 10
+      },
+      "props": {
+        "life": "10=armed; identical arm/disarm/chain-propagation mechanism to PUMP (generic PSCN/NSCN rule in SPRK.cpp plus local neighbor-chain code in GPMP.cpp:76-82).",
+        "temp": "sets the gravity strength this GPMP contributes, clamped to [-256,256]+273.15; while armed, `sim->gravIn.mass[cell] = 0.2 * (temp-273.15)` is written directly every frame (an absolute set, not a gradual approach like PUMP's pressure mode)."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "while armed (life==10), continuously overwrites its own custom-gravity cell mass value from temp; not spark-edge-triggered beyond the initial PSCN/NSCN arm/disarm",
+          "src": "GPMP.cpp:59-64"
+        }
+      ],
+      "behaviour": "Custom-gravity-field actuator: while armed, sets its cell's contribution to the simulation's Newtonian gravity field directly from its own temp (0.2 x Celsius-equivalent), instantly (not a smoothed approach like PUMP's pressure mode).",
+      "builder_notes": "GPMP's gravity write is instant/absolute every frame (`mass = ...`), unlike PUMP's tmp==0 pressure mode which is a 10%-per-frame exponential approach -- these two visually-similar 'temp sets target physical field' elements actually differ in update dynamics."
+    },
+    "PHOT": {
+      "menu_section": "SC_NUCLEAR",
+      "state": "TYPE_ENERGY|PROP_PHOTPASS|PROP_LIFE_DEC|PROP_LIFE_KILL_DEC, Weight=-1 (energy particle, bypasses normal collision)",
+      "flags": "DefaultProperties.life=680, DefaultProperties.ctype=0x3FFFFFFF (full-spectrum white)",
+      "defaults": {
+        "life": 680,
+        "ctype": "0x3FFFFFFF (all 30 wavelength bits set = white)"
+      },
+      "props": {
+        "ctype": "30-bit wavelength/colour bitmask (bits 0..29), same encoding FILT reads/writes; `!(ctype&0x3FFFFFFF)` (no bits set = fully filtered out / black) causes immediate self-destruction every frame -- this is how FILT's AND-filter mode (tmp==1) can extinguish a photon entirely."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "on ISOZ/ISZS (isotope) neighbor, 1/400 chance to duplicate itself into a second PHOT with a random new velocity, consuming local pressure (nuclear pair-production style effect), unrelated to logic",
+          "src": "PHOT.cpp:78-96"
+        },
+        {
+          "note": "on QRTZ/PQRT, gets a random velocity kick, snaps ctype to a random single-wavelength band if currently full-spectrum, and extends its own life by 1 (scattering/delay effect)",
+          "src": "PHOT.cpp:97-106"
+        },
+        {
+          "note": "on BGLA (glass), applies a small random refraction-angle rotation to its velocity vector",
+          "src": "PHOT.cpp:107-115"
+        },
+        {
+          "note": "on RSST, solidifies the RSST into its own encoded ctype/tmp element (or RSSS if none set) and self-destructs -- this is the mechanism by which PHOT 'develops' RSST photo-resist, a real logic-adjacent interaction",
+          "src": "PHOT.cpp:116-139"
+        },
+        {
+          "note": "on FILT with tmp==9 (random-jitter mode), gets an extra random velocity perturbation on top of FILT's own wavelength jitter",
+          "src": "PHOT.cpp:140-143"
+        },
+        {
+          "note": "Create(): if spawned directly on a FILT cell, immediately passes its initial ctype through Element_FILT_interactWavelengths using that FILT's mode",
+          "src": "PHOT.cpp:183-186"
+        }
+      ],
+      "behaviour": "Light particle: carries a 30-bit wavelength/colour value manipulated by FILT (and readable by DTEC/LDTC/TSNS as an 'energy particle'), self-destructs if fully filtered to black, and has several special-case interactions with QRTZ/BGLA/RSST/ISOZ that are more physics than logic.",
+      "builder_notes": "PHOT is the canonical 'energy particle' referenced throughout DTEC/LDTC/CRAY/ARAY/BRAY wavelength-relay code; RSST solidification is a genuine logic primitive (photo-develop a placeholder into a real element chosen by ctype/tmp) worth flagging to the analyst as a distinct mechanism from the spark-based logic family."
+    },
+    "GLOW": {
+      "menu_section": "SC_LIQUID",
+      "state": "TYPE_LIQUID|PROP_PHOTPASS|PROP_LIFE_DEC, mobile liquid -- NOT a spark-logic element",
+      "flags": "none",
+      "defaults": {
+        "temp": "R_TEMP+20+273.15"
+      },
+      "props": {
+        "ctype": "recomputed every frame purely for its OWN graphics (not read by other logic elements per this file): `int(local_pressure*16)`, clamped >=0.",
+        "tmp": "also recomputed every frame purely for graphics: a velocity-magnitude-derived brightness value."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "1/400 chance per WATR neighbor to convert self to DEUT and the WATR to DEUT (deuterium synthesis, unrelated to logic)",
+          "src": "GLOW.cpp:63-71"
+        },
+        {
+          "note": "touching GEL converts self+GEL into RSST (tmp=0, i.e. un-programmed placeholder), a genuine cross-reference into the photo-resist logic family",
+          "src": "GLOW.cpp:72-80"
+        }
+      ],
+      "behaviour": "Pressure/velocity-reactive glowing liquid; ctype/tmp here are purely cosmetic (self-referential, not read by other elements as a signal) despite superficially resembling the sensor-relay pattern seen in DTEC/TSNS/PSNS.",
+      "builder_notes": "Do not confuse GLOW's ctype/tmp with the FILT-style data-bus convention used elsewhere -- GLOW's fields are graphics-only in this file."
+    },
+    "BIZR": {
+      "menu_section": "SC_LIQUID",
+      "state": "TYPE_LIQUID, mobile; LowTemperatureTransition=PT_BIZRG@100, HighTemperatureTransition=PT_BIZRS@400",
+      "flags": "shares Element_BIZR_update/graphics with BIZRG and BIZRS",
+      "defaults": {
+        "ctype": "0x47FFFF"
+      },
+      "props": {
+        "ctype": "30-bit wavelength bitmask, same convention as PHOT/FILT/BRAY, consulted by DTEC/LDTC as one of the recognized 'photon-family data' types (phot_data_type()) for the FILT colour-relay mechanism.",
+        "dcolour": "when set, actively PAINTS (blends toward, via a fixed-rate BLEND=21.0 nudge per frame) the deco-colour of every non-BIZR-family neighbor within +/-2 cells toward its own dcolour -- this is BIZR's real signature interaction, independent of ctype/wavelength logic"
+      },
+      "transitions": {
+        "low_temp": "PT_BIZRG at 100K",
+        "high_temp": "PT_BIZRS at 400K"
+      },
+      "signals": [],
+      "reacts": [
+        {
+          "note": "dcolour-blending paint effect described above runs every frame regardless of spark state",
+          "src": "BIZR.cpp:54-89"
+        }
+      ],
+      "behaviour": "Liquid phase of the BIZR family; recognized by DTEC/LDTC's wavelength-relay code as an energy-like ctype source, and independently paints neighboring particles' deco colour toward its own dcolour every frame.",
+      "builder_notes": "BIZR/BIZRG/BIZRS are functionally identical (same Update/Graphics), differing only in TYPE_LIQUID/GAS/SOLID physical phase and their temperature-transition thresholds between each other."
+    },
+    "BIZRG": {
+      "menu_section": "SC_GAS (MenuVisible=0, internal)",
+      "state": "TYPE_GAS, mobile; HighTemperatureTransition=PT_BIZR@100",
+      "flags": "shares Element_BIZR_update/graphics with BIZR/BIZRS",
+      "defaults": {
+        "ctype": "0x47FFFF"
+      },
+      "props": {
+        "see": "BIZR entry -- identical ctype/dcolour-paint mechanism"
+      },
+      "transitions": {
+        "high_temp": "PT_BIZR at 100K"
+      },
+      "signals": [],
+      "reacts": [],
+      "behaviour": "Gas phase of the BIZR family.",
+      "builder_notes": "See BIZR."
+    },
+    "BIZRS": {
+      "menu_section": "SC_SOLIDS (MenuVisible=0, internal)",
+      "state": "TYPE_SOLID, immobile; LowTemperatureTransition=PT_BIZR@400",
+      "flags": "shares Element_BIZR_update/graphics with BIZR/BIZRG",
+      "defaults": {
+        "ctype": "0x47FFFF"
+      },
+      "props": {
+        "see": "BIZR entry -- identical ctype/dcolour-paint mechanism"
+      },
+      "transitions": {
+        "low_temp": "PT_BIZR at 400K"
+      },
+      "signals": [],
+      "reacts": [],
+      "behaviour": "Solid phase of the BIZR family.",
+      "builder_notes": "See BIZR."
+    },
+    "EXOT": {
+      "menu_section": "SC_NUCLEAR",
+      "state": "TYPE_LIQUID|PROP_NEUTPASS, mobile -- exotic-matter reactor fuel, not a spark-logic element",
+      "flags": "CarriesTypeIn = FIELD_CTYPE; DefaultProperties.life=1000, DefaultProperties.tmp=244",
+      "defaults": {
+        "life": 1000,
+        "tmp": 244
+      },
+      "props": {
+        "tmp": "flashing-effect counter, decremented every frame and reset to 250 whenever it falls below 1 or exceeds 250 -- purely cosmetic timing, not a signal.",
+        "tmp2": "'excitation' accumulator: builds up from pressure/WARP-neighbor exposure, decremented every frame; >6000 triggers conversion to PT_WARP (wormhole); interacts diffusively with neighboring EXOT particles (transfers half the difference toward equilibrium each frame, like a discrete heat-diffusion step).",
+        "ctype": "when set to PT_PROT (proton), makes the EXOT behave as a proton-carrier: cools by 1K/frame and converts to PT_CFLM once below 50K; also propagates PT_PROT ctype between touching EXOT particles."
+      },
+      "transitions": {
+        "to_warp": "PT_WARP when tmp2 exceeds 6000 (or under a separate high-pressure+high-temp condition)"
+      },
+      "signals": [],
+      "reacts": [
+        {
+          "note": "converts any non-exempt neighbor particle type into EXOT once tmp>245 and life>1337 (a slow contagion/corruption effect)",
+          "src": "EXOT.cpp:104-111"
+        }
+      ],
+      "behaviour": "Exotic-matter reactor fuel with a slow-building excitation counter (tmp2) that eventually converts it to a wormhole (WARP); has a corrosive 'convert neighbors to EXOT' late-game behavior. Not part of the spark/logic system.",
+      "builder_notes": "Included per the assigned element list but has no ctype/tmp signal semantics usable for building logic circuits -- purely a nuclear-fuel/reactor element."
+    },
+    "VIBR": {
+      "menu_section": "SC_NUCLEAR",
+      "state": "TYPE_SOLID|PROP_LIFE_DEC, immobile until it explodes -- energy-storage/explosive element, has one direct spark-emission side effect",
+      "flags": "DefaultProperties.temp=273.15",
+      "defaults": {
+        "temp": 273.15
+      },
+      "props": {
+        "tmp": "stored energy accumulator: increases from being warmer than 274.65K (+1/frame while bleeding 3K off) or colder than 271.65K (-1/frame while adding 3K), and from ambient pressure outside +/-2.5 (+7 per frame from high pressure, -2 per frame from very negative pressure); reaching >1000 triggers explosion countdown (life=750); diffuses with neighboring VIBR/BVBR particles like EXOT's tmp2.",
+        "life": "0 = stable/absorbing; nonzero = counting down an explosion sequence (750 down to 1): below 300 it starts randomly sparking adjacent conductors (`life<4` conductor check, same generic sparking pattern as most sensors), below 500 it dumps all its tmp energy as heat into a random nearby non-VIBR cell, and at life==1 it detonates into ELEC+PHOT+BREC and converts itself to EXOT.",
+        "tmp2": "explosion-abort/'fizzle' flag: if set to 1 while life>75 (via CFLM contact or an already-exploding neighbor VIBR/BVBR), the explosion sequence at life==1 instead fizzles quietly (resets temp/tmp/tmp2 to defaults) rather than detonating."
+      },
+      "transitions": {
+        "to_exot": "on detonation, self converts to PT_EXOT (with tmp2 set to a random 0-999 'residual excitation')",
+        "to_bvbr": "touching PT_ANAR converts VIBR to PT_BVBR"
+      },
+      "signals": [
+        {
+          "in": "life in (0,300) i.e. mid-explosion-countdown",
+          "out": "1/8-chance-per-frame (via the orbit_rx/ry 8-direction pick) sparks one adjacent conductor if it is life==0",
+          "delay_frames": 0,
+          "src": "VIBR.cpp:88-101"
+        }
+      ],
+      "reacts": [],
+      "behaviour": "Energy-storage explosive: slowly banks temperature/pressure deviation as 'tmp' charge, explodes (life countdown from 750) once tmp exceeds 1000, sparking nearby conductors and dumping heat during the countdown before a final multi-particle detonation that leaves behind an EXOT.",
+      "builder_notes": "The only logic-relevant behavior is its mid-explosion random spark emission (life 0..300 window) -- not deterministic or addressable, so unsuitable as a precise trigger, more of a chaotic energy-release side effect."
+    },
+    "ACEL": {
+      "menu_section": "SC_FORCE",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "life": "speed multiplier control: 0 (default/unset) = fixed 1.1x per frame; nonzero = multiplier = 1.0 + clamp(life,0,1000)/100.0 (i.e. life=100 -> 2.0x per frame, life=1000 -> 11.0x per frame, life values above 1000 clamp to the 1000 cap).",
+        "tmp": "output/status flag, NOT a control input: set to 1 each frame something was actually accelerated (for the glow-graphics effect), reset to 0 at the start of each frame otherwise."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "every frame (no spark needed), multiplies the velocity of any moving-type (PART/LIQUID/GAS/ENERGY) particle directly orthogonally adjacent (exactly one of rx/ry nonzero, not diagonal) by the life-derived multiplier, clamped to MAX_VELOCITY while preserving direction",
+          "src": "ACEL.cpp:65-99"
+        }
+      ],
+      "behaviour": "Always-on orthogonal-only velocity amplifier; life field programs the multiplier strength, tmp is a read-only 'did I just accelerate something' status flag (used only for graphics glow), not a signal input.",
+      "builder_notes": "tmp is OUTPUT not INPUT here -- do not attempt to program ACEL via tmp; only life controls behavior. Only orthogonal neighbors (up/down/left/right) are affected, not diagonals, unlike many other +/-1 box scanners."
+    },
+    "DCEL": {
+      "menu_section": "SC_FORCE",
+      "state": "TYPE_SOLID, immobile",
+      "flags": "none",
+      "defaults": {},
+      "props": {
+        "life": "speed-reduction control: 0 (default) = fixed multiplier 1/1.1 (~0.909x); nonzero = multiplier = 1.0 - clamp(life,0,100)/100.0 (life=100 -> multiplier 0.0, i.e. full stop; life=50 -> 0.5x).",
+        "tmp": "output/status flag identical role to ACEL's tmp: 1 if something was decelerated this frame (graphics glow trigger only), not an input."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "every frame, multiplies velocity of any orthogonally-adjacent moving-type particle by the life-derived multiplier (no clamp needed since it only shrinks velocity)",
+          "src": "DCEL.cpp:60-79"
+        }
+      ],
+      "behaviour": "Always-on orthogonal-only velocity dampener/brake, the inverse of ACEL; life=100 fully stops adjacent particles.",
+      "builder_notes": "Note DCEL's life cap is 100 (not 1000 like ACEL) since life=100 already yields multiplier 0 (full stop) -- higher life values do not go negative/reverse, they just clamp effectively via the (life>100?100:...) guard."
+    },
+    "SPAWN": {
+      "menu_section": "n/a (MenuVisible=0, internal STKM-support element)",
+      "state": "TYPE_SOLID, immobile marker particle",
+      "flags": "CreateAllowed + ChangeType hooks only, no Update()",
+      "defaults": {},
+      "props": {
+        "no ctype/tmp/tmp2/life logic": "SPAWN carries no per-particle signal state at all; its entire function is registering/deregistering itself in the SIMULATION-global sim->player.spawnID."
+      },
+      "transitions": {},
+      "signals": [],
+      "reacts": [
+        {
+          "note": "CreateAllowed(): a new SPAWN particle can only be placed if sim->player.spawnID==-1 (only one SPAWN point may exist at a time for player 1)",
+          "src": "SPAWN.cpp:50-53"
+        },
+        {
+          "note": "ChangeType(): whenever a particle becomes PT_SPAWN, if no spawn point is currently registered, this particle's index becomes sim->player.spawnID; whenever a particle STOPS being PT_SPAWN (deleted or transmuted) and it WAS the registered spawnID, spawnID resets to -1",
+          "src": "SPAWN.cpp:55-66"
+        }
+      ],
+      "behaviour": "STKM (player 1) respawn-point marker; enforces a single-instance invariant via CreateAllowed and keeps the simulation-global spawnID pointer in sync via ChangeType hooks. Not a signal/logic element in the SPRK sense.",
+      "builder_notes": "There is no SPWN2 file in this element list to cross-check (player 2's spawn marker, if present, would live in a separate file not covered by this pass) -- unverified whether SPWN2 exists/uses the analogous sim->player2.spawnID."
+    }
+  },
+  "signal_rules": [
+    {
+      "rule": "Spark lifecycle: SPRK.life is auto-decremented every frame by the engine (PROP_LIFE_DEC). A conductor becomes SPRK with ctype=its own original type when sparked; when life hits 0, SPRK reverts to ctype (or PT_METL if ctype invalid), except ctype==PT_RSST which is deleted instead of reverting.",
+      "src": "Simulation.cpp:3396-3403; SPRK.cpp:63-86"
+    },
+    {
+      "rule": "A conductor cannot be re-sparked while it is already sparking: virtually every trigger check across the codebase requires the RECEIVING particle's life==0 before converting it to SPRK.",
+      "src": "SPRK.cpp:369,378,384,391 (and repeated identically in DTEC.cpp:75, TSNS.cpp:76, PSNS.cpp:68, BTRY.cpp:65, VIBR.cpp:96)"
+    },
+    {
+      "rule": "A freshly-created spark (life==4, the initial value for most conductors) generally does NOT itself conduct onward the same frame it is created; ordinary conduction requires the SENDING spark's life<4 (i.e. one frame after creation, life==3,2,1). Several elements instead key specifically on sender life==3 as an edge-trigger for one-shot actions (ARAY, CRAY, DRAY, PSTN all check `parts[ID(r)].life==3` for their trigger, not life<4).",
+      "src": "SPRK.cpp:217,230,249,256,263,270,278,289-291,368,377,383,391 (life<4 conduction gate); ARAY.cpp:64; CRAY.cpp:89; DRAY.cpp:70; PSTN.cpp:99"
+    },
+    {
+      "rule": "Default conduction range for ordinary spark-to-conductor propagation is a Manhattan-distance-4 diamond within a 5x5 box (`abs(rx)+abs(ry)>=4` blocks conduction), i.e. the four extreme corner cells of the 5x5 neighborhood are excluded. SWCH is the sole exception, extending both as sender and receiver to the FULL 5x5 box (`sender!=SWCH && receiver!=SWCH` required for the range cutoff to apply).",
+      "src": "SPRK.cpp:291"
+    },
+    {
+      "rule": "PSCN->NSCN is asymmetric, not bidirectional by default: the generic receiver rule for PSCN explicitly refuses any sender that is NSCN (`case PT_PSCN: if (sender!=PT_NSCN) return true; return false;`), while NSCN has NO corresponding restriction against receiving from PSCN (falls through to default true). So current flows PSCN->NSCN generically but not NSCN->PSCN generically through plain wire.",
+      "src": "SPRK.cpp:353-356 (PSCN receiver rule), SPRK.cpp:360 (default true fallthrough used by NSCN as both sender and receiver)"
+    },
+    {
+      "rule": "INST (instant wire) conducts as a receiver ONLY from PSCN, and as a sender ONLY to NSCN. When first sparked, instead of the normal cell-by-cell hop, the ENTIRE contiguous connected blob of unsparked INST is flood-filled to SPRK in one frame via sim->FloodINST (scanline flood fill, same algorithm shape as PPIP's flood trigger and INST-specific).",
+      "src": "SPRK.cpp:299-302 (sender), 345-348 (receiver), 377-382 (trigger); Simulation.cpp:586-630 (FloodINST implementation)"
+    },
+    {
+      "rule": "INWR (insulated wire) conducts ONLY between PSCN and NSCN, both directions; refuses all other senders/receivers including itself/METL/plain conductors in the generic table.",
+      "src": "SPRK.cpp:319-322 (sender), 341-344 (receiver)"
+    },
+    {
+      "rule": "SWCH gates general conduction: it never conducts (as sender) to PSCN, NSCN, WATR, SLTW, NTCT, PTCT, or INWR (`case PT_SWCH: ... return false` for those receivers) but its receiver-side entry (case PT_SPRK -> ctype==SWCH) allows any non-PSCN/non-NSCN spark landing on a fully-on (life==10) SWCH to convert the switch itself into a forwarding SPRK. SWCH is independently armed to life=10(on)/life=9(off) by PSCN/NSCN respectively via its own dedicated receiver case, same as PUMP/GPMP/HSWC/PBCN.",
+      "src": "SPRK.cpp:216-228 (arm/disarm), 229-240 (spark-on-switch forwarding), 303-306 (sender restriction)"
+    },
+    {
+      "rule": "NTCT/PTCT (thermistors) gate PSCN<->NSCN conduction by their own temperature: PTCT only conducts to/from NSCN while temp<373K (cold); NTCT only conducts to/from NSCN while temp>373K (hot); both always conduct to/from PSCN unconditionally. Both self-cool toward 295K by 2.5K/frame whenever above it, independent of sparking. A METL-sourced spark heats a touching NTCT/PTCT/INWR to 473K directly as a side effect.",
+      "src": "SPRK.cpp:311-318 (sender rules), 333-340 (receiver rules), 269-276 (METL heating side effect); PTCT.cpp:49-53; NTCT.cpp:47-51"
+    },
+    {
+      "rule": "'Standard powered-element arm/disarm' pattern used by PUMP, GPMP, HSWC, and PBCN (documented in-code as the preferred pattern for new elements): PSCN spark sets life=10 unconditionally; NSCN spark sets life=9 ONLY IF life is already >=10 (i.e. NSCN cannot turn on an off element, only start decaying an on one).",
+      "src": "SPRK.cpp:248-254"
+    },
+    {
+      "rule": "Insulation blocks everything: if the element sitting at the midpoint cell between a sender and receiver (via Simulation::parts_avg with target PT_INSL) is PT_INSL or PT_RSSS, the conduction/sensor-trigger interaction is skipped entirely, even for special-cased receivers (SWCH, LCRY, PPIP, NTCT/PTCT/INWR heating) checked earlier in the same switch. Every sensor element (DTEC/TSNS/PSNS/BTRY) independently re-implements this same INSL/RSSS midpoint check before sparking a target.",
+      "src": "SPRK.cpp:210 (pavg computed), 217,230,263,270,289 (pavg gating checks), 293 (comment 'Insulation blocks everything past here'); DTEC.cpp:71-72; TSNS.cpp:72-73; PSNS.cpp:64-65; BTRY.cpp:62-63"
+    },
+    {
+      "rule": "WIFI/PRTI/PRTO all derive an integer channel/index from temperature using the IDENTICAL formula: channel = (int)((temp-73.15)/100+1), clamped to [0, CHANNELS-1] where CHANNELS=101. WIFI channels are a live global broadcast bus (sim->wireless[ch][0/1], one-frame-buffered); PRTI/PRTO channels index a separate global particle-storage buffer (sim->portalp[ch][slot][0..79]). The two systems do not interact with each other despite sharing the exact channel formula.",
+      "src": "WIFI.cpp:52-54; PRTI.cpp:68-72; PRTO.cpp:63-65; Simulation.h:24 (CHANNELS)"
+    },
+    {
+      "rule": "PPIP pause/reverse control is NOT locally-propagated conduction: a single PSCN/NSCN/INST spark touching any cell of a contiguous PIPE-or-PPIP network instantly flood-fills (scanline flood fill, 4-connected, same-type-only unless HEAC) a trigger bit across the WHOLE network in the same frame the spark lands; the trigger bit is consumed/cleared and takes effect at the START of each cell's own Update() on the FOLLOWING frame.",
+      "src": "PIPE.cpp:695-786 (Element_PPIP_flood_trigger), SPRK.cpp:262-268 (invocation), PIPE.cpp:111-164 (bit consumption next frame)"
+    },
+    {
+      "rule": "FILT is TPT's general-purpose typed data bus: multiple sensor/actuator elements (DTEC, LDTC, TSNS, PSNS, HSWC, PUMP) write an arbitrary integer (photon wavelength, temperature, pressure) into an adjacent FILT's ctype field with a 0x10000000 tag bit added, and walk outward through consecutive touching FILT cells applying the same value to each, letting a chain of FILT relay a value further than one hop. A FILT.ctype value >=0x10000000 should be interpreted as tagged sensor data, not a wavelength/colour mask.",
+      "src": "FILT.cpp:137-150 (getWavelengths interpretation baseline); DTEC.cpp:122-124; LDTC.cpp:154-165; TSNS.cpp:122; PSNS.cpp:98; HSWC.cpp:82-84; PUMP.cpp:79-84"
+    },
+    {
+      "rule": "Sensor family (DTEC, TSNS) uses a one-frame-delayed edge-trigger: the detection condition sets particle.life=1 on frame N; on frame N+1 the particle resets life=0 and THEN fires SPRK onto qualifying neighbors. PSNS and BTRY differ: PSNS fires SAME-frame (no life=1 indirection at all), and BTRY fires continuously every frame unconditionally (no edge/trigger logic, always-on power source).",
+      "src": "DTEC.cpp:58-84 (delayed) vs PSNS.cpp:53-77 (immediate) vs BTRY.cpp:52-73 (continuous); TSNS.cpp:57-84 (delayed, same pattern as DTEC)"
+    },
+    {
+      "rule": "EMP's board-wide damage pass is triggered per spark-touch but its probability model is compounded ACROSS all EMP-triggering events that occur in the same frame (sim->emp_trigger_count accumulates, then Element_EMP_Trigger runs once using proper binomial math scaled by that count) rather than being applied independently per trigger -- multiple simultaneous EMP hits are more than additively destructive.",
+      "src": "SPRK.cpp:277-286; EMP.cpp:75-113 (binomial probability setup using triggerCount)"
+    },
+    {
+      "rule": "Wall types gate ray/beam emission and stack movement (CRAY beams, PSTN piston stacks) via Simulation::IsWallBlocking: WL_ALLOWGAS/ALLOWLIQUID/ALLOWPOWDER/ALLOWENERGY block unless the moving/emitted element's TYPE_* flag matches; WL_ALLOWAIR, WL_WALL, WL_WALLELEC always block; WL_EWALL blocks unless its cell is currently electrified (emap>0); WL_DETECT blocks only TYPE_SOLID particles.",
+      "src": "Simulation.cpp:1076-1099"
+    },
+    {
+      "rule": "Energy particles (TYPE_ENERGY: PHOT, BIZR family via ctype convention, BRAY) occupy a SEPARATE overlay grid (sim->photons[][]) from the normal solid/liquid/gas particle grid (pmap[][]); code that wants to sense 'anything here, energy or matter' explicitly checks pmap first then falls back to sim->photons (pattern: `r=pmap[..]; if(!r) r=sim->photons[..];`), used throughout DTEC/TSNS/PSNS/CLNE/CONV/ACEL/DCEL/PRTI.",
+      "src": "e.g. DTEC.cpp:94-96; TSNS.cpp:68-69; PSNS.cpp:61(via r=pmap only -- PSNS does not check photons, unverified whether intentional); CLNE.cpp:60-61; CONV.cpp:61-62; ACEL.cpp:71-73; DCEL.cpp:66-68; PRTI.cpp:85-88",
+      "unverified": true
+    }
+  ]
+}

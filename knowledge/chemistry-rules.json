@@ -1,0 +1,294 @@
+{
+ "schema": 1,
+ "date": "2026-08-26",
+ "rules": [
+  {
+   "element": "NA",
+   "rules": "WATR>NONE,SLTW:600:.6::H2;DSTW>NONE,SLTW:600:.6::H2",
+   "reaction": "2Na + 2H2O -> 2NaOH + H2, dH = -368 kJ/mol (per 2 mol Na)",
+   "dT_basis": "One of the most violent common alkali-metal/water reactions (routinely ignites the liberated H2) -> pinned near the top of the 0-900K scale at 600K.",
+   "source": "https://en.wikipedia.org/wiki/Sodium",
+   "confidence": "high",
+   "note": "Already implemented (materials-catalog.json); repeated here for completeness of the chemistry index."
+  },
+  {
+   "element": "MG",
+   "rules": "FIRE>STNE,SELF:900:.35:O2=NONE:FIRE;PLSM>STNE,SELF:900:.5::FIRE",
+   "reaction": "2Mg + O2 -> 2MgO, dH = -1204 kJ/mol O2 (burns at ~3100 C in air)",
+   "dT_basis": "Adiabatic flame temperature (~3100C) is the hottest common combustion in this set -> ceiling of the range (900K).",
+   "source": "https://en.wikipedia.org/wiki/Magnesium",
+   "confidence": "high",
+   "note": "Already implemented (materials-catalog.json); repeated here for completeness of the chemistry index. 2026-08-26: FIRE-branch needs field changed from O2 to O2=NONE (chem_kinds.lua DSL extension 2, report S4) -- the touching O2 neighbour is now actually consumed (killed) each combustion event, true two-reactant stoichiometry instead of a presence-only gate. The PLSM branch is unchanged (no O2 gate in the original rule)."
+  },
+  {
+   "element": "CAO",
+   "rules": "WATR>CLST,NONE:+300:0.4;DSTW>CLST,NONE:+300:0.4",
+   "reaction": "CaO + H2O -> Ca(OH)2, dH = -65 kJ/mol",
+   "dT_basis": "Slaking is strongly exothermic (can flash residual water to steam) but far below a metal-combustion temperature -> mid-high of range (300K).",
+   "source": "https://en.wikipedia.org/wiki/Calcium_oxide",
+   "confidence": "high",
+   "note": "Already implemented (materials-catalog.json); repeated here for completeness of the chemistry index."
+  },
+  {
+   "element": "CAC2",
+   "rules": "WATR>CLST,NONE:+60:0.5::GAS::pgas=8;DSTW>CLST,NONE:+60:0.5::GAS",
+   "reaction": "CaC2 + 2H2O -> Ca(OH)2 + C2H2, dH = -125 kJ/mol",
+   "dT_basis": "Moderately exothermic, well below slaking-lime's per-mol-water release -> low end of range (60K).",
+   "source": "https://en.wikipedia.org/wiki/Calcium_carbide",
+   "confidence": "high",
+   "note": "Already implemented (materials-catalog.json); repeated here for completeness of the chemistry index. 2026-08-26: added :pgas=8 (chem_kinds.lua DSL extension 3, report S4) to the WATR branch alongside the existing extra:GAS particle spawn, so a fresh-water reaction event also adds direct sim.pressure -- a carbide-lamp/acetylene-generator vessel now genuinely pressurizes instead of relying only on individually-spawned GAS particles. Not added to the DSTW branch too: the combined rules string has a hard 64-char live-bridge limit and both branches with pgas would exceed it."
+  },
+  {
+   "element": "NAK",
+   "rules": "WATR>NONE,SLTW:650:.7::H2;DSTW>NONE,SLTW:650:.7::H2",
+   "reaction": "2Na + 2H2O -> 2NaOH + H2, dH = -368 kJ/mol (NAK is modeled as ~pure liquid sodium primary coolant)",
+   "dT_basis": "Identical chemistry to elemental Na, but the coolant is already at 300-350C operating temperature when a breach occurs, matching the historical severity of sodium-cooled-reactor water-ingress fires -> set slightly above NA's baseline at 650K, chance raised to 0.7.",
+   "source": "https://en.wikipedia.org/wiki/Sodium-cooled_fast_reactor",
+   "confidence": "high"
+  },
+  {
+   "element": "NAS",
+   "rules": "WATR>NONE,SLTW:500:.3::FIRE;DSTW>NONE,SLTW:500:.3::FIRE",
+   "reaction": "Breached Na-S cell: Na + H2O -> NaOH + 1/2 H2 (ignites); real NaS grid batteries have documented water-triggered fires",
+   "dT_basis": "Diluted by co-located sulfur species relative to pure elemental sodium (less free-Na inventory per breach) -> mid-high dT (500K), below NA/NAK's 600-650K.",
+   "source": "https://en.wikipedia.org/wiki/Sodium%E2%80%93sulfur_battery",
+   "confidence": "medium"
+  },
+  {
+   "element": "AL61",
+   "rules": "FIRE>SELF,SELF:120:.5::FIRE;BRMT>FSLG,IRON:450:.9:HEAT480:FIRE",
+   "reaction": "2Al + Fe2O3 -> Al2O3 + 2Fe, dH = -853.5 kJ/mol Al2O3 (thermite; needs a fuse/spark, e.g. burning Mg, to reach ~1500C ignition)",
+   "dT_basis": "2026-08-26 rewrite per research-material-mapping-2026-08-26.md S3: this file previously documented BRMT>STNE,IRON:850:.15:FIRE:SMKE while the live materials-catalog.json rule had already drifted to BRMT>STNE,IRON:2500:.8:HEAT400:FIRE (the P13 experiment's setup) -- doc/rule drift, now fixed by replacing both with one live two-stage rule. Stage 1 (FIRE>SELF,SELF:120:.5::FIRE) is a cheap, frequent, non-consuming preheat that warms AL61 and rekindles a forward FIRE without spending the fuel. Stage 2 (BRMT>FSLG,IRON:450:.9:HEAT480:FIRE) only fires once AL61 itself has reached 480K (self-temperature gate via needs=HEAT480, the same mechanism validated in P13), converting AL61 to the new low-HeatConduct FSLG slag (holds heat instead of flash-averaging away per report S0.4) and BRMT to IRON, at a moderate 450K bump and high 0.9 chance chosen so the per-event dT survives the 3x3 conduction-equilibration mechanic. See P14 in experiments-2026-08-26.jsonl for the live test.",
+   "source": "https://en.wikipedia.org/wiki/Thermite",
+   "confidence": "medium",
+   "caveat": "BRMT ('broken metal, formed when iron rusts') stands in for Fe2O3 rust/mill-scale; no dedicated iron-oxide element exists in the catalog. FSLG (new, materials-catalog.json) stands in for real molten Al2O3/Fe slag."
+  },
+  {
+   "element": "TI64",
+   "rules": "FIRE>STNE,SELF:700:.15:O2:FIRE",
+   "reaction": "Ti + O2 -> TiO2, dH = -944 kJ/mol O2 (ignites ~1650C when finely divided/machined; burns white-hot - the well-known 'titanium fire' hazard)",
+   "dT_basis": "Comparable per-mol exotherm to Mg, but bulk 6Al-4V alloy has a much higher ignition threshold and slower flame spread -> lower dT (700K) and lower chance (.15) than Mg's rule.",
+   "source": "https://en.wikipedia.org/wiki/Titanium_fire",
+   "confidence": "medium"
+  },
+  {
+   "element": "DU",
+   "rules": "FIRE>STNE,SELF:500:.1:O2:FIRE",
+   "reaction": "U + O2 -> UO2/U3O8, dH ~ -1085 kJ/mol U (finely divided/adiabatically-sheared DU is pyrophoric, as seen in DU-penetrator post-impact fires)",
+   "dT_basis": "Real pyrophoricity is a fine-particle/shear-surface phenomenon much less vigorous in bulk armor form than Mg or thermite -> lower-mid dT (500K), low chance (.1) reflecting the need for surface disruption to ignite.",
+   "source": "https://en.wikipedia.org/wiki/Depleted_uranium",
+   "confidence": "medium"
+  },
+  {
+   "element": "H2O2",
+   "rules": "MG>WTRV,SELF:250:.3::OXYG:conc=20",
+   "reaction": "2H2O2 -> 2H2O + O2, dH = -98.2 kJ/mol (catalytic decomposition; real catalysts are MnO2, Pt, Ag, or catalase)",
+   "dT_basis": "Decomposition exotherm is moderate (drives high-test-peroxide monopropellant thrusters hot, but not combustion-hot) -> mid-low of range (250K).",
+   "source": "https://en.wikipedia.org/wiki/Hydrogen_peroxide",
+   "confidence": "medium",
+   "caveat": "No MnO2/Pt/catalase element exists in the catalog. MG was chosen over MERC as the catalyst proxy because mercury is not a real peroxide-decomposition catalyst, whereas Mg (already reactive-metal-flavoured) is the nearest available analog; MG is left unchanged (OTHER_BECOMES=SELF) to approximate catalytic (non-consumed) behavior. 2026-08-26: added :conc=20 (chem_kinds.lua DSL extension 1, report S4) so the peroxide only fully converts to WTRV after ~5 MG contacts (life 100 -> 0 at -20/hit) instead of vanishing on the first hit -- a gradual concentration-depletion decomposition instead of a one-shot conversion. Also fixed the invalid explosive=15 flag (S0.3/S1.4) to 0, since the pressure-autodetonation bit was never an intended behavior and this decomposition rule already carries the peroxide's real hazard.",
+   "explosive_fix": "explosive 15 -> 0 (report S0.3: 15 has both native Explosive bits set; bit0 was dead since Flammable was never set, bit1 meant 'detonates whenever local pressure exceeds 2.5' which was not the intent)."
+  },
+  {
+   "element": "ETOH",
+   "rules": "FIRE>SMKE,SELF:500:.4:O2:FIRE",
+   "reaction": "C2H5OH + 3O2 -> 2CO2 + 3H2O, dH = -1367 kJ/mol",
+   "dT_basis": "Standard alcohol combustion exotherm, mid-high of range (500K); high chance (.4) reflects ethanol's very low flash point (13C) and fast, clean flame spread.",
+   "source": "https://en.wikipedia.org/wiki/Ethanol",
+   "confidence": "high"
+  },
+  {
+   "element": "KERO",
+   "rules": "FIRE>SMKE,SELF:550:.3:O2:FIRE",
+   "reaction": "C12H26 + 18.5O2 -> 12CO2 + 13H2O, dH ~ -7513 kJ/mol (dodecane, representative kerosene component)",
+   "dT_basis": "Slightly hotter flame than ethanol (denser hydrocarbon fuel) but a higher flash point (~50C) makes it harder to sustain-ignite -> 550K, lower chance (.3).",
+   "source": "https://en.wikipedia.org/wiki/Jet_fuel",
+   "confidence": "high"
+  },
+  {
+   "element": "BDSL",
+   "rules": "FIRE>SMKE,SELF:500:.15:O2:FIRE",
+   "reaction": "FAME (e.g. methyl oleate) + O2 -> CO2 + H2O, combustion enthalpy on the order of ~38 MJ/kg, similar to petrodiesel",
+   "dT_basis": "Same combustion-exotherm tier as kerosene, but biodiesel's notably higher flash point (130-170C) makes it much harder to ignite -> same dT (500K) but a low chance (.15).",
+   "source": "https://en.wikipedia.org/wiki/Biodiesel",
+   "confidence": "medium"
+  },
+  {
+   "element": "GLYC",
+   "rules": "FIRE>SMKE,SELF:350:.05:O2:FIRE",
+   "reaction": "C3H8O3 + 3.5O2 -> 3CO2 + 4H2O, dH = -1655 kJ/mol",
+   "dT_basis": "Sizeable combustion enthalpy on paper, but glycerol's viscosity and very low vapor pressure make it burn reluctantly -> mild dT (350K) and very low chance (.05).",
+   "source": "https://en.wikipedia.org/wiki/Glycerol",
+   "confidence": "medium"
+  },
+  {
+   "element": "LMST",
+   "rules": "ACID>NONE,SELF:80:.15::CO2",
+   "reaction": "CaCO3 + 2HCl -> CaCl2 + H2O + CO2, dH = -17 kJ/mol (classic acid-carbonate fizz test)",
+   "dT_basis": "Only mildly exothermic -> low end of range (80K); chance reflects limestone's modest porosity/reactivity.",
+   "source": "https://en.wikipedia.org/wiki/Limestone",
+   "confidence": "high"
+  },
+  {
+   "element": "MRBL",
+   "rules": "ACID>NONE,SELF:80:.3::CO2",
+   "reaction": "CaCO3 + 2HCl -> CaCl2 + H2O + CO2, dH = -17 kJ/mol (same carbonate chemistry as limestone)",
+   "dT_basis": "Same mild exotherm as limestone; chance roughly doubled (0.3 vs 0.15) to reflect marble's documented higher vulnerability to acid attack (the real basis of acid-rain erosion of marble statuary).",
+   "source": "https://en.wikipedia.org/wiki/Marble",
+   "confidence": "high"
+  },
+  {
+   "element": "CU",
+   "rules": "AIR>BRMT,SELF:2:.001",
+   "reaction": "2Cu + O2 + CO2 + H2O -> Cu2CO3(OH)2 (basic copper carbonate patina, e.g. Statue of Liberty verdigris)",
+   "dT_basis": "Patina formation is a very slow, only mildly exothermic surface oxidation -> near-zero dT (2K); chance pinned to the slow-corrosion floor (0.001), a multi-year real-world timescale.",
+   "source": "https://en.wikipedia.org/wiki/Patina",
+   "confidence": "medium",
+   "caveat": "BRMT ('broken/corroded metal') is used as the only available corroded-metal proxy even though real patina is green verdigris, not rust-brown; chemistry direction (slow oxidative corrosion) is correct."
+  },
+  {
+   "element": "BRSS",
+   "rules": "AIR>BRMT,SELF:1:.0005",
+   "reaction": "Cu-Zn brass tarnishes via slow surface oxidation/dezincification",
+   "dT_basis": "Slower than pure copper because the zinc component contributes its own passivating oxide -> half CU's chance (0.0005).",
+   "source": "https://en.wikipedia.org/wiki/Brass",
+   "confidence": "low"
+  },
+  {
+   "element": "BRNZ",
+   "rules": "AIR>BRMT,SELF:1:.0003",
+   "reaction": "Cu-Sn bronze forms a protective, extremely slow patina",
+   "dT_basis": "Bronze is prized specifically for outlasting brass/copper in corrosion resistance -> lowest chance of the three copper alloys (0.0003).",
+   "source": "https://en.wikipedia.org/wiki/Bronze",
+   "confidence": "low"
+  },
+  {
+   "element": "RBAR",
+   "rules": "WATR>BRMT,SELF:3:.004:O2",
+   "reaction": "4Fe + 3O2 + 2H2O -> 2Fe2O3.H2O (rust), dH ~ -824 kJ/mol Fe2O3 overall",
+   "dT_basis": "Ordinary steel rusting is slow and only mildly exothermic per particle -> near-floor dT (3K); chance (0.004) sits in the slow-corrosion band, matching the catalog description's explicit call-out that rebar 'rusts easily / low corrosion resistance'.",
+   "source": "https://en.wikipedia.org/wiki/Rebar",
+   "confidence": "high"
+  },
+  {
+   "element": "CIRN",
+   "rules": "WATR>BRMT,SELF:3:.003:O2",
+   "reaction": "Same rusting chemistry as RBAR (4Fe + 3O2 + 2H2O -> 2Fe2O3.H2O)",
+   "dT_basis": "Same basis as RBAR; chance trimmed slightly (0.003 vs 0.004) to reflect cast iron's coarser microstructure corroding a touch slower than bare mild-steel bar stock in practice.",
+   "source": "https://en.wikipedia.org/wiki/Cast_iron",
+   "confidence": "medium"
+  },
+  {
+   "element": "LIGN (materials-catalog-packs.json)",
+   "rules": "FIRE>NONE,SELF:300:.12:O2:SMKE",
+   "reaction": "Lignin combustion, same order-of-magnitude enthalpy as cellulose (~17 MJ/kg)",
+   "dT_basis": "2026-08-26 bugfix per report S2: this rule was previously byte-identical to CELL's (FIRE>NONE,SELF:300:.2:O2:SMKE) despite LIGN's own description claiming it 'chars rather than flaming as readily as pure cellulose, harder to ignite' -- no numeric differentiation existed. Chance lowered 0.2 -> 0.12 (dT left at 300, same combustion-family tier as CELL/SUGR) so the description is now actually true in-sim.",
+   "source": "https://en.wikipedia.org/wiki/Lignin",
+   "confidence": "medium"
+  },
+  {
+   "element": "CS (materials-catalog-packs.json)",
+   "rules": "WATR>NONE,H2:400:.9;DSTW>NONE,H2:400:.9;AIR>NONE,SELF:200:.05",
+   "reaction": "2Cs + 2H2O -> 2CsOH + H2, dH per-kg lower than K's despite Cs being the more kinetically dramatic alkali metal",
+   "dT_basis": "2026-08-26 rebalance per report S2: dT lowered 900 -> 400, now below K's 800, fixing an ordering inversion (Cs has *lower* per-kg reaction energy than K -- heavier atom, similar molar dH -- yet previously had a *higher* dT). The 'most dramatic alkali metal' framing now lives entirely in `chance` (0.9, already above K's 0.6-0.7) rather than an inflated dT.",
+   "source": "https://en.wikipedia.org/wiki/Caesium",
+   "confidence": "medium"
+  }
+ ],
+ "stock_proposals": [
+  {
+   "element": "IRON",
+   "rules": "WATR>BRMT,SELF:3:.002:O2;ACID>NONE,SELF:60:.15::H2",
+   "reaction": "Rusting: 4Fe + 3O2 + 2H2O -> 2Fe2O3.H2O, dH ~ -824 kJ/mol Fe2O3. Acid attack: Fe + 2HCl -> FeCl2 + H2, dH ~ -88 kJ/mol Fe",
+   "dT_basis": "Rusting is the classic slow, near-zero-exotherm corrosion (3K, 0.002 chance = a 'takes years' rate), independent of stock IRON's existing salt-triggered corrosion. Acid dissolution is a visibly faster, more vigorous reaction that fizzes H2 -> higher dT (60K) and chance (0.15), but still well short of a violent alkali-metal reaction.",
+   "source": "https://en.wikipedia.org/wiki/Rust",
+   "confidence": "high",
+   "note": "Stock IRON's description ('Rusts with salt, can be used for electrolysis of WATR') implies a salt/electrolysis-specific native path already exists; this proposal adds the independent plain-water-plus-air rusting path and a distinct acid-attack path with H2 evolution, matching the reaction pattern given in the task brief."
+  }
+ ],
+ "not_expressible": [
+  {
+   "topic": "Calcium metal + water",
+   "reason": "No elemental calcium (Ca) element exists in any of the referenced catalogs; only calcium oxide (CAO, quicklime/slaking) and calcium carbide (CAC2) are present, and both are already covered above.",
+   "would_need": "A new 'CA' catalog element (not created here, per scope: do not touch the game or any other file)."
+  },
+  {
+   "topic": "Phosphorus in air (P4 + O2, glows/ignites)",
+   "reason": "No phosphorus element (e.g. 'PHOS') exists in materials-catalog.json, materials-catalog-packs.json (not present on disk), power-elements-2026-08-26.json, or the stock POWDER_TOY_MATERIAL_INDEX.json.",
+   "would_need": "A new phosphorus catalog element."
+  },
+  {
+   "topic": "Sulfur burning -> SO2",
+   "reason": "No elemental sulfur ('SULF'/'S') element exists in any referenced file, despite sulfur being a conceptual component of NAS (sodium-sulfur battery).",
+   "would_need": "A new sulfur catalog element."
+  },
+  {
+   "topic": "Zinc + acid -> H2",
+   "reason": "No zinc element (e.g. 'ZINC') exists in any referenced file.",
+   "would_need": "A new zinc catalog element."
+  },
+  {
+   "topic": "Potassium permanganate",
+   "reason": "No KMnO4/permanganate element exists in any referenced file.",
+   "would_need": "A new permanganate catalog element."
+  },
+  {
+   "topic": "Ammonium nitrate decomposition on heat -> explosion",
+   "reason": "No ammonium-nitrate element exists in any referenced file. This is otherwise perfectly expressible with a single HEATnnn rule plus an extra:FIRE spawn once such an element exists (e.g. 'HEAT600>NONE,SELF:800:.3::FIRE').",
+   "would_need": "A new ammonium-nitrate catalog element."
+  },
+  {
+   "topic": "Lithium + water",
+   "reason": "Stock LITH ('Lithium. Reactive element that explodes on contact with water.') already implements this natively in the base game's C++ element code, so no reactive-kind rule is needed or would take effect.",
+   "would_need": "N/A - already implemented natively."
+  },
+  {
+   "topic": "Dry ice sublimation (CO2 <-> DRIC)",
+   "reason": "Stock DRIC ('Dry Ice, formed when CO2 is cooled') and CO2 already implement this phase change natively via the engine's lowTemperature/highTemperature transition fields, not the reactive-kind element-contact DSL; no separate rule is needed.",
+   "would_need": "N/A - already implemented natively via temperature-transition fields."
+  },
+  {
+   "topic": "Methane combustion",
+   "reason": "Stock GAS ('Diffuses quickly and is flammable') already combusts natively via the engine's built-in 'flammable' stat/highTemperature mechanic, independent of the reactive-kind DSL used here.",
+   "would_need": "N/A - already implemented natively via the flammable stat."
+  },
+  {
+   "topic": "Water electrolysis",
+   "reason": "Explicitly out of scope per task instructions (not expressible as a simple pairwise contact-reaction rule).",
+   "would_need": "N/A - intentionally skipped."
+  },
+  {
+   "topic": "Uranium/plutonium fission",
+   "reason": "Explicitly kept with the existing NEUT-emitter model (UO2's 'emitter' kind, stock PLUT/URAN's native pressure-driven neutron generation) rather than the reactive-kind contact DSL, per task instructions.",
+   "would_need": "N/A - intentionally left with emitter/native nuclear behavior."
+  }
+ ],
+ "depends": [
+  "ACID",
+  "AL61 (materials-catalog.json)",
+  "BRMT",
+  "BRNZ (materials-catalog.json)",
+  "BRSS (materials-catalog.json)",
+  "CIRN (materials-catalog.json)",
+  "CO2",
+  "CU (power-elements-2026-08-26.json)",
+  "DSTW",
+  "DU (materials-catalog.json)",
+  "FIRE",
+  "GAS",
+  "H2",
+  "IRON",
+  "LMST (materials-catalog.json)",
+  "MRBL (materials-catalog.json)",
+  "NAK (power-elements-2026-08-26.json)",
+  "NAS (materials-catalog.json)",
+  "O2",
+  "RBAR (materials-catalog.json)",
+  "SLTW",
+  "SMKE",
+  "STNE",
+  "TI64 (materials-catalog.json)",
+  "WATR",
+  "WTRV"
+ ]
+}

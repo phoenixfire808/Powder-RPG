@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "powder-toy": {
+      "command": "python",
+      "args": ["powder_toy_mcp.py"],
+      "cwd": "."
+    }
+  }
+}

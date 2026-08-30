@@ -1,0 +1,47 @@
+{
+ "id": "surface_signpost",
+ "category": "surface",
+ "description": "A single wood post with a small sign board -- a wayfinding/flavor prop, not a quest system. 3x8px.",
+ "biomes": [
+  "any"
+ ],
+ "depth_band": {
+  "min": -1,
+  "max": 0
+ },
+ "rest_on_solid": true,
+ "erodible": false,
+ "rarity": 0.2,
+ "min_spacing": 140,
+ "clearance": {
+  "top": 1,
+  "bottom": 0,
+  "left": 1,
+  "right": 1
+ },
+ "anchor": {
+  "x": 1,
+  "y": 6
+ },
+ "width": 3,
+ "height": 8,
+ "legend": {
+  " ": "keep",
+  ".": "air",
+  "T": "wood",
+  "S": "wood"
+ },
+ "grid": [
+  " T ",
+  " S ",
+  " T ",
+  " T ",
+  " T ",
+  " T ",
+  "TTT",
+  "   "
+ ],
+ "loot": [],
+ "variants": [],
+ "notes": "No harvested save had readable signage (text doesn't survive as particles); left generic. @ui could draw actual text over this prop's world position the way chest markers are already drawn, if flavor text is wanted later."
+}

@@ -1,0 +1,199 @@
+{
+ "name": "pstn_engine_cylinder",
+ "description": "One 9x9 turbine/engine cylinder: hot TTAN wall, INSL gap, INST signal wire, a NSCN/METL/PSCN spark relay, and a 4-wide PSTN piston head independently armed to COAL (fuel-injection ctype, held near 1727C), PSNS (pressure-sense ctype) and INSL (insulation ctype). Repeat at a 28px pitch for a multi-cylinder bank.",
+ "why": "Read pixel-exact from save 2396223 (Nuclear Fission Power Plant): two identical cylinder cross-sections at (226,25)-(234,34) and (226,53)-(234,62) -- exactly 28px apart -- each with PSTN@(230,y) reading temp=2000K/tmp=143/tmp2=143 (ctype=COAL) next to PSTN(ctype=PSNS) and PSTN(ctype=INSL, tmp=147), the clearest real two-piston synchronized engine found across the whole harvest (cross-save pattern #4 in mechanisms-community-2026-08-25.md). Distinct from heat_pressure_turbine_gate (same save's separate PSNS/TSNS sensor-interlock ladder at x356-388) -- this module is the physical piston cylinder itself.",
+ "source": "save 2396223, x226-234 y25-34 (cylinder 1) and y53-62 (cylinder 2, identical, 28px pitch)",
+ "params": {
+  "height": 9
+ },
+ "parts": [
+  {
+   "box": "TTAN",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    1,
+    "height"
+   ],
+   "props": {
+    "temp_c": 280
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    0
+   ],
+   "size": [
+    1,
+    "height"
+   ]
+  },
+  {
+   "box": "INST",
+   "at": [
+    2,
+    0
+   ],
+   "size": [
+    1,
+    "height"
+   ],
+   "props": {
+    "temp_c": 36
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    3
+   ],
+   "size": [
+    1,
+    "height-3"
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    3,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    4,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    4,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    6,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PSTN",
+   "at": [
+    4,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "COAL",
+    "temp_c": 1727,
+    "tmp": 143,
+    "tmp2": 143
+   }
+  },
+  {
+   "box": "PSTN",
+   "at": [
+    5,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PSNS"
+   }
+  },
+  {
+   "box": "PSTN",
+   "at": [
+    6,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "INSL",
+    "tmp": 147
+   }
+  },
+  {
+   "box": "PSTN",
+   "at": [
+    7,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    4,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    4,
+    "height-1"
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 392
+   }
+  },
+  {
+   "box": "FRME",
+   "at": [
+    8,
+    0
+   ],
+   "size": [
+    1,
+    "height"
+   ]
+  }
+ ],
+ "verified": true
+}

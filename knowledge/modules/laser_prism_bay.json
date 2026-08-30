@@ -1,0 +1,189 @@
+{
+ "name": "laser_prism_bay",
+ "description": "PCLN(PHOT) laser emitter with a PSCN/NSCN trigger tap, INSL horseshoe jacket, firing into a stepped GLAS prism.",
+ "why": "Build-lessons 'laser bay': a PCLN armed to PHOT emits photons only while sparked; PSCN/NSCN above and below are the local trigger taps, an INSL horseshoe (open on the beam-exit side) keeps the 922C photon heat off anything else, and the beam fans out through a GLAS prism whose staircase profile is reproduced exactly from the source (apex width 5, +2px per row-pair).",
+ "source": "save2, PCLN at (432,97), INSL jacket (431-433,96-98), prism staircase x435-455 y92-108",
+ "params": {},
+ "parts": [
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    4
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    6
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    1,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    1,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "PHOT"
+   }
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    1,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    12,
+    0
+   ],
+   "size": [
+    5,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    11,
+    2
+   ],
+   "size": [
+    7,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    10,
+    4
+   ],
+   "size": [
+    9,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    9,
+    6
+   ],
+   "size": [
+    11,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    8,
+    8
+   ],
+   "size": [
+    13,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    7,
+    10
+   ],
+   "size": [
+    15,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    6,
+    12
+   ],
+   "size": [
+    17,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    5,
+    14
+   ],
+   "size": [
+    19,
+    2
+   ]
+  },
+  {
+   "box": "GLAS",
+   "at": [
+    4,
+    16
+   ],
+   "size": [
+    21,
+    2
+   ]
+  }
+ ],
+ "verified": true
+}

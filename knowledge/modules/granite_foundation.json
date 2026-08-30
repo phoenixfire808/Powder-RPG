@@ -1,0 +1,46 @@
+{
+ "description": "Granite foundation: a wide GRNT slab with supporting GRNT piers.",
+ "name": "granite_foundation",
+ "params": {
+  "height": 18,
+  "piers": 3,
+  "width": 40
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "GRNT",
+   "id": "gf_slab",
+   "size": [
+    "width",
+    "height//3"
+   ]
+  },
+  {
+   "at": [
+    2,
+    "height//3"
+   ],
+   "part": {
+    "at": [
+     0,
+     0
+    ],
+    "box": "GRNT",
+    "size": [
+     4,
+     "height*2//3"
+    ]
+   },
+   "repeat": "piers",
+   "step": [
+    "(width-8)//2",
+    0
+   ]
+  }
+ ],
+ "why": "GRNT (density 2700 kg/m3, k=2.8 W/mK, begins melting ~1215-1260 C, resists every acid except HF) is a non-conductive, high-mass footing -- unlike RCNC it carries no electrical path, so it is the safe generic choice for a foundation slab sitting directly under conductive plant (STEL frames, CU busbars) without ever creating a floor-wide short (see the conductive_floor_span lint rule)."
+}

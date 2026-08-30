@@ -1,0 +1,81 @@
+{
+ "description": "PSTN-driven B4C control rod: a piston pushes a boron-carbide rod down an INSL-lined STEL guide channel into a fuel slot below.",
+ "name": "control_rod_drive_b4c",
+ "params": {
+  "bore": 3,
+  "stroke": 10
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "box": "STEL",
+   "id": "rod_guide",
+   "size": [
+    "bore+4",
+    "stroke+14"
+   ]
+  },
+  {
+   "at": [
+    2,
+    2
+   ],
+   "erase": true,
+   "size": [
+    "bore",
+    "stroke+10"
+   ]
+  },
+  {
+   "at": [
+    2,
+    2
+   ],
+   "box": "INSL",
+   "size": [
+    1,
+    "stroke+10"
+   ]
+  },
+  {
+   "at": [
+    "bore+1",
+    2
+   ],
+   "box": "INSL",
+   "size": [
+    1,
+    "stroke+10"
+   ]
+  },
+  {
+   "at": [
+    3,
+    3
+   ],
+   "box": "PSTN",
+   "props": {
+    "temp_c": 20
+   },
+   "size": [
+    "bore-2",
+    4
+   ]
+  },
+  {
+   "at": [
+    3,
+    8
+   ],
+   "box": "B4C",
+   "size": [
+    "bore-2",
+    "stroke"
+   ]
+  }
+ ],
+ "why": "Mechanical rod drives (per RBMK community pattern) encode real withdrawal state in geometry rather than a flag: the PSTN's own position IS how far the poison is inserted. B4C melts 2763 C and warms 4 K per neutron capture (heatPerHit) so a fully-inserted rod under high flux will itself heat up -- the STEL guide (melts 1500 C) and INSL liner keep that heat from bridging into the drive mechanism. Extend the PSTN (positive stroke) to insert/scram; retract to withdraw and raise reactivity."
+}

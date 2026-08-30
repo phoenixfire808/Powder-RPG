@@ -1,0 +1,55 @@
+{
+ "description": "Piezoelectric floor: a row of PZT tiles wired to a common CU bus, converting footstep/impact pressure into SPRK pulses.",
+ "name": "piezo_floor_pzt",
+ "params": {
+  "tiles": 5
+ },
+ "parts": [
+  {
+   "at": [
+    0,
+    0
+   ],
+   "part": {
+    "at": [
+     0,
+     0
+    ],
+    "box": "PZT",
+    "size": [
+     4,
+     3
+    ]
+   },
+   "repeat": "tiles",
+   "step": [
+    5,
+    0
+   ]
+  },
+  {
+   "at": [
+    0,
+    3
+   ],
+   "box": "CU",
+   "id": "pzt_bus",
+   "size": [
+    "tiles*5-1",
+    1
+   ]
+  },
+  {
+   "at": [
+    "pzt_bus.right+2",
+    -1
+   ],
+   "box": "LEDL",
+   "size": [
+    3,
+    3
+   ]
+  }
+ ],
+ "why": "PZT's piezo behaviour fires when mechanical stress exceeds its threshold (5.0), pulsing every 2 frames while stressed -- wire a walkway or hatch of these tiles into a CU bus to harvest foot traffic or impacts as a real energy-harvesting floor. Curie point is only 360 C (transitions to BMTL) so this is a cool-running mechanical sensor/harvester, not something to put anywhere near a hot process."
+}

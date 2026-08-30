@@ -1,0 +1,3163 @@
+{
+ "name": "ln2_quench_fuel_column",
+ "description": "24x77 fuel column with built-in LN2 quench: a URAN rod in a TTAN/INWR sleeve under a PSTN control rod, a FILT-framed TSNS ladder (1000/1200 C alternating) with WIFI outputs on the left, an LN2 pocket kept full by CLNE(LN2) at -202 C, and a PCLN(LN2) nozzle beside the rod. Tile at step [24,0].",
+ "why": "Save 1289009 (Uranium Power Plant v1.0, Auto mode) repeats this column across its core (x=44,68,...): when the TSNS ladder trips, the console sparks the PCLN(LN2) cells and dumps liquid nitrogen onto the rod stack -- a genuine emergency-quench auto-shutdown, unlike water-injection designs. The LN2 pocket (y=265-266) is self-refilling via CLNE(LN2); both LN2 and its CLNE carry the captured -202 C (cryo lesson: LN2 placed warm boils off instantly). Copied pixel-exact; INSL added on empty faces beside WIFI (lint). Remaining lint criticals are the sensor/WIFI faces that must touch conductors and the PUMP cells that sit inside the lattice by design. The PSTN at the foot is the rod drive; its FRME rod continues below y=300 in the source. Sibling module crmc_uran_fuel_can is the lower 19x35 fuel-can portion of this same 1289009 column; this one is the whole 24px pitch incl. the TSNS ladder and LN2 pocket.",
+ "source": "save 1289009, x44-67 y224-300; TSNS (47,234) 1200C, (61,234..250) 1000C; WIFI (44,234) ch57, (64,234..250); LN2 (47-48,265-266) K71 + CLNE(LN2) (47,266) K71; PCLN(LN2) (49,282); URAN (52-56,270-298); PSTN (54,300)",
+ "params": {},
+ "parts": [
+  {
+   "box": "METL",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    0
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    2,
+    0
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    19,
+    0
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    20,
+    0
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    1
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    2,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    4,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    20,
+    1
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    2,
+    2
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    20,
+    2
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    21,
+    2
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "VOID",
+   "at": [
+    19,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    21,
+    3
+   ],
+   "size": [
+    1,
+    43
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    22,
+    3
+   ],
+   "size": [
+    1,
+    44
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    23,
+    3
+   ],
+   "size": [
+    1,
+    43
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    4
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    3,
+    4
+   ],
+   "size": [
+    18,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    5
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "GLOW",
+   "at": [
+    1,
+    5
+   ],
+   "size": [
+    19,
+    2
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    20,
+    5
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    1,
+    7
+   ],
+   "size": [
+    19,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    4,
+    8
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    6,
+    8
+   ],
+   "size": [
+    9,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    8
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    9
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    4,
+    9
+   ],
+   "size": [
+    1,
+    20
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    6,
+    9
+   ],
+   "size": [
+    1,
+    35
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    14,
+    9
+   ],
+   "size": [
+    1,
+    35
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    16,
+    9
+   ],
+   "size": [
+    1,
+    20
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    9
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    0,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 57
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    1,
+    10
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    3,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 1200,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 1000,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    10
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 11
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    11
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    11
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 800,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    12
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    12
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 10
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    13
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 600,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    14
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    14
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 9
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    15
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    16
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    16
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    16
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 500,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    16
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    16
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 8
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    17
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    18
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    18
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    18
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 400,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    18
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    18
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 7
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    19
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    20
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    20
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    20
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 300,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    20
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    20
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 6
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    21
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    22
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    22
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    22
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 200,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    22
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    22
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 5
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    23
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    24
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    24
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    24
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 100,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    24
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    24
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 4
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    25
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    26
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    26
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    17,
+    26
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 50,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    18,
+    26
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    20,
+    26
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 3
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    27
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    28
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    5,
+    28
+   ],
+   "size": [
+    1,
+    16
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    15,
+    28
+   ],
+   "size": [
+    1,
+    16
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    17,
+    28
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    2,
+    29
+   ],
+   "size": [
+    1,
+    12
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    18,
+    29
+   ],
+   "size": [
+    1,
+    12
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    31
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    3,
+    31
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    16,
+    31
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    19,
+    31
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    34
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    3,
+    34
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    16,
+    34
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    19,
+    34
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    37
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    3,
+    37
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    16,
+    37
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    19,
+    37
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    0,
+    40
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    3,
+    40
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    16,
+    40
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "FILT",
+   "at": [
+    19,
+    40
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    41
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "LN2",
+   "at": [
+    3,
+    41
+   ],
+   "size": [
+    2,
+    1
+   ],
+   "props": {
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "LN2",
+   "at": [
+    16,
+    41
+   ],
+   "size": [
+    2,
+    1
+   ],
+   "props": {
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    18,
+    41
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "CLNE",
+   "at": [
+    3,
+    42
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "LN2",
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "LN2",
+   "at": [
+    4,
+    42
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "LN2",
+   "at": [
+    16,
+    42
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "CLNE",
+   "at": [
+    17,
+    42
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "LN2",
+    "temp_c": -202
+   }
+  },
+  {
+   "box": "METL",
+   "at": [
+    0,
+    43
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    43
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    16,
+    43
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    19,
+    43
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    3,
+    44
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    44
+   ],
+   "size": [
+    2,
+    3
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    14,
+    44
+   ],
+   "size": [
+    2,
+    3
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    17,
+    44
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    45
+   ],
+   "size": [
+    5,
+    1
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    7,
+    45
+   ],
+   "size": [
+    7,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    16,
+    45
+   ],
+   "size": [
+    5,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    0,
+    46
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    46
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    7,
+    46
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    9,
+    46
+   ],
+   "size": [
+    3,
+    28
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    12,
+    46
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    16,
+    46
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    18,
+    46
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    23,
+    46
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    2,
+    47
+   ],
+   "size": [
+    1,
+    11
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    47
+   ],
+   "size": [
+    1,
+    13
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    47
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    7,
+    47
+   ],
+   "size": [
+    1,
+    28
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    8,
+    47
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    12,
+    47
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    13,
+    47
+   ],
+   "size": [
+    1,
+    28
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    14,
+    47
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    17,
+    47
+   ],
+   "size": [
+    1,
+    30
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    18,
+    47
+   ],
+   "size": [
+    1,
+    30
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    20,
+    47
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    48
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    48
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    6,
+    48
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    14,
+    48
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    15,
+    48
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    48
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    21,
+    48
+   ],
+   "size": [
+    1,
+    29
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    1,
+    49
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    6,
+    49
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    8,
+    49
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    12,
+    49
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    14,
+    49
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    19,
+    49
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    0,
+    50
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    8,
+    50
+   ],
+   "size": [
+    1,
+    20
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    12,
+    50
+   ],
+   "size": [
+    1,
+    20
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    20,
+    50
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    22,
+    50
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    6,
+    51
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    14,
+    51
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    52
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    14,
+    52
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    1,
+    53
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    53
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    53
+   ],
+   "size": [
+    2,
+    4
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    14,
+    53
+   ],
+   "size": [
+    2,
+    14
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    53
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    19,
+    53
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    0,
+    54
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    54
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    54
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    20,
+    54
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    22,
+    54
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    55
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    55
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    56
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    56
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    0,
+    57
+   ],
+   "size": [
+    2,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    57
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    57
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    57
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    23,
+    57
+   ],
+   "size": [
+    1,
+    7
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    58
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    58
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    5,
+    58
+   ],
+   "size": [
+    1,
+    5
+   ],
+   "props": {
+    "ctype": "LN2"
+   }
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    58
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    59
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    1,
+    59
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    2,
+    59
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "INSL"
+   }
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    59
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    59
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    19,
+    59
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "BGLA",
+   "at": [
+    1,
+    60
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    2,
+    60
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    3,
+    60
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "INSL"
+   }
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    60
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    60
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    20,
+    60
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    22,
+    60
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "DLAY",
+   "at": [
+    1,
+    61
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 300
+   }
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    2,
+    61
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "ctype": "INSL"
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    3,
+    61
+   ],
+   "size": [
+    1,
+    16
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    61
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    61
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    62
+   ],
+   "size": [
+    1,
+    15
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    62
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    62
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    62
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TTAN",
+   "at": [
+    0,
+    63
+   ],
+   "size": [
+    1,
+    14
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    2,
+    63
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    63
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    63
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    63
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    2,
+    64
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    64
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    6,
+    64
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    64
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INST",
+   "at": [
+    2,
+    65
+   ],
+   "size": [
+    1,
+    12
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    65
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    65
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    66
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    66
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    67
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    14,
+    67
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    19,
+    67
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    23,
+    67
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    68
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    68
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    6,
+    68
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    14,
+    68
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    15,
+    68
+   ],
+   "size": [
+    1,
+    4
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    68
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    20,
+    68
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    22,
+    68
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    69
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    6,
+    69
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    14,
+    69
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    69
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    70
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    8,
+    70
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    12,
+    70
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    70
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    71
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "NSCN",
+   "at": [
+    6,
+    71
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    8,
+    71
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "URAN",
+   "at": [
+    12,
+    71
+   ],
+   "size": [
+    1,
+    3
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    14,
+    71
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    71
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    72
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    14,
+    72
+   ],
+   "size": [
+    3,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    73
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    5,
+    73
+   ],
+   "size": [
+    2,
+    3
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    14,
+    73
+   ],
+   "size": [
+    2,
+    3
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    73
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    74
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "CRMC",
+   "at": [
+    8,
+    74
+   ],
+   "size": [
+    5,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    16,
+    74
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    4,
+    75
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "FRME",
+   "at": [
+    7,
+    75
+   ],
+   "size": [
+    7,
+    1
+   ]
+  },
+  {
+   "box": "PTCT",
+   "at": [
+    16,
+    75
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    19,
+    75
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    23,
+    75
+   ],
+   "size": [
+    1,
+    2
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    4,
+    76
+   ],
+   "size": [
+    6,
+    1
+   ]
+  },
+  {
+   "box": "PSTN",
+   "at": [
+    10,
+    76
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INWR",
+   "at": [
+    11,
+    76
+   ],
+   "size": [
+    6,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    20,
+    76
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "METL",
+   "at": [
+    22,
+    76
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    -1,
+    10
+   ],
+   "size": [
+    1,
+    1
+   ]
+  }
+ ],
+ "verified": true,
+ "anchors_note": "tile at step [24,0]; left WIFI column is the output bus"
+}

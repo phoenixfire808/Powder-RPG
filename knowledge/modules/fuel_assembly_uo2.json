@@ -1,0 +1,96 @@
+{
+  "description": "PWR-style fuel assembly: UO2 pellet columns in ZIRC cladding, GRPH moderator gaps, B4C control rod channel in the middle",
+  "name": "fuel_assembly_uo2",
+  "params": {
+    "height": 24,
+    "pins": 4
+  },
+  "parts": [
+    {
+      "at": [
+        0,
+        0
+      ],
+      "box": "ZIRC",
+      "size": [
+        "pins*6+4",
+        "height+2"
+      ]
+    },
+    {
+      "at": [
+        2,
+        1
+      ],
+      "erase": true,
+      "size": [
+        "pins*6",
+        "height"
+      ]
+    },
+    {
+      "at": [
+        2,
+        1
+      ],
+      "part": {
+        "at": [
+          0,
+          0
+        ],
+        "group": [
+          {
+            "at": [
+              0,
+              0
+            ],
+            "box": "UO2",
+            "size": [
+              2,
+              "height"
+            ]
+          },
+          {
+            "at": [
+              2,
+              0
+            ],
+            "box": "GRPH",
+            "size": [
+              2,
+              "height"
+            ]
+          },
+          {
+            "at": [
+              4,
+              0
+            ],
+            "box": "ZIRC",
+            "size": [
+              1,
+              "height"
+            ]
+          }
+        ]
+      },
+      "repeat": "pins",
+      "step": [
+        6,
+        0
+      ]
+    },
+    {
+      "at": [
+        "pins*3",
+        "1"
+      ],
+      "box": "B4C",
+      "size": [
+        2,
+        "height"
+      ]
+    }
+  ],
+  "why": "Realistic fission core from the 2026-08-26 power element set; B4C rod absorbs the UO2 neutron flux (verified live P1). Insert/withdraw the rod by erasing/placing B4C."
+}

@@ -1,0 +1,153 @@
+<title>Foundry Manifest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#efece4; --panel:#f7f5f0; --panel-2:#e7e3d9; --line:#d6d0c2;
+  --ink:#20211f; --ink-2:#5a574e; --ink-3:#8b8578;
+  --ember:#c24a17; --ember-soft:#ecdcd2; --steam:#3f6f80; --brass:#8f6f24;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#14161b; --panel:#1b1e25; --panel-2:#232732; --line:#2f3440;
+    --ink:#e9e6de; --ink-2:#a8a698; --ink-3:#7c7a6d;
+    --ember:#f2762f; --ember-soft:#3a2317; --steam:#8fbecd; --brass:#d2a44a;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#14161b; --panel:#1b1e25; --panel-2:#232732; --line:#2f3440;
+  --ink:#e9e6de; --ink-2:#a8a698; --ink-3:#7c7a6d;
+  --ember:#f2762f; --ember-soft:#3a2317; --steam:#8fbecd; --brass:#d2a44a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:Newsreader,Georgia,serif;font-size:16px;line-height:1.5}
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 80px}
+header.top{border-bottom:2px solid var(--ink);padding-bottom:14px}
+.kicker{font-family:"Saira Condensed",Arial Narrow,sans-serif;letter-spacing:.16em;text-transform:uppercase;font-size:12px;color:var(--ember);font-weight:700}
+h1{font-family:"Saira Condensed",Arial Narrow,sans-serif;font-weight:700;font-size:clamp(34px,6vw,54px);line-height:.95;margin:6px 0 10px;text-wrap:balance}
+.sub{color:var(--ink-2);max-width:64ch;font-size:15px;margin:0}
+.stats{display:flex;flex-wrap:wrap;gap:20px;margin-top:16px;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.stats b{font-family:"Saira Condensed",sans-serif;font-size:22px;color:var(--ink);display:block;letter-spacing:0;font-variant-numeric:tabular-nums}
+.controls{position:sticky;top:0;z-index:5;background:var(--ground);padding:14px 0 10px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+input[type=search]{flex:1 1 220px;min-width:180px;background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:9px 12px;border-radius:2px;font-family:"IBM Plex Mono",monospace;font-size:13px}
+input[type=search]:focus{outline:2px solid var(--ember);outline-offset:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:"Saira Condensed",sans-serif;text-transform:uppercase;letter-spacing:.08em;font-size:12px;font-weight:700;padding:6px 10px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);cursor:pointer;border-radius:2px}
+.chip[aria-pressed="true"]{background:var(--ember);border-color:var(--ember);color:#fff}
+.chip:focus-visible{outline:2px solid var(--steam);outline-offset:2px}
+section.group{margin-top:26px}
+.grouphead{display:flex;align-items:baseline;gap:10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.grouphead h2{font-family:"Saira Condensed",sans-serif;text-transform:uppercase;letter-spacing:.1em;font-size:15px;margin:0}
+.grouphead .n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+ul.rows{list-style:none;margin:0;padding:0}
+li.row{display:grid;grid-template-columns:136px 1fr;gap:14px;padding:11px 0;border-bottom:1px solid var(--line)}
+li.row:hover{background:var(--panel)}
+.badge{font-family:"Saira Condensed",sans-serif;text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:700;display:inline-block;padding:3px 7px;border-radius:2px;border:1px solid}
+.st-hand{color:var(--ink-2);border-color:var(--line)}
+.st-workbench{color:var(--brass);border-color:var(--brass)}
+.st-furnace{color:var(--ember);border-color:var(--ember);background:var(--ember-soft)}
+.st-anvil{color:var(--steam);border-color:var(--steam)}
+.code{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);display:block;margin-top:5px}
+.name{font-family:"Saira Condensed",sans-serif;font-size:19px;font-weight:700;line-height:1.15}
+.desc{color:var(--ink-2);font-size:15px;margin:2px 0 6px;max-width:72ch}
+.mats{display:flex;flex-wrap:wrap;gap:5px}
+.mat{font-family:"IBM Plex Mono",monospace;font-size:11.5px;background:var(--panel-2);border:1px solid var(--line);padding:2px 6px;border-radius:2px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.empty{color:var(--ink-3);font-style:italic;padding:30px 0}
+footer{margin-top:44px;border-top:1px solid var(--line);padding-top:14px;color:var(--ink-3);font-size:13px;max-width:70ch}
+@media (max-width:560px){li.row{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){li.row{transition:background .12s ease}}
+</style>
+<div class="wrap">
+<header class="top">
+  <div class="kicker">Powder RPG &middot; equipment manifest</div>
+  <h1>Foundry Manifest</h1>
+  <p class="sub">Everything that can be built, smelted or forged, read straight out of the running game. Stations are real
+  gates: a <strong>lit furnace</strong> only works while fire is actually burning in its chamber, an <strong>anvil</strong>
+  wants iron bars, and a workbench has to be placed and stood beside.</p>
+  <div class="stats" id="stats"></div>
+</header>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="search name, material or effect" aria-label="Search the manifest">
+  <div class="chips" id="stationChips" role="group" aria-label="Filter by station"></div>
+  <div class="chips" id="catChips" role="group" aria-label="Filter by system"></div>
+</div>
+
+<div id="list"></div>
+
+<footer>Pulled from the live game state (R.RECIPES and R.ITEMS), so this is what your session can actually build right now.
+Station names match the craft menu. Right-click a placed machine in game to open its panel: it lists inputs, outputs and the
+one action it is waiting on.</footer>
+</div>
+<script>
+const DATA = [{"code":"FLASK","name":"Air bladder","st":"hand","need":"3 Wood, 6 Grass","desc":"A sealed plant bladder. Fills in fresh air; releases it automatically when you are running out","cat":"Life support"},{"code":"WORKBENCH","name":"Workbench","st":"hand","need":"10 Wood","desc":"Place it and stand near it: unlocks tools, kits and building blocks","cat":"Tools & gear"},{"code":"FURNACE","name":"Furnace kit","st":"workbench","need":"20 Granite, 5 Coal","desc":"Granite box with a coal bed. Place, then light with the torch (slot 4). Smelts ore while burning","cat":"Processing"},{"code":"ANVIL","name":"Anvil","st":"workbench","need":"8 Iron bar","desc":"Forge iron and steel tools here","cat":"Processing"},{"code":"METL","name":"Iron bar","st":"furnace","need":"2 Iron ore","desc":"Smelt 2 iron ore into a bar (METL). Bars make the anvil, picks and swords","cat":"Processing"},{"code":"STEL","name":"Steel","st":"furnace","need":"1 Coal, 2 Iron bar","desc":"Iron bars + coal = steel: hardest tool material short of diamond","cat":"Tools & gear"},{"code":"BRCK","name":"Fired brick","st":"furnace","need":"4 Dirt","desc":"Kiln-fired dirt. A solid, heat-proof building block","cat":"Processing"},{"code":"GLAS","name":"Glass","st":"furnace","need":"4 Sand","desc":"Melted sand. Lets light through; shatters under pressure","cat":"Processing"},{"code":"GOLD","name":"Refined gold","st":"furnace","need":"1 Coal, 1 Gold","desc":"Purify gold ore (used in circuits)","cat":"Processing"},{"code":"CU","name":"Copper","st":"furnace","need":"1 Gold, 1 Iron bar","desc":"Conductive copper for wiring","cat":"Materials"},{"code":"INSL","name":"Insulation","st":"workbench","need":"2 Sand, 2 Wood","desc":"Blocks heat and electricity. Line a base with it","cat":"Materials"},{"code":"TTAN","name":"Titanium plate","st":"anvil","need":"1 Uranium ore, 2 Steel","desc":"Very hard, heat-resistant plate","cat":"Materials"},{"code":"PSCN","name":"P-silicon","st":"workbench","need":"1 Copper, 1 Glass","desc":"Semiconductor: passes sparks one way. Basis of circuits","cat":"Materials"},{"code":"LEDL","name":"LED lamp","st":"workbench","need":"1 Copper, 1 Glass","desc":"Lights up when sparked","cat":"Base & utility"},{"code":"WIFI","name":"Wireless link","st":"workbench","need":"1 Gold, 2 Copper","desc":"Carries sparks between two WIFI blocks on the same channel","cat":"Materials"},{"code":"B4C","name":"Control rod","st":"anvil","need":"1 Iron bar, 4 Coal","desc":"Boron carbide: absorbs neutrons in a reactor","cat":"Power"},{"code":"TRBN","name":"Turbine stage","st":"anvil","need":"2 Copper, 6 Steel","desc":"Turns steam/pressure into electricity","cat":"Power"},{"code":"TEG","name":"Thermoelectric","st":"workbench","need":"2 Glass, 3 Copper","desc":"Makes power from a temperature difference","cat":"Power"},{"code":"UO2","name":"Fuel pellet","st":"furnace","need":"1 Coal, 4 Uranium ore","desc":"Uranium dioxide reactor fuel. Handle with lead","cat":"Power"},{"code":"BOILER","name":"Boiler kit","st":"workbench","need":"16 Brick, 6 Coal","desc":"Brick firebox with a 2-row coal bed and a hollow water chamber open at the top. Pour water in with the bucket, then light the coal with the torch (same trick as the furnace). Real heat turns the water to WTRV steam once it crosses 100C, and the steam finds the side vent under its own pressure - pipe that into a turbine.","cat":"Power"},{"code":"TURBINE","name":"Steam turbine","st":"anvil","need":"4 Copper, 4 Iron bar","desc":"Steam entering the intake crosses three Copper blades in the throat; every impact cools the steam back to water and taps a spark out through the roof stud - the same mechanical-to-electrical conversion a real turbine performs, modeled by hand here instead of true blade torque. Every impact also feeds the power grid's wattage reading.","cat":"Power"},{"code":"WIRECOIL","name":"Wire coil (Copper)","st":"workbench","need":"2 Copper","desc":"Hold right mouse and drag to lay a solid, unbroken strand of Copper. Real conductors need direct contact - a single 1px gap silently kills a run - so this pours a continuous line instead of a scattered blob. Conducts SPRK exactly like solid Copper, and is what the power grid flood-fills across to find which machines share a grid.","cat":"Power"},{"code":"LAMPKIT","name":"Lamp (LED lamp)","st":"workbench","need":"1 Copper, 2 Glass","desc":"A LED lamp cell that lights only on direct contact with a sparked conductor - a 1px gap leaves it fully dark, so butt your wire straight up against it. Draws a small 2W and only lights when its grid is actually generating enough to cover it.","cat":"Base & utility"},{"code":"DOORKIT","name":"Powered door","st":"workbench","need":"10 Iron bar, 4 Wood","desc":"A solid metal slab blocking the gap. Spark the control pad beside it and the slab lifts clear; let the spark fade and it drops back to seal the passage. Real TPT pistons are twitchy, so this door is our own logic - blocks vanish and reappear rather than sliding, functionally a solenoid gate. Needs its grid to actually have the 4W spare.","cat":"Power"},{"code":"PUMPKIT","name":"Water pump","st":"anvil","need":"2 Copper, 6 Iron bar","desc":"Powering the pad on top makes the pump drag one WATR particle at a time from the intake mark on its left out through the outlet on its right - a hand-scripted impeller, since TPT has no native pressure-pump force field. 6W draw.","cat":"Power"},{"code":"CONVEYOR","name":"Conveyor belt","st":"workbench","need":"6 Scrap metal","desc":"A strip of scrap-metal rollers. Loose material sitting on top gets its sideways speed set every frame, so sand, coal and ore ride along automatically - it only pushes powders/dust, so a placed block just sits on top.","cat":"Fluids & logistics"},{"code":"CRATE","name":"Storage crate","st":"workbench","need":"12 Wood","desc":"Right-click it to open a small panel that moves items between your bag and the crate's own hold. Pure bookkeeping, same as a chest - it doesn't touch the physics engine at all.","cat":"Fluids & logistics"},{"code":"ZIRC","name":"Zirconium cladding","st":"furnace","need":"2 Sand, 2 Steel","desc":"Zircaloy-style cladding for reactor fuel: neutron-transparent, conducts heat well, keeps UO2 sealed. Needed for the reactor lattice.","cat":"Power"},{"code":"GRPH","name":"Graphite moderator","st":"furnace","need":"6 Coal","desc":"Coal pressure-baked into graphite - the same pyrolysis real graphite electrodes are made by. Passes neutrons through while carrying heat away fast (140 W/mK), used as the reactor's moderator floor.","cat":"Power"},{"code":"NAK","name":"Liquid sodium coolant","st":"anvil","need":"1 Gold, 3 Copper","desc":"Electrolytically reduced sodium metal (the real industrial process), kept liquid - 140 W/mK, the reactor's primary coolant loop.","cat":"Power"},{"code":"LEAD","name":"Lead shielding bar","st":"furnace","need":"2 Coal, 3 Iron ore","desc":"Dense, real gamma-shielding lead (35 W/mK, melts at only 327C - keep it off the hot side of anything). Flagged by the progression research doc as missing before uranium is fair; now craftable.","cat":"Materials"},{"code":"CNCR","name":"Reactor concrete","st":"workbench","need":"4 Sand, 4 Stone","desc":"Heavy shielding concrete (1.5 W/mK, non-conductive) - the containment shell material for the TEG housing and the reactor.","cat":"Power"},{"code":"CRANKKIT","name":"Hand crank generator","st":"workbench","need":"2 Iron bar, 6 Wood","desc":"Tier-0 generator: a geared handle you turn yourself. No fuel, no wiring beyond the output stud - just hold F beside it. Real hand-crank generators work exactly this way.","cat":"Power"},{"code":"WHEELKIT","name":"Water wheel","st":"workbench","need":"10 Wood, 4 Iron bar","desc":"Paddles that sample the real speed of adjacent WATR particles - place it in an actual current or waterfall, not still water, or it reads zero.","cat":"Power"},{"code":"SOLARKIT","name":"Solar panel","st":"anvil","need":"2 Copper, 2 P-silicon, 6 Glass","desc":"PSCN-backed glass panel. Reads the same day/night sun-angle formula the sky already uses, and needs a clear column of open air above it or it produces nothing.","cat":"Life support"},{"code":"TEGKIT","name":"Thermoelectric generator","st":"anvil","need":"2 CNCR, 2 Thermo-gen","desc":"A concrete housing exposing two real TEG faces. TEG already pulses SPRK into conductors once it crosses 100C (power_kinds.lua) - this just gives it a mount and a wire stud. Sit its hot face against lava or a fire.","cat":"Power"},{"code":"BELLOWSKIT","name":"Bellows","st":"hand","need":"8 Wood","desc":"Drew 20:38: a cheap hand-operated pump, no power needed. Stand next to it and hold F - it refills a carried air bladder (FLASK) fast and pushes real OXYG down its short duct, exactly what a shallow early dig needs before any generator exists.","cat":"Life support"},{"code":"AIRLINEKIT","name":"Air line","st":"workbench","need":"2 Scrap metal","desc":"Hold right mouse and drag to lay a real duct, the same continuous-line trick WIRECOIL uses for wire. Every intact stretch of it registers as a real oxygen source along its length - and a segment that gets mined out or blown up genuinely cuts the air off beyond that point, not just a flag.","cat":"Life support"},{"code":"ELECTROLYSISKIT","name":"Electrolysis cell","st":"anvil","need":"2 Glass, 4 Copper, 6 Steel","desc":"Splits real SLTW with a live spark into HYGN + caustic gas - genuine chlor-alkali chemistry, poured and wired by hand","cat":"Processing"},{"code":"ACIDSYNTHKIT","name":"Acid synthesizer","st":"anvil","need":"2 Quartz, 3 Glass, 5 Steel","desc":"A lit coal firebox heats a quartz retort: real SALT + WATR react into real ACID, dripping into the basin","cat":"Processing"},{"code":"EVAPORATORKIT","name":"Salt evaporator","st":"workbench","need":"2 Coal, 4 CNCR, 6 Brick","desc":"No power needed - a lit pan boils real SLTW past 373K, leaving real SALT behind and venting real steam","cat":"Power"},{"code":"FERTMIXERKIT","name":"Fertiliser mixer","st":"workbench","need":"4 Iron bar, 6 Wood","desc":"Two real grinding rollers turn PLNT clippings + STNE dust into a bag of Fertiliser","cat":"Processing"},{"code":"POWDERMILLKIT","name":"Gunpowder mill","st":"anvil","need":"1 Copper, 8 Iron bar","desc":"A powered spinning drum mills real COAL into a bag of Gunpowder","cat":"Power"},{"code":"MUSKET","name":"Musket","st":"anvil","need":"3 Wood, 6 Iron bar","desc":"Fires a real METL slug at the cursor - punches a crater, hurts enemies. Ammo: METL (1/shot)","cat":"Fluids & logistics"},{"code":"SHOTGUN","name":"Shotgun","st":"anvil","need":"10 Iron bar, 2 Wood","desc":"Blasts 6 red-hot pellets in a spread - short range, heavy knockback. Ammo: METL (4/shot)","cat":"Processing"},{"code":"GRENADE","name":"Grenade Launcher","st":"anvil","need":"2 Gold, 6 Steel","desc":"Lobs a real bomb that arcs under gravity and explodes on impact. Ammo: COAL (3/shot)","cat":"Exotic"},{"code":"LIGHTGUN","name":"Lightning Rod Gun","st":"anvil","need":"2 Gold, 4 Copper","desc":"Launches a crackling real lightning bolt in a straight line. Ammo: GOLD (2/shot)","cat":"Base & utility"},{"code":"TPWAND","name":"Teleport Wand","st":"anvil","need":"1 Diamond, 4 Gold, 4 Quartz","desc":"Blinks you to the cursor in a flash of light - long cooldown. Ammo: GOLD (3/use)","cat":"Base & utility"},{"code":"FLAMETH","name":"Flamethrower","st":"anvil","need":"2 Copper, 4 Steel","desc":"Hold to spray real burning fire - ignites wood, coal and oil. Ammo: COAL (drains while held)","cat":"Tools & gear"},{"code":"WATERGUN","name":"Water Cannon","st":"workbench","need":"2 Glass, 3 Copper","desc":"Jets real water - douses fire, floods pits, knocks enemies back. Ammo: WATR (drains while held)","cat":"Tools & gear"},{"code":"ACIDGUN","name":"Acid Sprayer","st":"anvil","need":"2 Copper, 4 Glass","desc":"Sprays corrosive acid that eats through almost any block. Ammo: ACID vials (craft at furnace)","cat":"Processing"},{"code":"ACID","name":"Acid vial","st":"furnace","need":"1 Coal, 4 Dirt","desc":"Bottled corrosive acid - ammo for the Acid Sprayer","cat":"Processing"},{"code":"FREEZERAY","name":"Freeze Ray","st":"anvil","need":"2 Quartz, 4 Steel","desc":"Sprays liquid nitrogen - freezes water to ice, chills enemies. Ammo: WATR (drains while held)","cat":"Tools & gear"},{"code":"LASERGUN","name":"Laser Rifle","st":"anvil","need":"2 Steel, 3 Gold, 4 Quartz","desc":"Instant beam of photons that melts soft rock, no travel time. Ammo: QRTZ (drains while held)","cat":"Exotic"},{"code":"DRILL","name":"Power Drill","st":"anvil","need":"4 Iron bar, 8 Steel","desc":"Automatic high-speed mining straight toward the cursor. No ammo, just a short cooldown","cat":"Power"},{"code":"JETPACK","name":"Jetpack","st":"anvil","need":"2 Copper, 2 Gold, 6 Steel","desc":"Equip it, then hold W/Space in the air to fly - burns COAL for real fire and gas thrust. Left mouse stays free for your other tool","cat":"Life support"},{"code":"ARROW","name":"Arrows","st":"workbench","need":"2 Wood","desc":"Simple wooden arrows - ammo for the Bow","cat":"Tools & gear"},{"code":"C-4","name":"C4 charge","st":"anvil","need":"1 Copper, 2 Gold, 3 Coal","desc":"Plastic explosive, stable until sparked - ammo for the C4 Charge","cat":"Materials"},{"code":"NAILGUN","name":"Steam Nail Gun","st":"workbench","need":"2 Wood, 5 Iron bar","desc":"Rapid-fire steam-pressure nails - weaker than the musket but fires much faster. Ammo: METL (1/shot)","cat":"Power"},{"code":"RAILGUN","name":"Rail Gun","st":"anvil","need":"10 Steel, 2 Gold, 4 Copper","desc":"An instant hyper-velocity slug that punches straight through blocks and enemies in a line. Ammo: METL (3/shot)","cat":"Fluids & logistics"},{"code":"PLASMATORCH","name":"Plasma Torch","st":"anvil","need":"2 Copper, 3 Quartz, 6 Steel","desc":"Short-range arc of real superheated plasma - vaporizes rock in its path, heavy melee damage. Ammo: COAL (drains while held)","cat":"Exotic"},{"code":"CRYOGRENADE","name":"Cryo Grenade","st":"anvil","need":"2 Quartz, 5 Steel","desc":"Lobs a real chunk of ice that bursts into liquid nitrogen on impact, flash-freezing the area. Ammo: COAL (2/shot)","cat":"Exotic"},{"code":"C4CHARGE","name":"C4 Charge","st":"anvil","need":"1 Gold, 4 Steel","desc":"Places a real C-4 charge (LEFT mouse) - right-click to remotely detonate every charge you've placed. Ammo: C-4","cat":"Materials"},{"code":"STICKYBOMB","name":"Sticky Bomb","st":"anvil","need":"4 Steel, 6 Dirt","desc":"Lobs a bomb that sticks wherever it lands, then detonates on a 1.5s fuse. Ammo: COAL (2/shot)","cat":"Tools & gear"},{"code":"BOW","name":"Bow","st":"workbench","need":"10 Wood, 2 Iron bar","desc":"Fires a real arrow on a gravity arc, lit on release so it ignites what it hits. Ammo: Arrows (1/shot)","cat":"Exotic"},{"code":"BOOMERANG","name":"Boomerang","st":"workbench","need":"4 Iron bar, 6 Wood","desc":"Thrown weapon that flies out, hits everything in its path, then flies back to your hand. No ammo","cat":"Tools & gear"},{"code":"HARPOON","name":"Harpoon","st":"anvil","need":"4 Iron bar, 6 Steel","desc":"Fires a real barbed slug that yanks whatever it hits back toward you. Ammo: METL (2/shot)","cat":"Tools & gear"},{"code":"LAVABUCKET","name":"Lava Bucket","st":"anvil","need":"5 Steel","desc":"Scoops real molten lava (only safe with the Lava Charm) and pours it back out. No ammo","cat":"Materials"},{"code":"DYNAMITE","name":"Dynamite Bundle","st":"anvil","need":"3 Gold, 8 Steel","desc":"Lobs a cluster of real bombs that chain-explode together for a much bigger crater. Ammo: COAL (6/shot)","cat":"Fluids & logistics"},{"code":"SMOKEBOMB","name":"Smoke Bomb","st":"workbench","need":"4 Dirt, 8 Coal","desc":"Lobs a real cloud of smoke that blocks sight and fouls the air - don't linger in your own cloud. Ammo: COAL (2/shot)","cat":"Life support"},{"code":"MAGNET","name":"Magnet","st":"workbench","need":"2 Copper, 6 Iron ore","desc":"Hold near loose ore/powder to pull it toward you with a real magnetic tug. No ammo","cat":"Materials"},{"code":"OXYTANK","name":"Oxygen Tank","st":"anvil","need":"2 Glass, 3 Copper, 6 Steel","desc":"Worn passively (no need to select it). Vents real oxygen around your head when air drops below 40%, on a rechargeable tank","cat":"Life support"},{"code":"DIVEHELMET","name":"Diving Helmet","st":"anvil","need":"4 Steel, 6 Glass","desc":"Worn passively. Clears a real air pocket around your head whenever you're underwater - breathe indefinitely","cat":"Life support"},{"code":"GASMASK","name":"Gas Mask","st":"workbench","need":"2 Coal, 2 Copper, 4 Glass","desc":"Worn passively. Filters real smoke/toxic gas around your head on land - does not help underwater","cat":"Fluids & logistics"},{"code":"CLIMBGLOVES","name":"Climbing Gloves","st":"workbench","need":"2 Iron bar, 4 Wood","desc":"Worn passively. Press toward a wall in mid-air to grip and slide down slowly instead of falling","cat":"Life support"},{"code":"BALLOON","name":"Balloon","st":"workbench","need":"2 Wood, 3 Glass","desc":"Worn passively. Caps your fall speed to a gentle float whenever you're airborne","cat":"Tools & gear"},{"code":"RAILKIT","name":"Rail kit (10)","st":"workbench","need":"1 Wood, 2 Iron bar","desc":"Rail kit: hold RIGHT mouse and drag along flat ground, a slope, or straight up to lay real track (METL sleepers + a bright rail line). Snaps to horizontal, 45-degree slopes and vertical shafts. Every vehicle below rides this.","cat":"Fluids & logistics"},{"code":"MINECARTKIT","name":"Minecart","st":"workbench","need":"10 Iron bar, 6 Wood","desc":"Minecart: place it directly on laid track. Press V to climb aboard - D accelerates, A slows/reverses, S brakes (holding S also climbs you back out). Gravity does the rest on slopes; run off the end of the track and it derails.","cat":"Processing"},{"code":"HANDCARKIT","name":"Handcar","st":"workbench","need":"10 Wood, 4 Iron bar","desc":"Handcar: no power needed. Place on track, press V to board, then tap D to pump the lever - each fresh tap gives it a push. Coasts and obeys gravity like any other cart.","cat":"Power"},{"code":"TRAINSTOPKIT","name":"Train stop","st":"workbench","need":"4 Iron bar, 8 Wood","desc":"Train stop: place on track. A locomotive with auto-route (P) on will stop here, transfer cargo, then head for the next stop. Needs at least two stops on the line.","cat":"Fluids & logistics"},{"code":"WAGONKIT","name":"Cargo wagon","st":"anvil","need":"4 Steel, 4 Wood, 6 Iron bar","desc":"Cargo wagon: place on track near a locomotive to auto-couple (up to 3 per train). Left-click it while holding a material to load up to 20; it dumps its hold into any Storage Crate it stops beside.","cat":"Fluids & logistics"},{"code":"SOIL","name":"Tilled Soil x4","st":"hand","need":"6 Dirt","desc":"Till a patch of ground for farming","cat":"Materials"},{"code":"ALGAETANK","name":"Algae Tank","st":"workbench","need":"4 Water, 6 Glass","desc":"An underground O2 farm - light it with a torch/lamp and keep it filled","cat":"Life support"},{"code":"BED","name":"Bed","st":"hand","need":"12 Wood","desc":"Sleep, heal a little, set your respawn point","cat":"Materials"},{"code":"CANTEEN","name":"Canteen","st":"workbench","need":"2 Iron bar","desc":"Fill from real water; boil dirty water at a lit furnace","cat":"Processing"},{"code":"WARMCOAT","name":"Insulated Coat","st":"workbench","need":"2 Wood, 4 Insulation","desc":"Cold-weather insulation","cat":"Exotic"},{"code":"COOLSUIT","name":"Cooling Wrap","st":"workbench","need":"2 Copper, 4 Insulation","desc":"Heat-resistant wrap","cat":"Base & utility"},{"code":"CFISH","name":"Cooked Fish","st":"furnace","need":"1 Raw Fish","desc":"Cooking kills the risk of raw fish","cat":"Materials"},{"code":"CMSHRM","name":"Roasted Mushroom","st":"furnace","need":"1 Wild Mushroom","desc":"Cooking kills the risk of raw mushroom","cat":"Materials"},{"code":"STEW","name":"Hearty Stew","st":"furnace","need":"1 Berries, 1 Raw Fish, 1 Root Vegetable","desc":"A full meal - big food+water and a small heal","cat":"Materials"},{"code":"BREAD","name":"Bread","st":"furnace","need":"2 Wheat","desc":"Baked wheat - the payoff for a farm","cat":"Materials"},{"code":"BOILEDWATER","name":"Boiled Water","st":"furnace","need":"1 Dirty Water","desc":"Boiling purifies dirty/salt water","cat":"Materials"}];
+const STATION_LABEL = {hand:"By hand", workbench:"Workbench", furnace:"Lit furnace", anvil:"Anvil"};
+const CAT_ORDER = ["Power","Life support","Processing","Fluids & logistics","Base & utility","Exotic","Tools & gear","Materials"];
+let q = "", station = "all", cat = "all";
+
+const byStation = {};
+DATA.forEach(function(r){ byStation[r.st] = (byStation[r.st]||0)+1; });
+document.getElementById("stats").innerHTML =
+  '<div><b>' + DATA.length + '</b>entries</div>' +
+  Object.keys(STATION_LABEL).map(function(s){ return '<div><b>' + (byStation[s]||0) + '</b>' + STATION_LABEL[s] + '</div>'; }).join('') +
+  '<div><b>' + CAT_ORDER.length + '</b>systems</div>';
+
+function chips(el, items, current, onPick){
+  el.innerHTML = "";
+  items.forEach(function(pair){
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.textContent = pair[1];
+    b.setAttribute("aria-pressed", String(current() === pair[0]));
+    b.onclick = function(){ onPick(pair[0]); render(); };
+    el.appendChild(b);
+  });
+}
+
+function render(){
+  chips(document.getElementById("stationChips"),
+    [["all","All stations"]].concat(Object.keys(STATION_LABEL).map(function(k){ return [k, STATION_LABEL[k]]; })),
+    function(){ return station; }, function(v){ station = v; });
+  chips(document.getElementById("catChips"),
+    [["all","All systems"]].concat(CAT_ORDER.map(function(c){ return [c,c]; })),
+    function(){ return cat; }, function(v){ cat = v; });
+
+  const term = q.trim().toLowerCase();
+  const rows = DATA.filter(function(r){
+    return (station === "all" || r.st === station) &&
+           (cat === "all" || r.cat === cat) &&
+           (!term || (r.name + " " + r.code + " " + r.need + " " + r.desc).toLowerCase().indexOf(term) !== -1);
+  });
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  if (!rows.length){ list.innerHTML = '<p class="empty">Nothing matches that filter.</p>'; return; }
+
+  CAT_ORDER.forEach(function(c){
+    const group = rows.filter(function(r){ return r.cat === c; });
+    if (!group.length) return;
+    const sec = document.createElement("section");
+    sec.className = "group";
+    sec.innerHTML = '<div class="grouphead"><h2>' + c + '</h2><span class="n">' + group.length + '</span></div>';
+    const ul = document.createElement("ul");
+    ul.className = "rows";
+    group.forEach(function(r){
+      const li = document.createElement("li");
+      li.className = "row";
+      const mats = r.need
+        ? r.need.split(", ").map(function(m){ return '<span class="mat">' + m + '</span>'; }).join('')
+        : '<span class="mat">no materials</span>';
+      li.innerHTML =
+        '<div><span class="badge st-' + r.st + '">' + STATION_LABEL[r.st] + '</span><span class="code">' + r.code + '</span></div>' +
+        '<div><div class="name">' + r.name + '</div>' +
+        (r.desc ? '<p class="desc">' + r.desc + '</p>' : '') +
+        '<div class="mats">' + mats + '</div></div>';
+      ul.appendChild(li);
+    });
+    sec.appendChild(ul);
+    list.appendChild(sec);
+  });
+}
+document.getElementById("q").addEventListener("input", function(e){ q = e.target.value; render(); });
+render();
+</script>

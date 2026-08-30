@@ -1,0 +1,540 @@
+{
+ "name": "tsns_wifi_ladder",
+ "description": "6x17 staged thermostat: eight INSL-separated rows of WIFI -> PSCN -> TSNS with TSNS thresholds 901,751,601,501,401,301,201,151 C (top to bottom) broadcasting on WIFI channels 19..12; BRCK column on the right faces the hot pipe.",
+ "why": "Save 1653149 mounts this ladder beside its PIPE riser (x=318-320) so successive channels go live as the core climbs -- a monotonic multi-threshold readout the console uses for staged responses. Thresholds and channels are the captured values (temp_c on each TSNS, tmp2=2 mode kept). Fully INSL-wrapped in the source except the TSNS face toward the BRCK/pipe, which is the sensing face. Sibling module tsns_ladder_10 is the 1289009 ladder with PSCN taps only; this one is the 1653149 ladder with a WIFI output per step.",
+ "source": "save 1653149, x310-315 y179-195; WIFI x=311 y=180..194 step 2 (ch19..12); TSNS x=314 same rows (1174K..424K)",
+ "params": {},
+ "parts": [
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    6,
+    1
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    1
+   ],
+   "size": [
+    1,
+    16
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 19
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 901,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    5,
+    1
+   ],
+   "size": [
+    1,
+    16
+   ]
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    2
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 18
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 751,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    4
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 17
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 601,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    6
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 16
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    7
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 501,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    8
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 15
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    9
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 401,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    10
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 14
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    11
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 301,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    12
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 13
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    13
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 201,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    14
+   ],
+   "size": [
+    4,
+    1
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    15
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "channel": 12
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    2,
+    15
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    3,
+    15
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "TSNS",
+   "at": [
+    4,
+    15
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": 151,
+    "tmp2": 2
+   }
+  },
+  {
+   "box": "INSL",
+   "at": [
+    1,
+    16
+   ],
+   "size": [
+    4,
+    1
+   ]
+  }
+ ],
+ "verified": true,
+ "anchors_note": "right edge (x=5) is the sensing face; put the hot pipe/vessel wall at x=6"
+}

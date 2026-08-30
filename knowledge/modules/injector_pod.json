@@ -1,0 +1,166 @@
+{
+ "name": "injector_pod",
+ "description": "WIFI-triggered timed coolant injector (DLAY -> PSCN -> PUMP + 3x PCLN(DSTW)), INSL-jacketed",
+ "why": "Community save 5170 pattern, hardened: WIFI in INSL jacket (channel temp boils coolant otherwise), BRCK not wall, PCLN row contacts the chamber below.",
+ "source": "save 5170 (247,255)-(251,257); hardened 2026-08-25 after live test",
+ "version": 2,
+ "params": {
+  "channel": 5,
+  "delay_c": 98
+ },
+ "parts": [
+  {
+   "box": "INSL",
+   "at": [
+    0,
+    0
+   ],
+   "size": [
+    7,
+    3
+   ]
+  },
+  {
+   "box": "WIFI",
+   "at": [
+    1,
+    1
+   ],
+   "size": [
+    2,
+    1
+   ],
+   "props": {
+    "channel": "channel"
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    3,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "DLAY",
+   "at": [
+    4,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ],
+   "props": {
+    "temp_c": "delay_c"
+   }
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    5,
+    1
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    0,
+    3
+   ],
+   "size": [
+    7,
+    1
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    5,
+    3
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PSCN",
+   "at": [
+    1,
+    4
+   ],
+   "size": [
+    5,
+    1
+   ]
+  },
+  {
+   "box": "PUMP",
+   "at": [
+    0,
+    4
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    6,
+    4
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "PCLN",
+   "at": [
+    1,
+    5
+   ],
+   "size": [
+    5,
+    1
+   ],
+   "props": {
+    "ctype": "DSTW"
+   }
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    0,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ]
+  },
+  {
+   "box": "BRCK",
+   "at": [
+    6,
+    5
+   ],
+   "size": [
+    1,
+    1
+   ]
+  }
+ ],
+ "verified": false
+}

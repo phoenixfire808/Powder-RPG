@@ -1,0 +1,256 @@
+{
+ "realistic_pwr_core": {
+  "source": "en.wikipedia.org/wiki/Pressurized_water_reactor, world-nuclear.org nuclear-power-reactors, en.wikipedia.org/wiki/Uranium_dioxide, en.wikipedia.org/wiki/Zirconium_alloy, en.wikipedia.org/wiki/Boiling_water_reactor_safety_systems (10 CFR 50.46) -- research pass 2026-08-26",
+  "status": "proposed",
+  "coolant_inlet_c": 275,
+  "coolant_outlet_c": 315,
+  "primary_pressure_mpa": 15.5,
+  "uo2_melt_c": 2865,
+  "zirc_oxidation_limit_c": 1230,
+  "zirc_melt_c": 1852,
+  "scram_insertion_s": 2,
+  "eccs_clad_temp_limit_c": 1204,
+  "decay_heat_fraction": {
+   "at_trip": 0.06,
+   "at_1hr": 0.012,
+   "at_1day": 0.0045,
+   "at_1week": 0.002
+  },
+  "verify_bands": [
+   "core DSTW temp 275-315 C during steady run",
+   "ZIRC clad stays below 1230 C except in a deliberate LOCA test",
+   "B4C/CD scram reaches full insertion within a small, bounded frame count after trip",
+   "unpowered core after station blackout follows a decaying (not flat or runaway) TSNS curve"
+  ]
+ },
+ "realistic_bwr_core": {
+  "source": "en.wikipedia.org/wiki/Boiling_water_reactor, en.wikipedia.org/wiki/Boiling_water_reactor_safety_systems, world-nuclear.org/.../fukushima-daiichi-accident -- research pass 2026-08-26",
+  "status": "proposed",
+  "core_pressure_mpa": 7.6,
+  "coolant_boil_c": 285,
+  "void_fraction_avg": 0.4,
+  "exit_steam_quality": 0.135,
+  "ads_timer_s": 105,
+  "eccs_clad_temp_limit_c": 1204,
+  "sbo_core_damage_hours_with_steam_injection": [
+   3.15,
+   76.1
+  ],
+  "verify_bands": [
+   "in-vessel WTRV/DSTW mix boils near 285 C at nominal power",
+   "low-water-level sensor trips B4C insertion before ZIRC reaches 1230 C",
+   "ADS vent pod fires only after both the low-low-low signature AND its DLAY timer elapse",
+   "a build with steam-driven injection survives station blackout far longer than one without"
+  ]
+ },
+ "candu_core": {
+  "source": "en.wikipedia.org/wiki/CANDU_reactor, en.wikipedia.org/wiki/Point_Lepreau_Nuclear_Generating_Station, en.wikipedia.org/wiki/Bruce_Nuclear_Generating_Station, en.wikipedia.org/wiki/Void_coefficient -- research pass 2026-08-26",
+  "status": "proposed",
+  "pht_pressure_mpa": 10.3,
+  "pht_outlet_c": 312,
+  "fuel_enrichment_pct": 0.72,
+  "bundle_elements": 37,
+  "channels_candu6": 380,
+  "thermal_efficiency_pct": 32,
+  "note": "PHT inlet temp, exact lattice pitch, and SDS1/SDS2 insertion timing were not confirmed via an accessible source this pass -- do not treat unlisted CANDU numbers as sourced",
+  "verify_bands": [
+   "calandria (moderator) DSTW pool stays near its own baseline temp even when the pressure-tube DSTW is drained (LOCA-with-intact-moderator test)",
+   "with both SDS1 (CD rod drop) and SDS2 (poison injection) disabled, a positive-reactivity transient is NOT self-limiting -- contrast against either system alone stopping it"
+  ]
+ },
+ "rbmk_core": {
+  "source": "en.wikipedia.org/wiki/RBMK, en.wikipedia.org/wiki/Chernobyl_disaster, en.wikipedia.org/wiki/Void_coefficient, world-nuclear.org/.../chernobyl-accident -- research pass 2026-08-26",
+  "status": "proposed",
+  "channel_pressure_mpa": 6.9,
+  "coolant_inlet_c": 267,
+  "coolant_outlet_c": 284,
+  "fuel_enrichment_pct": 2.0,
+  "control_rod_insertion_s": [
+   18,
+   21
+  ],
+  "void_coefficient_beta_eff_pre_accident": 4.7,
+  "void_coefficient_beta_eff_post_accident": 0.7,
+  "thermal_efficiency_pct": 31.25,
+  "verify_bands": [
+   "rbmk_rod_drive insertion from full withdrawal shows a brief flux INCREASE in the first few frames (graphite displacer effect) before flux falls -- monotonic decrease from frame 1 means the positive-scram flaw was not reproduced",
+   "boiling coolant with elevated flux shows flux and void fraction reinforcing each other rather than self-limiting (positive void coefficient), unlike the CANDU/MSR contrast cases",
+   "a core breach vents measurably to the ambient cell rather than being held by a bounded containment box, reflecting RBMK's lack of a full containment dome"
+  ]
+ },
+ "sfr_core": {
+  "source": "en.wikipedia.org/wiki/Sodium-cooled_fast_reactor, en.wikipedia.org/wiki/Sodium, en.wikipedia.org/wiki/EBR-II, en.wikipedia.org/wiki/PRISM_(reactor), en.wikipedia.org/wiki/Monju_Nuclear_Power_Plant, world-nuclear.org/.../fast-neutron-reactors -- research pass 2026-08-26",
+  "status": "proposed",
+  "primary_inlet_c": 400,
+  "primary_outlet_c": [
+   525,
+   550
+  ],
+  "sodium_melt_c": 98,
+  "sodium_boil_c": 883,
+  "sodium_autoignition_air_c": 290,
+  "operating_pressure": "near-atmospheric",
+  "verify_bands": [
+   "NAK primary loop stays 400-550 C, at least 330 C below its 883 C boil point, at near-atmospheric pressure",
+   "NAK never contacts WATR/DSTW anywhere in the same build (sodium-water reaction hazard) -- assert zero contact frames",
+   "a core in an rvacs_shroud with all PUMP/WIFI power cut still cools over time from natural convection alone (passive RVACS success case)",
+   "a deliberate NAK-to-air breach shows rapid local temp rise consistent with sodium autoignition near 290 C"
+  ]
+ },
+ "msr_core": {
+  "source": "en.wikipedia.org/wiki/Molten_Salt_Reactor_Experiment, en.wikipedia.org/wiki/Molten-salt_reactor, world-nuclear.org/.../molten-salt-reactors, en.wikipedia.org/wiki/Kairos_Power -- research pass 2026-08-26",
+  "status": "proposed",
+  "flibe_melt_c": 459,
+  "flibe_boil_c": 1430,
+  "operating_c": [
+   650,
+   700
+  ],
+  "operating_pressure": "near-atmospheric",
+  "thermal_efficiency_pct_target": 45,
+  "verify_bands": [
+   "FLBE loop runs 650-700 C, well above its 459 C melt point and well below its 1430 C boil point",
+   "withdrawing all B4C rods at full power causes flux to plateau on its own (negative temperature coefficient) rather than diverge -- the opposite of the RBMK positive-void test",
+   "heating the freeze-plug FLBE segment past 459 C drains the loop into the dump tank under gravity alone within a bounded frame count, with zero PUMP/WIFI involvement",
+   "post-drain dump-tank NEUT emission is lower than the original core's for the same total fissile inventory (geometrically-safe dump tank)"
+  ]
+ },
+ "tokamak_shot": {
+  "source": "iter.org/factsfigures, en.wikipedia.org/wiki/ITER, en.wikipedia.org/wiki/Niobium-tin, en.wikipedia.org/wiki/Tungsten, en.wikipedia.org/wiki/Beryllium -- research pass 2026-08-26",
+  "status": "proposed",
+  "plasma_core_c": 150000000,
+  "toroidal_field_t": 5.3,
+  "magnet_bath_k": 4.2,
+  "nbti_critical_temp_k": 9.3,
+  "first_wall_material_2023plus": "tungsten",
+  "first_wall_melt_c": 3422,
+  "pulse_duration_s": [
+   400,
+   600
+  ],
+  "note": "ITER-specific disruption thermal-quench and magnet-quench-propagation timescales were not confirmed via an accessible source this pass; only generic (non-ITER) quench-physics figures exist and should not be cited as ITER numbers",
+  "verify_bands": [
+   "NBTI coil is never built (even at rest) without being fully submerged in an LHE bath at or below -269 C -- lint-check this rather than relying on the element to model resistive transition",
+   "breaching the vacuum vessel raises cavity pressure measurably within the breach's local radius, and any plasma-equivalent hot element quenches once the H2-fusion temp+pressure condition is no longer jointly met",
+   "the WC/BE liner point of contact during a simulated disruption heats measurably faster than the rest of the vessel (localized heat-flux concentration), even without an exact ms timing"
+  ]
+ },
+ "gas_turbine_brayton": {
+  "source": "en.wikipedia.org/wiki/Gas_turbine, gevernova.com/gas-power/products/gas-turbines/7ha, en.wikipedia.org/wiki/Combined_cycle_power_plant -- research pass 2026-08-26",
+  "status": "proposed",
+  "firing_temp_c": 1540,
+  "exhaust_temp_c": [
+   450,
+   650
+  ],
+  "simple_cycle_efficiency_pct": [
+   42,
+   43.3
+  ],
+  "combined_cycle_efficiency_pct": [
+   63,
+   64.18
+  ],
+  "startup_minutes": [
+   10,
+   21
+  ],
+  "note": "no dedicated Brayton-cycle (hot-air) turbine element exists in our inventory yet -- TRBN only models the Rankine/steam half; treat any Brayton-cycle build as waste-heat-panel + steam-bottoming-cycle only until a GTRB-style custom element is built",
+  "verify_bands": [
+   "severing the firing-chamber waste-heat link to the downstream steam_generator drops total measured work output toward the ~42% simple-cycle band rather than the ~63% combined-cycle band",
+   "INC7 firing-chamber lining approaches its 1300 C melt margin when run at the real 1540 C firing temperature with no cooling/insulation layer present"
+  ]
+ },
+ "steam_rankine_cycle": {
+  "source": "en.wikipedia.org/wiki/Supercritical_steam_generator, en.wikipedia.org/wiki/Rankine_cycle, en.wikipedia.org/wiki/Deaerator, nuclear-power.com/nuclear-power-plant/turbine-generator -- research pass 2026-08-26",
+  "status": "proposed",
+  "subcritical_max_c": 374,
+  "supercritical_c": [
+   538,
+   566
+  ],
+  "ultra_supercritical_c": 600,
+  "condenser_c_pwr_reference": 41.5,
+  "condenser_pressure_mpa_abs_pwr_reference": 0.008,
+  "note": "our current heat_extraction_loop/steam_generator bands (130-180 C boiler) run 3-4x cooler than real utility subcritical steam -- a deliberate game-stability simplification, not an error; flag before assuming it scales",
+  "verify_bands": [
+   "raising condenser_cu's bath temperature toward saturation measurably reduces trbn_work_per_120f versus the existing >=20 band with a cool bath",
+   "a boiler-tube breach in steam_generator shows WTRV appearing on the wrong side of the former wall and the pressure differential across it collapsing toward zero within a few frames"
+  ]
+ },
+ "pv_battery_microgrid": {
+  "source": "en.wikipedia.org/wiki/Solar_cell_efficiency, en.wikipedia.org/wiki/Lithium-ion_battery, en.wikipedia.org/wiki/Sodium-sulfur_battery -- research pass 2026-08-26",
+  "status": "proposed",
+  "si_pv_efficiency_pct": [
+   14,
+   24.5
+  ],
+  "pv_temp_coefficient_pct_per_c": -0.45,
+  "li_ion_charge_range_c": [
+   5,
+   45
+  ],
+  "li_ion_exothermic_onset_c": 70,
+  "li_ion_runaway_peak_c": 500,
+  "nas_operating_c": [
+   300,
+   350
+  ],
+  "note": "no Li-ion element exists in our catalog yet -- NAS (300-350 C molten) and PCMP/PCMS (32-58 C phase change) cover thermal/molten storage but not a room-temperature electrochemical cell with a ~70-150 C runaway threshold",
+  "verify_bands": [
+   "a segmented nas_battery_rack with STEL/INSL breaks between cells contains a single-cell breach without heating neighboring cells; an unsegmented rack does not",
+   "severing the CU-bus link between pv_array_sipv and the rest of the plant causes downstream LEDL/status panels to go dark within a small frame count while the array itself keeps producing SPRK locally (islanding signature)"
+  ]
+ },
+ "hydrogen_electrolysis_fuel_cell": {
+  "source": "en.wikipedia.org/wiki/Electrolysis_of_water, en.wikipedia.org/wiki/Proton-exchange_membrane_fuel_cell, en.wikipedia.org/wiki/Hydrogen_storage, en.wikipedia.org/wiki/Hydrogen_safety -- research pass 2026-08-26",
+  "status": "proposed",
+  "pem_electrolyzer_c": [
+   60,
+   80
+  ],
+  "pem_fuel_cell_c": [
+   50,
+   100
+  ],
+  "storage_pressure_bar": [
+   350,
+   700
+  ],
+  "lh2_boil_c": -252.88,
+  "flammability_range_pct_vol": [
+   4,
+   75
+  ],
+  "detonable_range_pct_vol": [
+   18.3,
+   59
+  ],
+  "autoignition_c": 500,
+  "min_ignition_energy_mj": 0.02,
+  "note": "no electrolyzer or fuel-cell conversion element exists in our catalog yet -- LH2 storage temperature matches exactly, but the water<->H2 conversion step itself has no dedicated element",
+  "verify_bands": [
+   "a sealed HYGN-filled chamber with any conductor penetration is flagged as a critical lint finding before it is ever unpaused, given H2's 0.02 mJ minimum ignition energy",
+   "compressed-H2 tank wall census shows containment failing (particles escaping) once modeled pressure exceeds what the wall type can hold, and escaping HYGN concentration is checked against the 18.3-59% detonable band immediately"
+  ]
+ },
+ "geothermal_plant": {
+  "source": "en.wikipedia.org/wiki/Geothermal_power, en.wikipedia.org/wiki/Hydrogen_sulfide -- research pass 2026-08-26",
+  "status": "proposed",
+  "dry_steam_min_c": 150,
+  "flash_steam_min_c": 180,
+  "binary_orc_min_c": 57,
+  "thermal_efficiency_pct": [
+   7,
+   13
+  ],
+  "h2s_idlh_ppm": 100,
+  "basel_induced_seismicity_events": 10000,
+  "basel_max_magnitude": 3.4,
+  "note": "our existing heat_extraction_loop boiler band (130-180 C) coincidentally matches the real 150-180 C flash/dry-steam threshold well -- the one system in this document where no band change is needed",
+  "verify_bands": [
+   "a binary/ORC loop never lets the geothermal DSTW reservoir body directly contact the TRBN turbine -- a second, separate low-boiling-point loop (PCMP/PCMS-mediated) must sit between them",
+   "reinjection PUMP pressure pushed past a defined safe band raises surrounding get_field pressure readings measurably, giving an assertable proxy for induced-seismicity risk"
+  ]
+ }
+}
