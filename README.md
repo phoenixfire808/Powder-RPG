@@ -164,31 +164,63 @@ behave the way the underlying particle sim actually computes it, not a game-desi
 approximation layered on top. That constraint is deliberate and won't loosen as the game
 grows; a new mechanic has to be a real consequence of real physics before it ships.
 
-The near-term arc is depth: descending should require *sustaining yourself*, not just better
-gear. The life-support and energy-machine systems above are the first real expression of
-that — a base that goes deep needs power, air, and cooling chained together and visibly
-working, not decoration. Expect that arc to keep extending: more machine tiers, more reasons
-the surface and the depths feel like genuinely different places to survive in, and a world
-engine that's tunable enough (see the sliders above) that "how this game feels" is something
-players can actually shape rather than something fixed by us.
+**The identity, stated plainly: you are not just surviving against a hostile world — you are
+building a small industrial ecosystem that converts energy into breathable air, drinking
+water, and food, and the tech tree is the story of that ecosystem getting bigger, safer, and
+more self-sufficient.** That's not a pitch for something planned — it's already true of the
+current build, assembled piece by piece across many sessions without ever being named out
+loud until now. Concretely, today, in shipped code: power (turbines, reactors, solar) feeds
+electrolysis, which splits real water into real oxygen for life support and hydrogen as a
+byproduct; a gas turbine or fuel cell burns that hydrogen for more power (explicitly a closed
+loop back to electrolysis); the water side feeds real crop farming and a desalinator turns
+brine into more of it. Food and water are real depleting stats, and this is the same loop
+that keeps them (and you) alive — closer to a Factorio/Oxygen Not Included hybrid than a
+generic survival-craft game, and already real.
+
+The tech tree already reflects this: Workbench → Furnace → Anvil (where the power chain
+begins — O2 generation, turbines, and fuel cells are Anvil recipes, several gated on a real
+"100W generated" production threshold, not just proximity to a bench) → Research Bench →
+Advanced Lab, each tier requiring the previous tier's own output as an ingredient. The next
+rungs follow the same shape: a **reactor tier** turning the existing fission-plant-scale
+UO2/ZIRC/GRPH/B4C chain (already real, already simulated with a genuine neutron economy) into
+a repeatable recipe chain instead of a one-off demo build; **sealed-base life support** so a
+base you've built actually sustains you automatically while you're inside it, using the same
+cheap ray-cast sealed-check the game already runs every tick; and a **fluid/gas logistics
+tier** extending the existing solid-material conveyor to pipe water/hydrogen/oxygen between
+machines instead of hand-carrying it forever.
 
 Roadmap
 ===========================================================================
-- [ ] **Underground generation, done properly** — the current cave/tunnel noise is getting a
-      real research pass (real cave systems, vein-based ore distribution) rather than another
-      quick tuning patch.
+- [x] **Underground generation, "empty vertical tunnels going straight down"** — root-caused
+      with real measured numbers (an entrance-tunnel centerline formula covered too little of
+      its own noise cycle to wind naturally) and fixed with a second, fast-decaying noise
+      layer active only near the surface; confirmed the deep-cave behavior is numerically
+      unchanged. Awaiting a live look to confirm it reads right in an actual generated world.
 - [ ] **Native shape-drawing tools, fully wired into survival** — Shift-drag/Ctrl+Shift
       already work; extending full native brush-shape/size reading into every placement
       tool is still open.
-- [ ] **A real static rock element** for subsoil — the ground below topsoil currently falls
-      back to a fired-brick-flavored filler; a dedicated, verified-solid rock material is the
-      honest fix, not another substitution.
-- [ ] **Multiplayer** — co-op building alongside the existing survival gameplay. A real
-      architecture decision (client/host state sync vs. dedicated server authority), not a
-      bolt-on; scoped but not started.
-- [ ] **A physics-driven character overhaul** — ragdoll/joint movement and real
-      gore/dismemberment, in the spirit of the atmosphere/energy work above: a genuine
-      physics feature, not a sprite swap.
+- [ ] **Real geological layering for subsoil/bedrock** — researched against actual soil
+      science and this engine's real element physics: `BSLT` (real basalt) is verified genuinely
+      solid (unlike an earlier attempt with `STNE`, which turned out to be a falling powder and
+      briefly caused a live terrain collapse — caught and reverted) and is the recommended
+      bedrock default; real granite/sandstone/limestone variation by biome is scoped as a
+      further step needing new, individually-verified elements. Research is complete; the
+      BSLT swap itself is not yet applied to the world-gen fallback.
+- [ ] **Multiplayer** — real architecture research done, not just an ask. This class of
+      falling-sand simulation can't do peer-to-peer lockstep (physics is chaotic and
+      iteration-order-dependent — two machines diverge within ticks); the two real precedents
+      (Noita Together, Noita Entangled Worlds) both avoid it too. Recommended shape: **host-
+      authoritative** — one machine runs the real simulation, other players send only input,
+      the host streams back a bounded region per client reusing the existing camera-scroll
+      windowing system. V1 scope: LAN-only, host + one remote player, no client-side
+      prediction. Not started.
+- [ ] **A physics-driven character overhaul** — real technique identified: Verlet integration
+      with breakable "stick" distance constraints, the same method Happy Wheels and Source
+      engine ragdolls use. Dismemberment falls out of the same mechanism for free (a stick
+      that's stretched past its break force is simply removed — the limb keeps simulating,
+      just no longer connected). Recommended V1: normal walking stays exactly as it is today;
+      ragdoll only activates on death or a heavy hit, not full-time movement control. Not
+      started.
 - [ ] **Item quality system** — crafted tools rolling a quality tier that affects their
       stats, not just their tier.
 - [ ] **Behavior-kind persistence** — a few of the power/reactor elements (turbine,
