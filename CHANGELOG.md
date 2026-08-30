@@ -7,10 +7,21 @@ against a live test instance but not yet confirmed in a real play session.
 
 ## Unreleased (since v1.15.0)
 
-- Six live-tunable world-engine sliders in the Esc/Options menu: day length, cave frequency,
-  ore rarity, gravity, jump height, and move speed — each takes effect immediately, no restart.
+- Seven live-tunable world-engine sliders in the Esc/Options menu: day length, cave frequency,
+  ore rarity, gravity, jump height, move speed, and tree spacing — each takes effect
+  immediately, no restart.
+- Fixed a real desync: the gravity and move-speed sliders only affected the player — the
+  companion had her own separate, hardcoded physics constants that never read the new
+  multipliers, so a non-default gravity or speed setting would visibly desync her from the
+  player. Fixed at the root (she now reads the same shared multipliers at all her physics use
+  sites), so any future movement slider covers her automatically too.
 - A real V1 title/launch screen: Play/Settings/Quit before world generation, plus "quit to
-  menu" from the in-game Esc menu without killing the process or the in-memory world.
+  menu" from the in-game Esc menu without killing the process or the in-memory world. Got a
+  full visual pass after the first version read as too plain: the real world now shows
+  through behind the menu once one exists, drifting ember particles for ambient motion, and a
+  proper logo/button treatment instead of flat boxes. The title screen's own Settings button
+  now opens a matching in-place panel listing all seven sliders, instead of jumping out to a
+  different menu.
   *(Fixed same session: a forward-reference bug had the title screen's own draw/click
   handlers calling undefined functions, spamming errors every frame — fixed and confirmed
   with a real screenshot of the rendered title screen.)*
