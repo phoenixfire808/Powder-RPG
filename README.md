@@ -1,18 +1,18 @@
-Powder Toy RPG & Realism Fork
+Powder RPG
 ==========================
 
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/phoenixfire808/The-Powder-Toy?label=latest%20build&color=orange)](https://github.com/phoenixfire808/The-Powder-Toy/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/phoenixfire808/Powder-RPG?label=latest%20build&color=orange)](https://github.com/phoenixfire808/Powder-RPG/releases/latest)
 [![Changelog](https://img.shields.io/badge/changelog-full%20history-brightgreen.svg)](CHANGELOG.md)
 
-A fork of [The Powder Toy](https://powdertoy.co.uk/) — the classic falling-sand physics
-sandbox — with three things layered on top of the stock engine: a full survival RPG built
-entirely on the simulation, ~60 new elements covering real chemistry, nuclear physics and
-electronics, and an AI colony sandbox that MCP tooling can drive directly. Everything below
-is running code in this repository, not a design doc.
+**Powder RPG** is a survival game mod for [The Powder Toy](https://powdertoy.co.uk/) — real falling-sand
+physics, not a fake meter on top. You mine, craft, breathe real oxygen, build machines, and survive
+in a side-scrolling world made entirely of simulated particles. This repo is **not** the upstream
+Powder Toy project; it is Drew's RPG fork (`phoenixfire808/Powder-RPG` on GitHub).
 
-**[Download the latest build](https://github.com/phoenixfire808/The-Powder-Toy/releases/latest)**
-— unzip, run `Play.bat`, you're in.
+**[Download the latest Windows build](https://github.com/phoenixfire808/Powder-RPG/releases/latest)**
+— unzip, then **double-click `PowderToyRPG.exe`**. No batch file, no extra steps.
+(`Play.bat` is only a legacy launcher if double-click ever fails on your PC.)
 
 Table of contents
 ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ Table of contents
 - [Colony AI sandbox](#colony-ai-sandbox)
 - [Sandbox quality-of-life](#sandbox-quality-of-life)
 - [Getting the update while you play](#getting-the-update-while-you-play)
-- [Where this is going](#where-this-is-going)
+- [Vision](#vision)
 - [Roadmap](#roadmap)
 - [Running from source](#running-from-source)
 - [Credit & license](#credit--license)
@@ -155,11 +155,11 @@ The version you're running is always shown bottom-left. When a newer build exist
 changelog window lists exactly what changed in every release you've missed — press **U** to
 install immediately (it restarts on its own in a few seconds), or **Esc** to keep playing
 and update later; the reminder stays on screen either way.
-
-Where this is going
+Vision
 ===========================================================================
+
 The pillar this project is built around: **a survival RPG where the physics is real, not
-simulated-looking.** Every system above — atmosphere, fire, radiation, energy — is meant to
+simulated-looking.** Every system below — atmosphere, fire, radiation, energy — is meant to
 behave the way the underlying particle sim actually computes it, not a game-design
 approximation layered on top. That constraint is deliberate and won't loosen as the game
 grows; a new mechanic has to be a real consequence of real physics before it ships.
@@ -173,62 +173,147 @@ loud until now. Concretely, today, in shipped code: power (turbines, reactors, s
 electrolysis, which splits real water into real oxygen for life support and hydrogen as a
 byproduct; a gas turbine or fuel cell burns that hydrogen for more power (explicitly a closed
 loop back to electrolysis); the water side feeds real crop farming and a desalinator turns
-brine into more of it. Food and water are real depleting stats, and this is the same loop
-that keeps them (and you) alive — closer to a Factorio/Oxygen Not Included hybrid than a
-generic survival-craft game, and already real.
+brine into more of it. Food and water are real depleting stats (`R.need.food`,
+`R.need.water`), and this is the same loop that keeps them (and you) alive — closer to a
+Factorio / Oxygen Not Included hybrid than a generic survival-craft game, and already real.
 
 The tech tree already reflects this: Workbench → Furnace → Anvil (where the power chain
-begins — O2 generation, turbines, and fuel cells are Anvil recipes, several gated on a real
+begins — `O2GENKIT`, turbines, and fuel cells are Anvil recipes, several gated on a real
 "100W generated" production threshold, not just proximity to a bench) → Research Bench →
-Advanced Lab, each tier requiring the previous tier's own output as an ingredient. The next
-rungs follow the same shape: a **reactor tier** turning the existing fission-plant-scale
-UO2/ZIRC/GRPH/B4C chain (already real, already simulated with a genuine neutron economy) into
-a repeatable recipe chain instead of a one-off demo build; **sealed-base life support** so a
-base you've built actually sustains you automatically while you're inside it, using the same
-cheap ray-cast sealed-check the game already runs every tick; and a **fluid/gas logistics
-tier** extending the existing solid-material conveyor to pipe water/hydrogen/oxygen between
-machines instead of hand-carrying it forever.
+Advanced Lab, each tier requiring the previous tier's own output as an ingredient, so a
+real production-rate gate exists alongside every station gate. The next rungs follow the same
+shape, and the material work backing them is already shipped or scoped:
+
+- **Reactor tier** — turns the existing fission-plant-scale `UO2` / `ZIRC` / `GRPH` / `B4C`
+  chain (already real, already simulated with a genuine neutron economy — `UO2` emits real
+  `NEUT` via spontaneous fission, `ZIRC` is a real neutron-transparent cladding, `GRPH` is a
+  real high-conductivity neutron moderator, `B4C` is a real neutron absorber for control
+  rods) into a repeatable Advanced-Lab recipe chain instead of a one-off demo build. Each
+  intermediate is its own craftable item (Fuel Rod: `UO2` + `ZIRC` cladding; Moderator
+  Block: `GRPH`; Control Rod: `B4C` + `STEL` actuator) wrapped in a `CNCR`-shielded
+  Reactor Core structure that runs the real neutron-economy simulation already proven out
+  in the existing `FSN-2` / `PLUT` precedent builds and wires its output to the same
+  turbine / power-grid system everything else uses. The real design work already exists in
+  the project's community-plant notes — this tier is packaging proven physics into a
+  repeatable player-facing recipe chain, not inventing new reactor physics.
+- **Sealed-base life support** — a designated enclosed area where life-support machines
+  maintain `O2` / `food` / `water` automatically for time spent there, so the base-building
+  loop matters mechanically (not just cosmetically) and late-game power generation has an
+  actual sink. Implementation deliberately reuses the same cheap multi-ray
+  `roomSealed(wx, wy)` heuristic the game already runs every tick for the player's
+  breathing check, sampled at a life-support machine's location plus a small ring around
+  it — not an `O(area)` flood-fill, which risks exactly the oxygen-spawn-lag bug the
+  project has already learned the hard way not to repeat. While sealed, the controller
+  tops up a persistent `base O2 / food / water` pool the player draws from while inside,
+  reusing `R.o2` / `R.need.food` / `R.need.water` and their existing regen logic.
+- **Fluid / gas logistics tier** — pipes moving `WATR` / `HYGN` / `OXYG` between machines
+  without the player manually carrying it. A `CONVEYOR` machine already exists
+  (`buildConveyor`, pushes solid / powder materials along a belt); the actual gap is
+  narrower than "build a logistics tier from scratch," because fluids / gases don't have
+  automation yet — existing "pipes" (e.g. the boiler's steam-takeoff pipe) are fixed
+  structural channels built as part of one specific machine, not a general player-placeable
+  pipe connecting arbitrary machines. Concrete proposal: placeable pipe segments (visually
+  similar to the conveyor's belt-segment pattern) that, once connected between two
+  machines with matching fluid ports (e.g. an `O2GENKIT`'s `HYGN` output and a turbine's
+  fuel input), move a bounded amount of that fluid per tick — the same per-tick
+  solid-pushing shape `CONVEYOR` already uses, generalized to liquids and gases. This is
+  what actually completes the closed energy / oxygen / water loop into something a player
+  builds once and leaves running automatically, instead of manually re-carrying water and
+  hydrogen between machines forever.
 
 Roadmap
 ===========================================================================
-- [x] **Underground generation, "empty vertical tunnels going straight down"** — root-caused
+- [x] **Cave generation, "empty vertical tunnels going straight down"** — root-caused
       with real measured numbers (an entrance-tunnel centerline formula covered too little of
-      its own noise cycle to wind naturally) and fixed with a second, fast-decaying noise
-      layer active only near the surface; confirmed the deep-cave behavior is numerically
-      unchanged. Awaiting a live look to confirm it reads right in an actual generated world.
-- [ ] **Native shape-drawing tools, fully wired into survival** — Shift-drag/Ctrl+Shift
-      already work; extending full native brush-shape/size reading into every placement
-      tool is still open.
-- [ ] **Real geological layering for subsoil/bedrock** — researched against actual soil
-      science and this engine's real element physics: `BSLT` (real basalt) is verified genuinely
-      solid (unlike an earlier attempt with `STNE`, which turned out to be a falling powder and
-      briefly caused a live terrain collapse — caught and reverted) and is the recommended
-      bedrock default; real granite/sandstone/limestone variation by biome is scoped as a
-      further step needing new, individually-verified elements. Research is complete; the
-      BSLT swap itself is not yet applied to the world-gen fallback.
-- [ ] **Multiplayer** — real architecture research done, not just an ask. This class of
-      falling-sand simulation can't do peer-to-peer lockstep (physics is chaotic and
-      iteration-order-dependent — two machines diverge within ticks); the two real precedents
-      (Noita Together, Noita Entangled Worlds) both avoid it too. Recommended shape: **host-
-      authoritative** — one machine runs the real simulation, other players send only input,
-      the host streams back a bounded region per client reusing the existing camera-scroll
-      windowing system. V1 scope: LAN-only, host + one remote player, no client-side
-      prediction. Not started.
-- [ ] **A physics-driven character overhaul** — real technique identified: Verlet integration
-      with breakable "stick" distance constraints, the same method Happy Wheels and Source
-      engine ragdolls use. Dismemberment falls out of the same mechanism for free (a stick
-      that's stretched past its break force is simply removed — the limb keeps simulating,
-      just no longer connected). Recommended V1: normal walking stays exactly as it is today;
-      ragdoll only activates on death or a heavy hit, not full-time movement control. Not
-      started.
+      its own noise cycle to wind naturally for the first 20–40 depth units below the
+      surface) and fixed with a second, fast-decaying noise layer active only near the
+      surface; deep-cave behavior is numerically unchanged. Shipped v1.15.0; see
+      [CHANGELOG.md](CHANGELOG.md) for the matching release note.
+- [ ] **Real geological layering for subsoil / bedrock** — currently the bottom of the
+      world keeps defaulting to fired brick, which is structurally fine but cosmetically
+      wrong. Researched against actual soil science (topsoil → subsoil / regolith →
+      bedrock) and this engine's real element physics. The recommended V1 fix is a single
+      substance swap: `BSLT` (real basalt, id 503), which is verified genuinely solid
+      (`Falldown = 0` AND `bit.band(props, elem.TYPE_SOLID) ~= 0`) and is already a real
+      registered element, so no new `elements.allocate` cost. An earlier attempt swapped
+      in `STNE` instead and the generated terrain collapsed — caught and reverted in the
+      same session (`STNE` is `Falldown = 1`, i.e. a falling powder, not solid rock). The
+      `BSLT` swap itself is researched and spec'd but not yet applied to the world-gen
+      fallback; full fix awaits a re-verified code change.
+- [ ] **Real biome-varied geology (V2)** — properly distinct layers per biome: granite
+      under mountains, sandstone under deserts, limestone / shale variation, a real
+      saprolite transition band at the topsoil / bedrock boundary. Each new layer would
+      be its own custom element following the same `elements.allocate("RPG", "NAME")`
+      pattern as `GRSS` / `BLD`, and every one would need its own
+      `Falldown == 0 AND TYPE_SOLID` verification before being trusted as structural
+      fill — the `STNE` regression generalized to a real rule. Flagged as the V2 scope,
+      not V1, per the design doc.
+- [ ] **Co-op multiplayer** — real architecture research done, not just an ask. This
+      class of falling-sand simulation cannot do peer-to-peer lockstep (physics is
+      chaotic and iteration-order-dependent — two machines running the "same" step on the
+      same data diverge within a few ticks from float rounding and update-order
+      differences alone, and exhaustive deterministic-math engineering is fragile and
+      expensive). The two real precedents confirm this: **Noita Together** deliberately
+      did NOT attempt shared-simulation multiplayer (each player keeps a separate
+      world; see [the wiki](https://noita.wiki.gg/wiki/Mod:Noita_Together) /
+      [GitHub](https://github.com/Noita-Together/noita-together)), and **Noita Entangled
+      Worlds** ([GitHub](https://github.com/IntQuant/noita_entangled_worlds)) only ships
+      a proxy-relay plus per-pixel delta sync — i.e. exactly host-authoritative, not
+      lockstep. Recommended shape for this codebase: **host-authoritative** — one machine
+      runs the real simulation untouched, every other player connects as a thin client
+      sending only input (`movePlayer` / `useTool` / `placeAt`, all already exist) and
+      receiving back a bounded region per client reusing the existing camera-scroll
+      windowing system (the same windowed approach already used by the tile-cache /
+      `shiftCam` infrastructure, so no new windowing scheme is invented). V1 scope:
+      LAN-only, host + one remote player, no client-side prediction / rollback — accept
+      host-latency lag on remote inputs in exchange for a much smaller, ship-able
+      surface. Each player is genuinely just a second instance of the existing
+      `P`-like state table driven by network input instead of local mouse / keyboard —
+      which is the same actor-command shape `companion.lua` already separates
+      ("decide what to do" vs "execute the action"), so the actor layer is real,
+      existing, reusable infrastructure, not a new one. Not started.
+- [ ] **Physics-driven character overhaul + dismemberment** — real technique identified:
+      Verlet integration with distance ("stick") constraints, the same method Happy
+      Wheels and Source-engine ragdolls use (going back to Thomas Jakobsen's paper for
+      Hitman: Codename 47; reference:
+      [Tuts+ verlet ragdoll tutorial](https://gamedevelopment.tutsplus.com/tutorials/simulate-tearable-cloth-and-ragdolls-with-simple-verlet-integration--gamedev-519)).
+      Body is ~11 point masses (head, chest, pelvis, 2× upper arm, 2× forearm, 2× thigh,
+      2× shin); each point stores current and previous position (Verlet needs no explicit
+      velocity — it is implicit as `pos − prevPos`); rigid areas get multiple constraints
+      per joint so they don't fold, loose areas (elbows, knees) get exactly one. 4–8
+      constraint-relaxation iterations per frame looks convincingly rigid; collision
+      reuses the same solid-style check the player already uses today, just once per
+      point instead of once for the whole player box. **Dismemberment is just a
+      conditional constraint break:** each stick gets a `breakForce`, and the simulation
+      removes a stick whose current stretched length exceeds its rest length by more
+      than `breakForce` for the rest of the ragdoll's life. The two sides then drift
+      away under existing Verlet motion — this is "limb tears off" without any
+      special-case code path, and decapitation is the neck stick breaking with the same
+      mechanism; real `BLD` (blood) particles already in the codebase spawn at the break
+      point for free. Recommended V1 cut: ragdoll only activates on death or a heavy hit,
+      not full-time movement control — normal walking / running / jumping stays exactly
+      as it is today (the current sprite + velocity model already feels responsive, and
+      replacing it wholesale is real risk for no clear gain). Respawn resets back to
+      normal sprite control. Explicitly out of V1: full-time ragdoll-driven walking, a
+      real skeletal / inverse-kinematics rig, organs as separate simulated bodies
+      (spawn as particle effects / decals at death instead — cheaper, same visual
+      payoff). Not started; awaiting confirmation that "death-only ragdoll" matches the
+      intended scope vs. always-on ragdoll movement.
 - [ ] **Item quality system** — crafted tools rolling a quality tier that affects their
       stats, not just their tier.
-- [ ] **Behavior-kind persistence** — a few of the power/reactor elements (turbine,
+- [ ] **Behavior-kind persistence** — a few of the power / reactor elements (turbine,
       thermoelectric, reactive concrete) are defined through custom behavior kinds that
-      aren't yet re-registered on restart, so they currently only work in a live dev
+      are not yet re-registered on restart, so they currently only work in a live dev
       session rather than a fresh launch — everything else in the elements table above
-      survives a restart intact.
+      survives a restart intact. This is being driven from a single
+      `apply_realism_modules` call against the lab instance so it can be re-tested
+      end-to-end before claiming it's fixed.
 - [ ] More biomes and quest content past the current 14-step starter chain.
+
+For the respawn-path-drift saga spanning v1.15.7 → v1.15.10 (one bug class, four
+versions, helper extraction pattern established), see the cross-version retrospective
+at [releases/v1.15.7-v1.15.10-retrospective.md](releases/v1.15.7-v1.15.10-retrospective.md)
+and the individual release pages linked from its summary table.
 
 Full version-by-version history lives in [CHANGELOG.md](CHANGELOG.md).
 

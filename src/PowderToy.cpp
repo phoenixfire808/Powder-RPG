@@ -325,24 +325,41 @@ int Main(int argc, char *argv[])
 		else
 			perror("failed to chdir to requested ddir");
 	}
-	else if constexpr (SHARED_DATA_FOLDER)
+	else
 	{
-		auto ddir = Platform::DefaultDdir();
-		if (!Platform::FileExists("powder.pref"))
+		// Portable default: when no ddir was passed (normal double-click launch),
+		// run from the folder that contains this executable so autorun.lua /
+		// powder.pref next to the .exe are found without Play.bat.
+		auto exePath = Platform::ExecutableName();
+		if (exePath.size())
 		{
-			if (ddir.size())
+			ByteString exeDir;
+			if (auto split = exePath.SplitFromEndBy("\\"))
+				exeDir = split.Before();
+			else if (auto split = exePath.SplitFromEndBy("/"))
+				exeDir = split.Before();
+			if (exeDir.size() && Platform::ChangeDir(exeDir))
+				Platform::sharedCwd = Platform::GetCwd();
+		}
+		if constexpr (SHARED_DATA_FOLDER)
+		{
+			auto ddir = Platform::DefaultDdir();
+			if (!Platform::FileExists("powder.pref"))
 			{
-				if (!Platform::ChangeDir(ddir))
+				if (ddir.size())
 				{
-					perror("failed to chdir to default ddir");
-					ddir = {};
+					if (!Platform::ChangeDir(ddir))
+					{
+						perror("failed to chdir to default ddir");
+						ddir = {};
+					}
 				}
 			}
-		}
 
-		if (ddir.size())
-		{
-			Platform::sharedCwd = ddir;
+			if (ddir.size())
+			{
+				Platform::sharedCwd = ddir;
+			}
 		}
 	}
 	// We're now in the correct directory, time to get prefs.
