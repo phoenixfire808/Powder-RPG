@@ -33,13 +33,12 @@ config.log
 *.pref
 screenshot_*
 
-# Knowledge: too large / personal / generated locally
-knowledge/saves/
-knowledge/previews/
-knowledge/rpg-save.json
-knowledge/rpg-save.json.bak*
-knowledge/*.parts.jsonl
-knowledge/experiments*.jsonl
+# Knowledge: internal working notes, research, build logs and design records.
+# Local-only by intent. These are development records rather than part of the
+# published game, and they contain personal detail that does not belong in a
+# public repository. Previously only a few subpaths were ignored while 196 files
+# were tracked and published; the whole tree is now local.
+knowledge/
 
 # Local runtime (never commit)
 lab_instance/
