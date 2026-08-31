@@ -93,9 +93,11 @@ local ILLNESS = { BERRY = 0.08, ROOT = 0.05, MSHRM = 0.12, FISH = 0.15, DIRTYWAT
 
 -- wrap core's R.eat: (a) right-click a food item to eat it (wired below via the place hook), (b) risk of illness
 -- from raw/unclean items, on top of core's plain need/heal bookkeeping.
-local coreEat = R.eat
+-- Idempotent guard: R persists across hot-reload, so stash the pristine core fn once (hub §0c).
+local U = R._survival or {}; R._survival = U
+U.coreEat = U.coreEat or R.eat
 function R.eat(item)
-  local ok = coreEat(item)
+  local ok = U.coreEat(item)
   if ok and ILLNESS[item] and not R.sandbox and math.random() < ILLNESS[item] then
     R.survSick = R.frame + 1200
     say("That did not sit right - you feel sick")
@@ -104,12 +106,12 @@ function R.eat(item)
 end
 
 -- wrap core's R.spawnPlayer so a placed Bed becomes a real respawn point without editing rpg.lua
-local coreSpawn = R.spawnPlayer
+U.coreSpawn = U.coreSpawn or R.spawnPlayer
 function R.spawnPlayer()
   if R.bedRespawn then
     R.P.x, R.P.y = R.bedRespawn.x, R.bedRespawn.y; R.P.vx, R.P.vy = 0, 0; R.hp = math.max(R.hp or 0, 40); R._resetSpawnState(); R._teleportCompanionAndClear()   -- F5 + F9: shared pollution reset, then F1 companion teleport + F8 clearAround (otherwise bed-respawn strands the companion and leaves the BLD pool at the spawn point)
   else
-    coreSpawn()
+    U.coreSpawn()
   end
 end
 
@@ -140,6 +142,29 @@ local LIGHT = { FIRE=1, PLSM=1, LAVA=1, LEDL=1, LCRY=1, GLOW=1 }
 local WATERY = { WATR=1, DSTW=1 }
 local function hasOpenSky(wx, wy, cap) for k = 1, (cap or 260), 4 do if solidW(wx, wy - k) then return false end end; return true end
 
+-- Bonus forage drops append to R.hint. Each drop used to append its own bare
+-- "  +Sapling" with no count, so a single axe swing that yields dozens of
+-- saplings produced one line repeating "+Sapling" ~47 times (captured live).
+-- Stack per frame instead, so it reads "+47 Sapling" -- matching how the core
+-- mining hint already reports "+7 Wood". Fixed here, at the one point all six
+-- drop paths route through, rather than patching each call site.
+local bFrame, bCount, bSuffix = -1, {}, ""
+local function bonus(item, label)
+  R.give(item, 1)
+  if R.frame ~= bFrame then bFrame, bCount, bSuffix = R.frame, {}, "" end
+  -- remove the suffix this helper appended earlier in the same frame, then
+  -- rebuild it with the updated counts (leaves any other hint text intact)
+  if bSuffix ~= "" and R.hint and R.hint:sub(-#bSuffix) == bSuffix then
+    R.hint = R.hint:sub(1, #R.hint - #bSuffix)
+  end
+  bCount[label] = (bCount[label] or 0) + 1
+  local parts = {}
+  for k, v in pairs(bCount) do parts[#parts + 1] = "+" .. v .. " " .. k end
+  table.sort(parts)
+  bSuffix = "  " .. table.concat(parts, "  ")
+  R.hint = (R.hint or "") .. bSuffix
+end
+
 -- ================================================================ FORAGING: mining wild flora/wood/water gives raw food
 hook(R.hooks.mine, function(el, n)
   if not R.P then return end
@@ -147,16 +172,16 @@ hook(R.hooks.mine, function(el, n)
   if el == "GRSS" or el == "PLNT" then
     local roll = math.random()
     if depth <= 4 then
-      if roll < 0.10 then R.give("SEED", 1); R.hint = (R.hint or "") .. "  +Seeds"
-      elseif roll < 0.22 then R.give("BERRY", 1); R.hint = (R.hint or "") .. "  +Berries" end
+      if roll < 0.10 then bonus("SEED", "Seeds")
+      elseif roll < 0.22 then bonus("BERRY", "Berries") end
     else
-      if roll < 0.06 then R.give("SPORE", 1); R.hint = (R.hint or "") .. "  +Spore"
-      elseif roll < 0.16 then R.give("MSHRM", 1); R.hint = (R.hint or "") .. "  +Mushroom" end
+      if roll < 0.06 then bonus("SPORE", "Spore")
+      elseif roll < 0.16 then bonus("MSHRM", "Mushroom") end
     end
   elseif el == "GOO" and depth <= 8 and math.random() < 0.06 then
-    R.give("ROOT", 1); R.hint = (R.hint or "") .. "  +Root"
+    bonus("ROOT", "Root")
   elseif el == "WOOD" and math.random() < 0.10 then
-    R.give("SAPLING", 1); R.hint = (R.hint or "") .. "  +Sapling"
+    bonus("SAPLING", "Sapling")
   end
 end)
 
@@ -522,16 +547,23 @@ hook(R.hooks.drawHUD, function()
     local col = warn and { 255, 200, 90 } or { 255, 120, 90 }
     local label = (warn and "INCOMING: " or "") .. def.name
     if (R.frame % 30) < 22 or not warn then
-      graphics.fillRect(258, 34, 240, 12, 0, 0, 0, 150)
-      graphics.drawText(262, 36, label, col[1], col[2], col[3], 255)
+      local x, y, rw = R.rcLine and R.rcLine(12) or 310, 48, 188
+      graphics.fillRect(x, y, rw, 12, 0, 0, 0, 150)
+      graphics.drawText(x + 2, y + 2, label, col[1], col[2], col[3], 255)
     end
   end
   if R.warmth and R.warmth < 60 then
+    local wy = (R._hudLeftEndY or 58) + 4
+    local wx = 8
     local w = floor(R.warmth / 100 * 56)
-    graphics.fillRect(8, 30, 56, 3, 40, 40, 60, 255); graphics.fillRect(8, 30, w, 3, 140, 190, 255, 255)
-    if R.warmth < 25 then graphics.drawText(68, 28, "COLD", 140, 190, 255, 255) end
+    graphics.fillRect(wx, wy, 56, 3, 40, 40, 60, 255)
+    graphics.fillRect(wx, wy, w, 3, 140, 190, 255, 255)
+    if R.warmth < 25 then graphics.drawText(wx + 60, wy - 2, "COLD", 140, 190, 255, 255) end
   end
-  if R.survSick then graphics.drawText(200, 8, "SICK", 180, 220, 90, 255) end
+  if R.survSick then
+    local x, y = R.rcLine and R.rcLine(12) or 310, 48
+    graphics.drawText(x, y, "SICK", 180, 220, 90, 255)
+  end
 end)
 
 -- ================================================================ sandbox / new-world resets

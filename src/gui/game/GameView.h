@@ -172,7 +172,7 @@ private:
 	void RebuildStateLadder();
 
 	// Favorites wheel: hold T to pop a radial "command wheel" (like
-	// RimWorld's Dubs Mint Menus mod) of Drew's current favorited
+	// RimWorld's Dubs Mint Menus mod) of the owner's current favorited
 	// elements, centered on the cursor -- click a slot to select it,
 	// release T to close. Reuses the existing Favorite list (already
 	// user-editable via the Shift+Ctrl-click toggle on any element button)

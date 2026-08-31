@@ -97,7 +97,7 @@ public:
 
 	// Deliberately still returns the true user-set radius, not the padded
 	// effectiveRadius -- resize UI/step calculations should see the size
-	// Drew actually set, not an implementation detail of how rotation
+	// The owner actually set, not an implementation detail of how rotation
 	// avoids clipping.
 	ui::Point GetRadius() const
 	{

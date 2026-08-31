@@ -1175,8 +1175,8 @@ def _build_schemas() -> dict[str, dict]:
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "action": {"type": "string", "enum": ["read", "post", "drew"], "description": "read returns the hub; post appends a log line; drew inserts a Drew-says line."},
-            "text": {"type": "string", "maxLength": 2000, "description": "Required for post/drew: the log line body, or the Drew-says quote text."},
+            "action": {"type": "string", "enum": ["read", "post", "drew"], "description": "read returns the hub; post appends a log line; drew inserts an owner-says line."},
+            "text": {"type": "string", "maxLength": 2000, "description": "Required for post/drew: the log line body, or the owner-says quote text."},
             "who": {"type": "string", "maxLength": 32, "default": "mcp", "description": "Attribution tag for post, e.g. mcp or a worker name."},
             "lines": {"type": "integer", "minimum": 1, "maximum": 2000, "description": "For read: return only the last N lines instead of the whole file."},
         },
@@ -1489,8 +1489,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     "rpg_hub": (
         "Read or append to the RPG team hub (knowledge/rpg-hub.md). action=read returns the file "
         "(optionally just the last N lines via `lines`); action=post appends '- [HH:MM] <who>: text' "
-        "to the Log; action=drew inserts a '- HH:MM \"text\"' line under Drew says, just above the "
-        "Ownership section, matching the hub's existing convention for relaying Drew's live comments."
+        "to the Log; action=drew inserts a '- HH:MM \"text\"' line under the owner-says section, just above the "
+        "Ownership section, matching the hub's existing convention for relaying the owner's live comments."
     ),
     "rpg_reload": (
         "Hot-reload rpg.lua (target=core: re-executes the file's own source through execute_lua -- safe "

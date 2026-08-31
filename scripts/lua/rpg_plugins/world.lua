@@ -38,10 +38,14 @@ local function biomeWeight(wx, name)   -- 0..1 influence of `name` at this colum
   return 0
 end
 local GRASS = has("GRSS") and "GRSS" or "PLNT"
-local ROCK = has("GRNT") and "GRNT" or "BRCK"   -- reverted: real STNE falls (Falldown=1), see rpg.lua note
+-- FIXED 2026-08-30: bridge-verified BSLT (id=503) Falldown=0, Properties&TYPE_SOLID==4
+-- (real static solid); STNE/GRAV/BRMT/BCOL/CLST/SAND all Falldown=1 -- rejected. See rpg.lua note.
+local ROCK = has("BSLT") and "BSLT" or "BRCK"
+-- CNCR (id=495) bridge-verified Falldown=0, Properties&TYPE_SOLID==4 -- also a real static solid.
 local ROCK2 = has("CNCR") and "CNCR" or ROCK
 local HASCU = has("CU")
 local UORE = has("DU") and "DU" or "URAN"
+local SOIL_DEPTH_MUL = 4   -- topsoil/subsoil before stone strata (~4x default; new columns only)
 
 -- ================================================================ noise (same style as rpg.lua's hash3/vnoise)
 local function frac(v) return v - floor(v) end
@@ -142,6 +146,78 @@ local function rootColumn(wx)   -- is a tree trunk within reach of this column? 
   for cc = c-2, c+2 do local v = vegAt(cc); if v and v.kind == "tree" and wx >= v.x0-1 and wx <= v.x0+(v.trunkW or 3) then r = true; break end end
   rootColCache[wx] = r; return r
 end
+
+-- Branching underground root veins: WOOD shell + 1px hollow core (like trunk vein).
+-- Deterministic per tree cell; water routes through hollow air in rpg.lua liquid ticks.
+local ROOT_BRANCHES = 6
+local function rootVeinOnSegment(wx, wy, x1, y1, x2, y2)
+  if not inCapsule(wx, wy, x1, y1, x2, y2, 1.35) then return nil end
+  if inCapsule(wx, wy, x1, y1, x2, y2, 0.42) then return "hollow" end
+  return "wood"
+end
+local function rootVeinShapeAt(wx, wy, surf, d)
+  if d < 1 or d > 22 * SOIL_DEPTH_MUL then return nil end
+  local c = floor(wx / vsp())
+  for cc = c - 3, c + 3 do
+    local v = vegAt(cc)
+    if not v or v.kind ~= "tree" then goto rv_tree_next end
+    local x0, s, tw = v.x0, v.s, v.trunkW or 3
+    local hc = x0 + floor(tw / 2)
+    local maxD = floor(8 + v.h * 0.14 * SOIL_DEPTH_MUL)
+    if d > maxD then goto rv_tree_next end
+  if wx == hc and wy > s and wy <= s + maxD then return "hollow" end
+  if wy > s and wy <= s + maxD - 1 then
+    if wx == hc - 1 or wx == hc + 1 then return "wood" end
+    if tw >= 4 and d <= maxD * 0.65 and (wx == hc - 2 or wx == hc + 2) then return "wood" end
+  end
+    for i = 0, ROOT_BRANCHES - 1 do
+      local bd = floor(2 + i * (2.2 + hash3(cc, 850, i) * 2.8))
+      if bd > maxD - 2 then break end
+      local span = 6 + floor(hash3(cc, 854, i) * 5)
+      if d < bd - 1 or d > bd + span then goto rv_br_next end
+      local dir = hash3(cc, 851, i) < 0.5 and -1 or 1
+      local len = 8 + floor(hash3(cc, 852, i) * 18)
+      local y0 = s + bd
+      local role = rootVeinOnSegment(wx, wy, hc, y0, hc + dir * len, y0 + 1 + floor(hash3(cc, 853, i) * 4))
+      if role then return role end
+      if hash3(cc, 855, i) > 0.32 then
+        local mx = hc + dir * floor(len * 0.45)
+        local my = y0 + 1 + floor(hash3(cc, 856, i) * 3)
+        local sdir = -dir
+        role = rootVeinOnSegment(wx, wy, mx, my, mx + sdir * floor(5 + hash3(cc, 857, i) * 10), my + 2 + floor(hash3(cc, 858, i) * 3))
+        if role then return role end
+      end
+      ::rv_br_next::
+    end
+    ::rv_tree_next::
+  end
+  return nil
+end
+function R.treeRootVeinQuery(wx, wy)
+  wx, wy = floor(wx), floor(wy)
+  local surf = surfaceAt(wx)
+  if wy <= surf then return nil end
+  local d = wy - surf
+  local role = rootVeinShapeAt(wx, wy, surf, d)
+  if not role then return nil end
+  local c = floor(wx / vsp())
+  local bestV, bestD, bestHc = nil, 999, nil
+  for cc = c - 3, c + 3 do
+    local v = vegAt(cc)
+    if v and v.kind == "tree" then
+      local hc = v.x0 + floor((v.trunkW or 3) / 2)
+      local dist = abs(wx - hc)
+      if dist < bestD then bestD = dist; bestV = v; bestHc = hc end
+    end
+  end
+  if not bestV then return nil end
+  local info = {
+    x0 = bestV.x0, tw = bestV.trunkW or 3, s = bestV.s, hollowCol = bestHc,
+    species = bestV.species, inRootVein = true,
+  }
+  if role == "hollow" then info.inHollow = true else info.rootWood = true end
+  return info
+end
 local function vegShapeAt(wx, wy)
   local c = floor(wx / vsp())
   for cc = c-2, c+2 do
@@ -157,7 +233,7 @@ local function vegShapeAt(wx, wy)
         -- generated at ground level -- real physics, not scripted particle
         -- teleportation. Skipped on tw<3 trunks: too thin to read as anything but
         -- a rendering glitch.
-        if wx >= x0 and wx < x0 + tw and wy >= top and wy < v.s then
+        if wx >= x0 and wx < x0 + tw and wy >= top and wy <= v.s then
           if tw >= 3 and wx == x0 + floor(tw / 2) then return nil end
           return "WOOD"
         end
@@ -206,7 +282,7 @@ local function vegShapeAt(wx, wy)
           end
         end
       elseif v.kind == "cactus" then
-        if (wx == v.x0 or wx == v.x0+1) and wy >= v.s - v.h and wy < v.s then return GRASS end
+        if (wx == v.x0 or wx == v.x0+1) and wy >= v.s - v.h and wy <= v.s then return GRASS end
         if v.arm then
           local ay = v.s - v.h + v.armH; local ax = v.x0 + (v.armSide > 0 and 2 or -1)
           if wx == ax and (wy == ay or wy == ay - 1) then return GRASS end
@@ -215,6 +291,132 @@ local function vegShapeAt(wx, wy)
     end
   end
   return nil
+end
+
+-- Tree liquid routing: expose real world.lua geometry to rpg.lua soak ticks (trunkW,
+-- hollow column, canopy GRASS). The old rpg.lua treeAt() used a 2px trunk on a 24px
+-- grid and never matched these trees — rain pooled on canopy WOOD/GRSS instead of
+-- draining through the hollow vein.
+function R.treeVegQuery(wx, wy)
+  local c = floor(wx / vsp())
+  for cc = c - 2, c + 2 do
+    local v = vegAt(cc)
+    if v and v.kind == "tree" then
+      local top, tw, x0 = v.s - v.h, v.trunkW or 3, v.x0
+      local hollowCol = (tw >= 3) and (x0 + floor(tw / 2)) or nil
+      local info = { x0 = x0, tw = tw, top = top, s = v.s, hollowCol = hollowCol, species = v.species }
+      local shape = vegShapeAt(wx, wy)
+      if shape == "WOOD" then
+        if hollowCol and wx == hollowCol then info.inHollow = true else info.trunkWood = true end
+        return info
+      end
+      if shape == GRASS and wy < v.s and wy >= top - 4 then
+        info.canopy = true; info.poolOnCanopy = true; return info
+      end
+      local below = vegShapeAt(wx, wy + 1)
+      if below == "WOOD" and wy + 1 >= top and wy + 1 <= v.s then
+        if hollowCol and wx == hollowCol then info.inHollow = true else info.poolOnTrunk = true end
+        return info
+      end
+      if below == GRASS and wy + 1 < v.s and wy + 1 >= top - 4 then
+        info.canopy = true; info.poolOnCanopy = true; return info
+      end
+      if hollowCol and wx == hollowCol and wy >= top and wy <= v.s + 1 then
+        info.inHollow = true; return info
+      end
+    end
+  end
+  return nil
+end
+function R.treeRootSoakAt(wx, wy)
+  local q = R.treeRootVeinQuery and R.treeRootVeinQuery(wx, wy)
+  if q and q.inHollow then return true end
+  local surf = surfaceAt(wx); local d = wy - surf
+  if d < 1 or d > 12 * (SOIL_DEPTH_MUL or 4) then return false end
+  return rootColumn(wx) and vnoise(wx / 3, wy / 3, 830) > 0.65
+end
+-- Underground wet layer: hollow root branches + aquifer pockets around roots.
+function R.treeAquiferAt(wx, wy)
+  local q = R.treeRootVeinQuery and R.treeRootVeinQuery(wx, wy)
+  if q and (q.inHollow or q.rootWood) then return true end
+  local surf = surfaceAt(wx); local d = wy - surf
+  if d < 3 or d > 24 * (SOIL_DEPTH_MUL or 4) then return false end
+  if not rootColumn(wx) then return false end
+  return vnoise(wx / 4, wy / 4, 831) > 0.50
+end
+local function treeCoversColumn(wx)
+  if rootColumn(wx) then return true end
+  local c = floor(wx / vsp())
+  for cc = c - 1, c + 1 do
+    local v = vegAt(cc)
+    if v and v.kind == "tree" then
+      local span = max(v.trunkW or 3, floor((v.cw or 24) * 0.55))
+      if wx >= v.x0 - span and wx <= v.x0 + (v.trunkW or 3) + span then return true end
+    end
+  end
+  return false
+end
+function R.treeCoversColumn(wx) return treeCoversColumn(floor(wx)) end
+-- Forest floor between adjacent tree trunks: rain pools on GRSS gaps because
+-- treeVegQuery only matches canopy/trunk/hollow pixels, not the open columns
+-- between trees. Returns nearest hollow drain + gapFloor when wx,wy is on the
+-- surface strip under tree shade but not on trunk wood/canopy itself.
+function R.nearestTreeDrain(wx, wy)
+  wx, wy = floor(wx), floor(wy)
+  if not treeCoversColumn(wx) then return nil end
+  local surf = surfaceAt(wx)
+  if wy < surf - 3 or wy > surf + 4 then return nil end
+  local c = floor(wx / vsp())
+  local best, bestD = nil, 999
+  for cc = c - 5, c + 5 do
+    local v = vegAt(cc)
+    if v and v.kind == "tree" then
+      local tw = v.trunkW or 3
+      if tw >= 2 then
+        local hollowCol = v.x0 + floor(tw / 2)
+        local d = abs(wx - hollowCol)
+        if d < bestD then
+          bestD = d
+          best = { x0 = v.x0, tw = tw, top = v.s - v.h, s = v.s, hollowCol = hollowCol, species = v.species }
+        end
+      end
+    end
+  end
+  if not best or bestD > 50 then return nil end
+  local shape = vegShapeAt(wx, wy)
+  if shape == "WOOD" then return nil end
+  if shape == GRASS and wy < best.s and wy >= best.top - 4 then return nil end
+  if best.hollowCol and wx == best.hollowCol and wy >= best.top and wy <= best.s + 1 then return nil end
+  local q = R.treeVegQuery(wx, wy)
+  if q and (q.trunkWood or q.poolOnCanopy or q.poolOnTrunk or q.inHollow) then return nil end
+  best.gapFloor = true
+  return best
+end
+-- Any pixel under tree shade (canopy air, branch wood, leaf gaps) routes rain to nearest hollow vein.
+function R.treeShadeDrain(wx, wy)
+  wx, wy = floor(wx), floor(wy)
+  if not treeCoversColumn(wx) then return nil end
+  local surf = surfaceAt(wx)
+  if wy > surf + 2 or wy < surf - MAXFEAT then return nil end
+  local c = floor(wx / vsp())
+  local best, bestD = nil, 999
+  for cc = c - 4, c + 4 do
+    local v = vegAt(cc)
+    if v and v.kind == "tree" and (v.trunkW or 3) >= 3 then
+      local hollowCol = v.x0 + floor((v.trunkW or 3) / 2)
+      local d = abs(wx - hollowCol)
+      if d < bestD then
+        bestD = d
+        best = {
+          x0 = v.x0, tw = v.trunkW or 3, top = v.s - v.h, s = v.s,
+          hollowCol = hollowCol, species = v.species,
+          canopy = true, poolOnCanopy = true,
+        }
+      end
+    end
+  end
+  if not best or bestD > 44 then return nil end
+  return best
 end
 
 -- desert dunes (thin SAND cap over solid rock so it can't avalanche far), swamp shallow pools, ground-cover deco.
@@ -350,7 +552,7 @@ local function waterfallAt(wx, wy, d)   -- a vertical crack of falling water fro
   return false
 end
 local function cheeseOpenAt(wx, wy, d)
-  if d < 20 then return false end
+  if d < 20 * SOIL_DEPTH_MUL then return false end
   -- 2-tap fBm (worm tunnels already fixed the "slitty" look, so this stays cheap: no domain warp needed here)
   local cavern = 0.60*vnoise(wx/110, wy/65, 611) + 0.40*vnoise(wx/38, wy/26, 612)
   return cavern > (0.70 - min(0.08, d/9000))
@@ -401,13 +603,18 @@ local function caveAt(wx, wy, surf, d, biome)
 end
 
 -- ================================================================ solid rock: depth-band strata, then ore/crystal veins
-local function strataAt(wx, wy, d, icy)
+local function strataAt(wx, wy, d, icy, cold)
   local wave = (vnoise1(wx/85, 810) - 0.5) * 8      -- slow per-column wobble: bands aren't perfectly flat
   local band = floor((d - wave) / 15)
   if icy then
     if has("QRTZ") and hash3(band, 816, 4) > 0.95 then return "QRTZ" end
     return "ICE"
   end
+  -- `cold`: below a snow biome's frozen crust the rock is normal (and carries normal ore),
+  -- but occasional ice lenses keep it reading as a cold region instead of flipping to
+  -- generic forest rock at an invisible depth line. Shares `band` so the lenses line up
+  -- with the surrounding strata rather than looking like unrelated noise.
+  if cold and hash3(band, 817, 6) > 0.74 then return "ICE" end
   local pick = hash3(band, 815, 3)
   -- desert purpose: exposed sedimentary/fossil-bearing layers under the sand - real fired brick, banded and common,
   -- reads as ancient strata (and matches the desert's brick ruins). Fades in with desert weight, not a hard switch.
@@ -420,15 +627,15 @@ end
 -- ore/mineral veins: zoneScale/detailScale are both large so a "hit" fills most of a compact, contiguous blob
 -- (Terraria-style vein) instead of speckling individual pixels - nothing here should read smaller than ~4-8px.
 local function oreAt(wx, wy, d)
-  if d > 20 and vein(wx, wy, 950, 65, 0.80, 18, 0.50) then return "COAL" end
-  if d > 60 and vein(wx, wy, 953, 70, 0.84, 18, 0.50) then return "IRON" end
-  if HASCU and d > 100 and vein(wx, wy, 956, 75, 0.87, 17, 0.50) then return "CU" end
-  if d > 160 and vein(wx, wy, 959, 80, 0.90, 16, 0.50) then return "GOLD" end
-  if d > 120 and has("QRTZ") and vein(wx, wy, 962, 85, 0.90, 16, 0.48) then return "QRTZ" end
-  if d > 420 and vein(wx, wy, 965, 90, 0.90, 17, 0.52) then return UORE end
-  -- swamp purpose: mud/clay is its signature resource, so clay pockets are notably more common there
+  local dm = SOIL_DEPTH_MUL
+  if d > 20 * dm and vein(wx, wy, 950, 65, 0.80, 18, 0.50) then return "COAL" end
+  if d > 60 * dm and vein(wx, wy, 953, 70, 0.84, 18, 0.50) then return "IRON" end
+  if HASCU and d > 100 * dm and vein(wx, wy, 956, 75, 0.87, 17, 0.50) then return "CU" end
+  if d > 160 * dm and vein(wx, wy, 959, 80, 0.90, 16, 0.50) then return "GOLD" end
+  if d > 120 * dm and has("QRTZ") and vein(wx, wy, 962, 85, 0.90, 16, 0.48) then return "QRTZ" end
+  if d > 420 * dm and vein(wx, wy, 965, 90, 0.90, 17, 0.52) then return UORE end
   local clayThresh = 0.88 - 0.10 * biomeWeight(wx, "swamp")
-  if d < 260 and vein(wx, wy, 968, 60, clayThresh, 16, 0.42) then return "CLST" end   -- clay/mud pocket: large, not freckled
+  if d < 260 * dm and vein(wx, wy, 968, 60, clayThresh, 16, 0.42) then return "CLST" end   -- clay/mud pocket: large, not freckled
   return nil
 end
 local function soilMaterial(wx, wy, d, biome)
@@ -436,7 +643,10 @@ local function soilMaterial(wx, wy, d, biome)
   if biome == "snow" then if d == 0 then return has("SNOW") and "SNOW" or "ICE" end; return "ICE" end
   if biome == "forest" or biome == "swamp" or not biome then
     if d == 0 then return GRASS end
-    if rootColumn(wx) and d <= 6 and vnoise(wx/3, wy/3, 830) > 0.72 then return "WOOD" end
+    local surf = wy - d
+    local rv = rootVeinShapeAt(wx, wy, surf, d)
+    if rv == "hollow" then return "" end
+    if rv == "wood" then return "WOOD" end
     return "GOO"
   end
   return "GOO"
@@ -454,9 +664,12 @@ local function soilAt(wx, wy, d)
 end
 local function rockAt(wx, wy, surf, d, biome)
   local here, other, t = blendAt(wx)
-  local soilDepthFor = function(b) return b == "desert" and 3 or (b == "snow" and 5 or 9) end
+  local soilDepthFor = function(b) return floor((b == "desert" and 3 or (b == "snow" and 5 or 9)) * SOIL_DEPTH_MUL) end
   local soilD = other and (soilDepthFor(here) * (1 - t) + soilDepthFor(other) * t) or soilDepthFor(here)
   if d <= floor(soilD + 0.5) then return soilAt(wx, wy, d) end
+  -- Extended subsoil: more GOO/dirt with depth noise before the stone strata kick in.
+  local subDeep = soilD + floor(24 * SOIL_DEPTH_MUL + vnoise(wx / 18, wy / 14, 834) * 16 * SOIL_DEPTH_MUL)
+  if d <= subDeep then return soilAt(wx, wy, d) end
   if wy >= DEPTH - 40 then return "DMND" end
   if wy >= DEPTH - 300 then    -- deep/"hell" zone: rare deep gem veins in dark, brimstone-patched rock
     if vein(wx, wy, 940, 90, 0.92, 18, 0.52) then return "DMND" end
@@ -464,9 +677,17 @@ local function rockAt(wx, wy, surf, d, biome)
     if has("BRMT") and vein(wx, wy, 1210, 70, 0.80, 16, 0.42) then return "BRMT" end
     return ROCK2
   end
-  if biome == "snow" and d < 480 then return strataAt(wx, wy, d, true) end
+  -- Snow biome used to return icy strata for the ENTIRE d<480 band and skip oreAt
+  -- completely, so a snow region was a 480px ore-free ice slab. Measured before this
+  -- change: 91.1% of solid cells were ICE and QRTZ was the biome's ONLY ore -- no coal,
+  -- no iron, no copper, no clay -- meaning the tech tree simply could not be progressed
+  -- anywhere in snow. Mountains made this far more visible by producing large snow
+  -- landmasses. Now snow gets a genuine frozen crust (thick, distinct, still all ice),
+  -- and below it normal rock WITH normal ore, threaded with ice lenses so it keeps a cold
+  -- identity instead of becoming indistinguishable from forest rock.
+  if biome == "snow" and d < 70 then return strataAt(wx, wy, d, true) end
   local ore = oreAt(wx, wy, d); if ore then return ore end
-  return strataAt(wx, wy, d, false)
+  return strataAt(wx, wy, d, false, biome == "snow" and d < 480)
 end
 
 -- ================================================================ structures: mineshafts (wood-framed tunnels), ruins (brick)
@@ -520,16 +741,296 @@ local function ruinHere(wx, wy, d)
   end
   return nil
 end
+-- ================================================================ community structure library
+-- 30 structures were authored into knowledge/structures/*.json by @harvest (from 42 analysed
+-- community saves) along with a reference loader in that folder's README, then never wired
+-- into generation -- they have been delivering zero value since. This is that integration.
+--
+-- Deviations from the README's reference implementation, all of which were real bugs in it:
+--   1. rollStructure() referenced an undefined `refY` (its parameter is named `surf`).
+--   2. It had NO existence roll -- every cell of every category always won a structure, so
+--      the world would have been wall-to-wall props. Each category now gets a probability,
+--      matching ruinAt()'s own `if hash3(...) >= existProb then return false` idiom.
+--   3. Structures.at() never queried the "detail" category at all, so 10 of the 30
+--      structures (barrel/crate/campfire/lamp post/...) could never appear.
+--   4. underground/deep passed raw `wy` as the anchor row, which smears a structure down
+--      every row it is queried at. Each cell now rolls one d0 origin, the same way
+--      mineshaftAt/ruinAt already roll theirs.
+-- Not implemented (README sketches them, deliberately skipped as unneeded for a first pass):
+-- min_spacing/clearance overlap rejection between neighbouring rolls, and the bridge/ladder
+-- structure-specific placement predicates. Both are noted in knowledge/TODO.md.
+local function jsonDecode(s)
+  local i = 1
+  local function skip() while i <= #s and s:sub(i,i):match("%s") do i = i + 1 end end
+  local parseValue
+  local function parseString()
+    i = i + 1; local buf = {}
+    while true do
+      local c = s:sub(i,i)
+      if c == '"' then i = i + 1; break end
+      if c == "\\" then
+        local n = s:sub(i+1,i+1)
+        local map = { n="\n", t="\t", r="\r", ['"']='"', ["\\"]="\\", ["/"]="/" }
+        buf[#buf+1] = map[n] or n; i = i + 2
+      else buf[#buf+1] = c; i = i + 1 end
+    end
+    return table.concat(buf)
+  end
+  local function parseNumber()
+    local j = i
+    while i <= #s and s:sub(i,i):match("[%d%.%-%+eE]") do i = i + 1 end
+    return tonumber(s:sub(j, i-1))
+  end
+  local function parseArray()
+    i = i + 1; local out = {}; skip()
+    if s:sub(i,i) == "]" then i = i + 1; return out end
+    while true do
+      skip(); out[#out+1] = parseValue(); skip()
+      if s:sub(i,i) == "," then i = i + 1 else break end
+    end
+    skip(); i = i + 1; return out
+  end
+  local function parseObject()
+    i = i + 1; local out = {}; skip()
+    if s:sub(i,i) == "}" then i = i + 1; return out end
+    while true do
+      skip(); local k = parseString(); skip(); i = i + 1; skip()
+      out[k] = parseValue(); skip()
+      if s:sub(i,i) == "," then i = i + 1 else break end
+    end
+    skip(); i = i + 1; return out
+  end
+  parseValue = function()
+    skip(); local c = s:sub(i,i)
+    if c == '"' then return parseString() end
+    if c == "{" then return parseObject() end
+    if c == "[" then return parseArray() end
+    if s:sub(i,i+3) == "true" then i = i + 4; return true end
+    if s:sub(i,i+4) == "false" then i = i + 5; return false end
+    if s:sub(i,i+3) == "null" then i = i + 4; return nil end
+    return parseNumber()
+  end
+  return parseValue()
+end
+local function pickEl(primary, fallback) return has(primary) and primary or fallback end
+-- Logical material token -> real element. Resolved once at load, never per pixel. Reuses
+-- world.lua's own ROCK/ROCK2 for stone/concrete per the README's own advice, rather than
+-- duplicating a second fallback chain that could drift from them.
+local SMATERIAL = {
+  wood = "WOOD", brick = has("BRCK") and "BRCK" or ROCK, glass = pickEl("GLAS", "BRCK"),
+  stone = ROCK, concrete = ROCK2,
+  glass_colored = pickEl("BGLA", "GLAS"), metal = pickEl("STEL", "METL"),
+  metal_old = pickEl("BMTL", "METL"), bronze = pickEl("BRMT", "METL"),
+  iron_ore = pickEl("IRON", "BRMT"), coal = "COAL", gold = pickEl("GOLD", "BRMT"),
+  copper = pickEl("CU", "METL"), clay = pickEl("CLST", "SAND"),
+  crystal = pickEl("QRTZ", "GLAS"), plant = GRASS, glow = pickEl("GLOW", "GLAS"),
+  ice = "ICE", snow = "SNOW", sand = "SAND", water = "WATR", lava = "LAVA",
+  bone = "SAND",
+}
+local STRUCT_DIR = "D:/powder-toy/knowledge/structures/"
+local STRUCT_FILES = {
+  "surface_cabin_small","surface_watchtower","surface_well","surface_campsite","surface_farm_plot",
+  "surface_bridge_wood","surface_signpost","surface_ruined_wall",
+  "underground_mineshaft_junction","underground_collapsed_tunnel","underground_miners_camp",
+  "underground_ore_cart","underground_ladder_shaft","underground_water_cistern","underground_shrine",
+  "underground_sealed_vault",
+  "deep_lava_forge_ruin","deep_crystal_chamber","deep_abandoned_reactor_room","deep_bone_pit",
+  "detail_rubble_pile","detail_crate","detail_barrel","detail_torch_sconce","detail_broken_pipe",
+  "detail_broken_cart","detail_old_machine_husk","detail_fence_post","detail_lamp_post","detail_campfire_small",
+}
+local SByCat, SLoaded = {}, 0
+for _, name in ipairs(STRUCT_FILES) do
+  local f = io.open(STRUCT_DIR .. name .. ".json", "r")
+  if f then
+    local raw = f:read("*a"); f:close()
+    local ok, def = pcall(jsonDecode, raw)
+    if ok and type(def) == "table" and def.grid and def.legend and def.anchor then
+      SByCat[def.category] = SByCat[def.category] or {}
+      table.insert(SByCat[def.category], def)
+      SLoaded = SLoaded + 1
+    end
+  end
+end
+R.structuresLoaded = SLoaded   -- probe hook: how many of the 30 actually parsed
+-- Grid pitch and per-cell existence odds per category. Pitch >= the largest min_spacing in
+-- that category; odds keep the world mostly natural instead of a theme park.
+local SCAT = {
+  surface     = { sp = 240, prob = 0.46 },
+  detail      = { sp = 90,  prob = 0.35 },
+  underground = { sp = 300, prob = 0.45 },
+  deep        = { sp = 440, prob = 0.40 },
+}
+local sCache = {}
+local function sBiomeOk(def, biome)
+  for _, b in ipairs(def.biomes or {}) do if b == "any" or b == biome then return true end end
+  return false
+end
+local function sRoll(cat, cellIdx, wx0, biome, refY)
+  local pool = SByCat[cat]; if not pool then return false end
+  if hash3(cellIdx, 8801, cat == "detail" and 3 or 1) >= SCAT[cat].prob then return false end
+  -- Category already partitions by depth (surface/detail sit on the ground, underground/deep
+  -- roll their own d0 band below), so biome is the only per-structure filter needed here.
+  local elig = {}
+  for _, def in ipairs(pool) do
+    if sBiomeOk(def, biome) then elig[#elig+1] = def end
+  end
+  if #elig == 0 then return false end
+  local total = 0
+  for _, def in ipairs(elig) do total = total + (def.rarity or 0.1) end
+  local r = hash3(cellIdx, 8801, 2) * total
+  local chosen = elig[1]
+  for _, def in ipairs(elig) do r = r - (def.rarity or 0.1); if r <= 0 then chosen = def; break end end
+  if (cat == "surface" or cat == "detail") and chosen.rest_on_solid then
+    -- surfaceAt(wx0) IS the first solid row, so a flat-ground test there is vacuous; the real
+    -- hazard is a WIDE structure whose far edge overhangs a slope.
+    -- Tolerance scales with footprint width rather than a flat 3px: once real mountains
+    -- existed, a flat budget measured out at rejecting 9 of 15 landmark-scale rolls (60%),
+    -- leaving only 1.8 buildings per 3000px -- roughly one per five screens, far too sparse
+    -- to feel discoverable. A 15-wide cabin tolerating a 5px rise is still a sane, near-flat
+    -- footing; what this rejects is genuine cliff edges and cave mouths.
+    local w = chosen.width or 1
+    if math.abs(surfaceAt(wx0 + w) - refY) > math.max(3, w * 0.35) then return false end
+  end
+  return { def = chosen, x0 = wx0, y0 = refY }
+end
+local function sQuery(cat, wx, wy, refX, refY, biome)
+  local C = SCAT[cat]; if not C then return nil end
+  local cellIdx = floor(refX / C.sp)
+  sCache[cat] = sCache[cat] or {}
+  local cache = sCache[cat]
+  for cc = cellIdx - 1, cellIdx do
+    local inst = cache[cc]
+    if inst == nil then
+      local cellX0 = cc * C.sp + 10 + floor(hash3(cc, 8802, 2) * (C.sp - 20))
+      -- anchor row: surface/detail sit on the ground at their own column; underground/deep
+      -- roll ONE depth origin per cell (mineshaftAt's idiom) instead of following the query
+      -- row, which would smear the structure down every row it was asked about.
+      local rY = refY
+      if cat == "underground" then rY = surfaceAt(cellX0) + 60 + floor(hash3(cc, 8803, 4) * 420)
+      elseif cat == "deep" then rY = surfaceAt(cellX0) + 520 + floor(hash3(cc, 8803, 5) * 600) end
+      if cat == "surface" or cat == "detail" then rY = surfaceAt(cellX0) end
+      inst = sRoll(cat, cc, cellX0, biome, rY)
+      cache[cc] = inst
+    end
+    if inst then
+      local def = inst.def
+      local gx = wx - inst.x0 + def.anchor.x
+      local gy = wy - inst.y0 + def.anchor.y
+      if gx >= 0 and gx < def.width and gy >= 0 and gy < def.height then
+        local row = def.grid[gy + 1]
+        if row then
+          local tok = def.legend[row:sub(gx + 1, gx + 1)]
+          if tok == "air" then return "" end
+          if tok and tok ~= "keep" then return SMATERIAL[tok] end
+        end
+      end
+    end
+  end
+  return nil
+end
+local function libStructHere(wx, wy, surf, d, biome)
+  if SLoaded == 0 then return nil end
+  local s = sQuery("surface", wx, wy, wx, surf, biome); if s ~= nil then return s end
+  local t = sQuery("detail", wx, wy, wx, surf, biome);  if t ~= nil then return t end
+  if d and d > 40 then
+    local cat = (d > 500) and "deep" or "underground"
+    local u = sQuery(cat, wx, wy, wx, wy, biome); if u ~= nil then return u end
+  end
+  return nil
+end
 local function structureAt(wx, wy, surf, d, biome)
   if wy >= DEPTH - 60 then return nil end
   local r = ruinHere(wx, wy, d); if r ~= nil then return r end
-  return mineshaftHere(wx, wy, d)
+  local m = mineshaftHere(wx, wy, d); if m ~= nil then return m end
+  return libStructHere(wx, wy, surf, d, biome)
 end
 
 -- ================================================================ ambience: parallax background (R.hooks.draw)
 -- runs once per frame after the core's flat sky/darkness overlay and before the player sprite (see README).
 -- Surface-only by design: an underground cave-wall backdrop was tried and pulled per the player's call (16:18) - it read
 -- as "whack" over TPT's black empty space. Just the sky parallax hills/treeline and night fireflies remain.
+local function drawTreeAccents(camx, camy, W, H, frame, night)
+  local moist = R.treeMoisture or {}
+  local raining = R.weather and R.weather.rain
+  local c0 = floor((camx - 40) / vsp())
+  local c1 = floor((camx + W + 40) / vsp())
+  for cc = c0, c1 do
+    local v = vegAt(cc)
+    if not v or v.kind ~= "tree" then goto tree_acc_next end
+    local top, tw, x0, s = v.s - v.h, v.trunkW or 3, v.x0, v.s
+    local hollowCol = (tw >= 3) and (x0 + floor(tw / 2)) or nil
+    local m = hollowCol and (moist[hollowCol .. "," .. s] or 0) or 0
+    local showVeins = hollowCol and m > 0.5   -- blue hint only when real water in the vein (not rain alone)
+    local wy0, wy1 = max(top, camy), min(s + 2, camy + H - 1)
+    for wy = wy0, wy1 do
+      local sy = wy - camy
+      if sy < 0 or sy >= H then goto wy_acc_next end
+      -- trunk edge saturation: darker WOOD rim so trunks don't read washed-out under parallax
+      for edge = 0, tw - 1 do
+        local wx = x0 + edge
+        if wx == x0 or wx == x0 + tw - 1 then
+          if vegShapeAt(wx, wy) == "WOOD" then
+            local sx = wx - camx
+            if sx >= 0 and sx < W then
+              local shade = night > 0.3 and 50 or 68
+              graphics.fillRect(floor(sx), floor(sy), 1, 1, shade, shade - 18, 28, 210)
+            end
+          end
+        end
+      end
+      -- No canopy tint — green overlay read as "tree rotting"; water is real WATR particles only.
+      ::wy_acc_next::
+    end
+    if showVeins and m > 0.5 then
+      -- Thin blue hint in hollow trunk air (actual water is spawned in rpg.lua treeHollowDripTick).
+      local pulse = 0.5 + 0.5 * abs(math.sin(frame / 9 + cc))
+      local a = floor(70 + 50 * pulse * min(1, m / 25))
+      for wy = top + 1, s + 1 do
+        local sx, sy = hollowCol - camx, wy - camy
+        if sx < 0 or sx >= W or sy < 0 or sy >= H then goto vein_next end
+        if vegShapeAt(hollowCol, wy) == nil then
+          graphics.fillRect(floor(sx), floor(sy), 1, 1, 50, 130, 230, a)
+        end
+        ::vein_next::
+      end
+      -- Branching root veins underground (visible when dug open or thin soil).
+      if m > 1 then
+        local rootA = floor(45 + 35 * pulse * min(1, m / 30))
+        local maxD = floor(8 + v.h * 0.14 * SOIL_DEPTH_MUL)
+        local surf = surfaceAt(x0)
+        for i = 0, ROOT_BRANCHES - 1 do
+          local bd = floor(2 + i * (2.2 + hash3(cc, 850, i) * 2.8))
+          if bd > maxD - 2 then break end
+          local dir = hash3(cc, 851, i) < 0.5 and -1 or 1
+          local len = 8 + floor(hash3(cc, 852, i) * 18)
+          local y0 = s + bd
+          local x1, y1 = hollowCol, y0
+          local x2, y2 = hollowCol + dir * len, y0 + 1 + floor(hash3(cc, 853, i) * 4)
+          for t = 0, 20 do
+            local u = t / 20
+            local rx = floor(x1 + (x2 - x1) * u)
+            local ry = floor(y1 + (y2 - y1) * u)
+            if rootVeinShapeAt(rx, ry, surf, ry - surf) == "hollow" then
+              local sx, sy = rx - camx, ry - camy
+              if sx >= 0 and sx < W and sy >= 0 and sy < H then
+                graphics.fillRect(floor(sx), floor(sy), 1, 1, 40, 110, 210, rootA)
+              end
+            end
+          end
+        end
+        for wy = s + 1, s + maxD do
+          if rootVeinShapeAt(hollowCol, wy, surf, wy - surf) == "hollow" then
+            local sx, sy = hollowCol - camx, wy - camy
+            if sx >= 0 and sx < W and sy >= 0 and sy < H then
+              graphics.fillRect(floor(sx), floor(sy), 1, 1, 40, 110, 210, rootA)
+            end
+          end
+        end
+      end
+    end
+    ::tree_acc_next::
+  end
+end
 local function worldDraw()
   local camx, camy, W, H = R.cam.x, R.cam.y, R.W, R.H
   local frame = R.frame or 0
@@ -539,6 +1040,8 @@ local function worldDraw()
   local farR, farG, farB = (night > 0.3) and 35 or 120, (night > 0.3) and 45 or 150, (night > 0.3) and 70 or 190
   local nrR, nrG, nrB = (night > 0.3) and 15 or 55, (night > 0.3) and 30 or 95, (night > 0.3) and 20 or 55
   for sx = 0, W - 1, 6 do
+    local wxMid = sx + camx + 3
+    if treeCoversColumn(wxMid) then goto parallax_skip end   -- v1.15.40: don't wash out real tree pixels
     local realSurfY = surfaceAt(sx + camx) - camy
     if realSurfY > 4 then
       local farY = 120 - camy*0.12 + 34 * (vnoise((camx*0.12 + sx)/150, 3, 300) - 0.5) * 2
@@ -549,7 +1052,9 @@ local function worldDraw()
       top, bot = max(0, floor(nearY)), min(H, floor(realSurfY))
       if top < bot then graphics.fillRect(sx, top, 6, bot - top, nrR, nrG, nrB, 150) end
     end
+    ::parallax_skip::
   end
+  drawTreeAccents(camx, camy, W, H, frame, night)
 
   -- fireflies drifting over forest/swamp treelines at night
   if night > 0.35 then
@@ -693,13 +1198,13 @@ end)
 -- depth bands already exist (strata/ore gating above); announce the milestone once per descent so it reads as
 -- progress, same "only on change" rule as the biome sign.
 local DEPTH_BANDS = {
-  { d = 0,          name = "Topsoil",          note = "soft ground and roots" },
-  { d = 20,         name = "Coal Seams",       note = "coal veins to fuel a furnace" },
-  { d = 60,         name = "Iron Belt",        note = "iron ore for real tools" },
-  { d = 100,        name = "Copper Vein",      note = "copper for wiring" },
-  { d = 160,        name = "Gold Reef",        note = "gold reefs - watch for flooded caverns" },
-  { d = 250,        name = "Flooded Caverns",  note = "deep lakes, mind your oxygen" },
-  { d = 420,        name = "Uranium Shelf",    note = "radioactive ore - keep lead handy" },
+  { d = 0,          name = "Topsoil",          note = "thick dirt and roots" },
+  { d = 20 * SOIL_DEPTH_MUL, name = "Coal Seams", note = "coal veins to fuel a furnace" },
+  { d = 60 * SOIL_DEPTH_MUL, name = "Iron Belt",  note = "iron ore for real tools" },
+  { d = 100 * SOIL_DEPTH_MUL, name = "Copper Vein", note = "copper for wiring" },
+  { d = 160 * SOIL_DEPTH_MUL, name = "Gold Reef", note = "gold reefs - watch for flooded caverns" },
+  { d = 250 * SOIL_DEPTH_MUL, name = "Flooded Caverns", note = "deep lakes, mind your oxygen" },
+  { d = 420 * SOIL_DEPTH_MUL, name = "Uranium Shelf", note = "radioactive ore - keep lead handy" },
   { d = DEPTH-300,  name = "The Deep",         note = "lava, brimstone, rare titanium and bronze" },
   { d = DEPTH-40,   name = "Bedrock",          note = "diamond-laced bedrock, the bottom of the world" },
 }
@@ -719,11 +1224,36 @@ hook(R.hooks.tick, function()
 end)
 
 -- ================================================================ tie it together
+-- Cave pocket microclimates for env sampling (swamp warmth, crystal chill, deep heat).
+function R.pocketEnvBias(wx, wy, d)
+  local tempOff, pressOff = 0, 0
+  if d > 40 and d < 520 and biomeWeight(wx, "swamp") > 0.38 and swampGasZoneAt(wx, wy) then
+    tempOff = tempOff + 10 + vnoise(wx / 18, wy / 18, 1232) * 14
+    pressOff = pressOff + 1.8
+  end
+  if d > 120 and geodeZoneAt(wx, wy) then
+    tempOff = tempOff - 14 - vnoise(wx / 22, wy / 22, 921) * 12
+  end
+  if d > 950 and hellLavaAt(wx, wy) then
+    tempOff = tempOff + 45 + vnoise(wx / 16, wy / 16, 1221) * 20
+    pressOff = pressOff + 3.5
+  end
+  return tempOff, pressOff
+end
 local function worldGen(wx, wy)
   if wy >= DEPTH then return "DMND" end
   local surf = surfaceAt(wx)
   local biome = biomeAt(wx)
-  if wy < surf then return aboveGround(wx, wy, surf, biome) end
+  if wy < surf then
+    -- Structure library must be consulted ABOVE ground too. structureAt() is only reached in
+    -- the wy >= surf branch below, which was fine while the only structures were ruins and
+    -- mineshafts (both underground) -- but a cabin/well/campsite draws its body above the
+    -- surface line, so those cells were short-circuiting into aboveGround() and the entire
+    -- surface + detail half of the library could never place. Verified: before this, a
+    -- 3001-column scan found zero structure materials above ground.
+    local sa = libStructHere(wx, wy, surf, nil, biome); if sa ~= nil then return sa end
+    return aboveGround(wx, wy, surf, biome)
+  end
   local d = wy - surf
   local st = structureAt(wx, wy, surf, d, biome); if st ~= nil then return st end
   local cave = caveAt(wx, wy, surf, d, biome); if cave ~= nil then return cave end

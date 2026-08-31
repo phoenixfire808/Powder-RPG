@@ -7,6 +7,9 @@
 -- proactively about real world state, and answers the player's Enter-chat messages (core's R.chatSay /
 -- R.chatPending / R.hooks.chat) using real state.
 --
+-- companion.lua v1.15.34 — digArea/buildRoom start+halfway chat milestones live on R.COMP (not C.action)
+-- fields) so re-issued digArea cmds / action-table replacement cannot spam "Starting to dig that out."
+--
 -- BRAIN ARCHITECTURE (the player 20:26-20:34, via lead): the SCRIPTED brain below is the executor and the
 -- reflexes - pathing, following, step-up, hazard avoidance, self-defense, continuing the current task -
 -- and it runs every tick regardless of whether any model is involved, so the colonist is fully playable
@@ -43,9 +46,28 @@ R.COMP = R.COMP or {
                               -- isn't repositioned yet at the moment R.hooks.newworld itself fires)
   queue = {},                -- multi-step task chain: list of {name,args} run after the current action succeeds
   chatQueue = {},            -- {text,at} messages waiting for companion_driver.py while mode=="model"
+  dismissed = false,         -- true after player dismisses; blocks auto-spawn until follow/recall
   index = nil,               -- refreshed ~every 2s by refreshIndex(): the colonist's world-knowledge summary
 }
 local C = R.COMP
+function R._applyCompanionDefaults()
+  local c = R.COMP
+  if type(c) ~= "table" then c = {}; R.COMP = c end
+  if c.active == nil then c.active = false end
+  c.x = c.x or 0; c.y = c.y or 0; c.vx = c.vx or 0; c.vy = c.vy or 0
+  c.onGround = c.onGround or false; c.coyote = c.coyote or 0; c.face = c.face or 1; c.anim = c.anim or 0
+  c.hp = c.hp or 60; c.maxhp = c.maxhp or 60
+  if c.dead == nil then c.dead = false end
+  c.name = c.name or "Aster"
+  c.inv = c.inv or {}
+  c.mode = c.mode or "auto"
+  c.queue = c.queue or {}
+  c.chatQueue = c.chatQueue or {}
+  if c.dismissed == nil then c.dismissed = false end
+  c.lastMineHelpAt = c.lastMineHelpAt or 0
+  c.lastAutoGiveAt = c.lastAutoGiveAt or 0
+  if c.needsPlace == nil then c.needsPlace = false end
+end
 R.PLUGIN_SAVE_KEYS = R.PLUGIN_SAVE_KEYS or {}
 do
   local seen = false
@@ -61,7 +83,16 @@ local TELEPORT_DIST = 600                   -- hard rule: never left more than t
 local MELEE_REACH, MELEE_DMG, MELEE_CD = 18, 9, 22
 local MINE_REACH, MINE_CD = 20, 10
 local POWER = 1                             -- colonist's effective tool tier (== a basic wood pick)
-local STUCK_FRAMES = 480                    -- outer hard fail (~8s) - well past navigateTo's own repath/jump/dig-up ladder
+-- Outer hard fail, well past navigateTo's own repath/jump/dig-up ladder (which escalates at
+-- NAV_STUCK*1/*2/*3 = 90/180/270 frames, so this must stay comfortably above 270).
+-- MEASURED 2026-08-30 on the live game, do NOT trust the old "~8s" note that assumed 60fps:
+-- the real tick rate under the owner's actual load is ~36.5 fps (146 frames observed over 4.0s at
+-- ~100k particles), so 480 frames is really ~13.1s, and a chain step that stalls, takes its one
+-- allowed re-plan, then stalls again is ~26s of standing still. Not a loop (the re-plan is hard-
+-- capped at 1 by C._chainReplans, verified by trace), but longer than it reads in code.
+-- Left at 480 deliberately: lowering it is a feel/tuning call for the owner, and dropping toward 300
+-- would leave the dig-up escalation almost no window (300-270 = 30 frames) to actually work.
+local STUCK_FRAMES = 480
 local REVIVE_DELAY = 300                    -- ~5s: dies, then reappears at the player rather than vanishing
 local MODEL_TIMEOUT = 600                   -- ~10s with no companion_driver.py heartbeat => fall back to auto
 local NARRATE_GAP, NARRATE_GAP_URGENT = 1500, 300  -- ~25s / ~5s between unprompted lines (the player: "20-40s unless urgent")
@@ -297,6 +328,28 @@ local function findFightTarget(range)
   return best
 end
 
+local function playerInRect(x1, y1, x2, y2)
+  if not R.P then return false end
+  local px, py = floor(R.P.x), floor(R.P.y)
+  local xa, ya = min(x1, x2), min(y1, y2)
+  local xb, yb = max(x1, x2), max(y1, y2)
+  return px >= xa and px <= xb and py >= ya and py <= yb
+end
+local function viewRect(marginX, marginY)
+  marginX = marginX or 80; marginY = marginY or 60
+  local px, py = floor(R.P.x), floor(R.P.y)
+  return { x1 = px - marginX, y1 = py - marginY, x2 = px + marginX, y2 = py + marginY }
+end
+local function houseSite(w, h)
+  w = w or 10; h = h or 8
+  local px, py = floor(R.P.x), floor(R.P.y)
+  local face = R.P.face or 1
+  local x = px + face * (w + 4)
+  local y = py - h + 1
+  if playerInRect(x, y, x + w - 1, y + h - 1) then x = px - face * (w + 4) end
+  return x, y, w, h
+end
+
 -- ================================================================ command STEP handlers
 -- Every handler: STEP.<name>(a) -> "running" | "success" | "fail", detail
 -- `a` is the action table: {name, args, status, start, from, ...scratch fields}
@@ -482,10 +535,11 @@ STEP.digArea = function(a)
     table.sort(cells, function(p, q) return p.y < q.y end) -- top-down, so spoil never buries the next cell
     a._cells = cells; a._i = 1; a._hitCount = 0
   end
-  if a._i > #a._cells then return "success", a._hitCount end
-  if not a._reported50 and a._i > #a._cells / 2 then a._reported50 = true; sayC("Halfway through digging that out.") end
+  if a._i > #a._cells then C._digAreaStartSaid, C._digAreaHalfSaid = nil, nil; return "success", a._hitCount end
+  if not C._digAreaStartSaid then C._digAreaStartSaid = true; sayC("Starting to dig that out.") end
+  if not C._digAreaHalfSaid and a._i > #a._cells / 2 then C._digAreaHalfSaid = true; sayC("Halfway through digging that out.") end
   local cell = a._cells[a._i]
-  if not progressCheck(a) then return "fail", "stuck" end
+  if not progressCheck(a) then C._digAreaStartSaid, C._digAreaHalfSaid = nil, nil; return "fail", "stuck" end
   local arrived = navigateTo(a, cell.x, cell.y, MINE_REACH)
   if not arrived then return "running" end
   if (R.frame - (a._lastHit or -99)) < MINE_CD then return "running" end
@@ -516,6 +570,11 @@ STEP.buildRoom = function(a)
   local args = a.args or {}
   local mat = args.material or "STNE"
   if not a._cells then
+    local x, y, w, h = args.x, args.y, args.w or 10, args.h or 8
+    local px, py = floor(R.P.x), floor(R.P.y)
+    if px >= x and px <= x + w - 1 and py >= y and py <= y + h - 1 then
+      return "fail", "you're standing in the build area — move aside first"
+    end
     local cells, doorX = roomCells(args)
     local have = (R.inv(mat) or 0) + cInv(mat)
     if have < #cells then return "fail", "need " .. (#cells - have) .. " more " .. R.nice(mat) end
@@ -531,10 +590,13 @@ STEP.buildRoom = function(a)
       a._torchN = a._torchN + 1
       return "running"
     end
+    C._buildRoomStartSaid, C._buildRoomHalfSaid = nil, nil
     return "success", a._placed
   end
+  if not C._buildRoomStartSaid then C._buildRoomStartSaid = true; sayC("Framing up the room.") end
+  if not C._buildRoomHalfSaid and a._i > #a._cells / 2 then C._buildRoomHalfSaid = true; sayC("Halfway through the walls.") end
   local cell = a._cells[a._i]
-  if not progressCheck(a) then return "fail", "stuck" end
+  if not progressCheck(a) then C._buildRoomStartSaid, C._buildRoomHalfSaid = nil, nil; return "fail", "stuck" end
   if cInv(mat) < 1 then return "fail", "ran out of " .. R.nice(mat) end
   local arrived = navigateTo(a, cell.x, cell.y, 14)
   if not arrived then return "running" end
@@ -616,7 +678,12 @@ local function refreshIndex()
     local p = sim.partID(sx, sy)
     if p then
       local nm = R.nameOf(sim.partProperty(p, "type"))
-      if R.MINEABLE[nm] then
+      if nm == "LAVA" or nm == "FIRE" or nm == "ACID" or nm == "PLSM" then
+        local wx = sx + R.cam.x
+        local dir = (wx > R.P.x + 24) and "east" or (wx < R.P.x - 24 and "west" or "nearby")
+        local e = counts[nm]; if not e then e = { n = 0, dirs = {} }; counts[nm] = e end
+        e.n = e.n + 1; e.dirs[dir] = (e.dirs[dir] or 0) + 1
+      elseif R.MINEABLE[nm] then
         local wx = sx + R.cam.x
         local dx = wx - R.P.x
         local dir = (abs(dx) < 24) and "right here" or (dx > 0 and "east of us" or "west of us")
@@ -626,12 +693,20 @@ local function refreshIndex()
     end
   end end
   local resources = {}
+  idx.hazards = {}
   for nm, info in pairs(counts) do
-    local bestDir, bestN = "nearby", 0
-    for d, n in pairs(info.dirs) do if n > bestN then bestN = n; bestDir = d end end
-    resources[#resources + 1] = { el = nm, n = info.n, dir = bestDir }
+    if nm == "LAVA" or nm == "FIRE" or nm == "ACID" or nm == "PLSM" then
+      local bestDir, bestN = "nearby", 0
+      for d, n in pairs(info.dirs) do if n > bestN then bestN = n; bestDir = d end end
+      idx.hazards[#idx.hazards + 1] = { el = nm, n = info.n, dir = bestDir }
+    else
+      local bestDir, bestN = "nearby", 0
+      for d, n in pairs(info.dirs) do if n > bestN then bestN = n; bestDir = d end end
+      resources[#resources + 1] = { el = nm, n = info.n, dir = bestDir }
+    end
   end
   table.sort(resources, function(a, b) return a.n > b.n end)
+  table.sort(idx.hazards, function(a, b) return a.n > b.n end)
   idx.resources = resources
 
   idx.stations = {}
@@ -676,11 +751,35 @@ function R.companionIndex() return C.index end
 -- construction - there is only ever one live action) and returns true/false, reason.
 -- `from` is "manual" (hub/tests/chat replies), "model" (companion_driver.py), or "scripted" (this file).
 local C_cmd
-C_cmd = function(name, args, from)
+local function resetAreaMilestones(name)
+  -- Milestone flags live on R.COMP so a fresh C.action table (re-issued digArea while already digging)
+  -- cannot re-fire start/halfway chat; only clear when leaving that task or starting a new one after idle.
+  if name == "digArea" then
+    if not (C.action and C.action.name == "digArea" and C.action.status == "running") then
+      C._digAreaStartSaid, C._digAreaHalfSaid = nil, nil
+    end
+  else
+    C._digAreaStartSaid, C._digAreaHalfSaid = nil, nil
+  end
+  if name == "buildRoom" then
+    if not (C.action and C.action.name == "buildRoom" and C.action.status == "running") then
+      C._buildRoomStartSaid, C._buildRoomHalfSaid = nil, nil
+    end
+  else
+    C._buildRoomStartSaid, C._buildRoomHalfSaid = nil, nil
+  end
+end
+-- `meta` (internal only, 4th arg): { inChain=true } marks the action as part of a chain so a later
+-- failure is eligible for one re-plan attempt (see attemptChainReplan below); { replan=true } consumes
+-- that chain's single re-plan credit. External callers (chat, model driver, hub) never pass this.
+C_cmd = function(name, args, from, meta)
   if not C.active or C.dead then return false, "colonist not active" end
   local key = (name == "goto") and "goto_" or name
   if not STEP[key] then return false, "unknown command: " .. tostring(name) end
-  C.action = { name = name, args = args or {}, status = "running", start = R.frame, from = from or "manual" }
+  resetAreaMilestones(name)
+  C.action = { name = name, args = args or {}, status = "running", start = R.frame, from = from or "manual",
+    inChain = meta and meta.inChain or false }
+  if meta and meta.replan then C._chainReplans = (C._chainReplans or 0) + 1 end
   return true
 end
 C.cmd = C_cmd
@@ -693,9 +792,42 @@ function C.enqueueChain(steps, from)
   C.queue = {}
   for i = 2, #steps do C.queue[#C.queue + 1] = steps[i] end
   local first = steps[1]
-  return C_cmd(first.name, first.args, from or "manual")
+  C._chainReplans = 0
+  return C_cmd(first.name, first.args, from or "manual", { inChain = true })
 end
 R.companionEnqueue = C.enqueueChain
+-- Chain re-plan on fail (companion-redesign-gap-2026-08-30.md #2): a chain used to drop entirely on the
+-- first failed step. Now, a step that fails inside a chain gets exactly ONE reason-aware re-plan attempt
+-- per chain (C._chainReplans caps it) before falling back to the old drop-cleanly behaviour:
+--  - "stuck" (progressCheck timeout): just retry the identical step fresh - a real STUCK_FRAMES timeout
+--    on a moving target (player relocated, path briefly blocked) is often transient.
+--  - a material shortage ("ran out of X" / "need N more X" / "none in inventory" - place/buildWall/
+--    buildRoom/stairs all report one of these shapes): insert a `fetch` for the missing item ahead of a
+--    retry of the same failed step, so "build me a house" that runs out of stone goes and mines more
+--    stone instead of just giving up with the walls half built.
+-- Any other failure reason (no target, too hard, target fled, unknown command, ...) has no plausible
+-- automatic re-plan and still drops the chain exactly as before.
+local function attemptChainReplan(a, detail)
+  if not a.inChain or (C._chainReplans or 0) >= 1 then return false end
+  if not detail or type(detail) ~= "string" then return false end
+  if detail == "stuck" then
+    C_cmd(a.name, a.args, a.from, { inChain = true, replan = true })
+    sayC("Let me try that again.")
+    return true
+  end
+  local shortage = detail == "none in inventory" or detail:find("^ran out of ") or detail:find("^need %d+ more ")
+  if shortage then
+    local item = a.args and (a.args.material or a.args.element)
+    if item then
+      local n = tonumber(detail:match("need (%d+) more")) or 8
+      table.insert(C.queue, 1, { name = a.name, args = a.args })
+      C_cmd("fetch", { item = item, n = n }, a.from, { inChain = true, replan = true })
+      sayC("Out of " .. R.nice(item) .. " - grabbing more first.")
+      return true
+    end
+  end
+  return false
+end
 function R.companionHeartbeat() C.lastHeartbeat = R.frame; return true end
 -- companion_driver.py's fast chat-polling entry point: separate from core's R.chatPending so a slow model
 -- never races core's own ~0.5s fallback (see the drain-on-send in the R.hooks.chat handler below, and the
@@ -707,6 +839,18 @@ function R.companionChatPending(consume)
   return out
 end
 function R.companionSetMode(m) if m == "auto" or m == "manual" or m == "model" then C.mode = m; return true end; return false end
+function R.companionDismiss()
+  C.active = false; C.dismissed = true; C.action = nil; C.override = nil; C.queue = {}
+  C.chatQueue = {}; C.mode = "manual"; C.sayMsg = nil; C.sayAt = nil
+  return true
+end
+function R.companionRecall()
+  if C.dead then return false, "dead" end
+  C.dismissed = false; C.active = true
+  C.action = { name = "follow", args = {}, status = "running", start = R.frame or 0, from = "manual" }
+  C.mode = "auto"
+  return true
+end
 -- Swinging at the companion used to do nothing at all -- she had a full hp/death system
 -- (enemy touch damage, health bar, R.companionKill respawn) but nothing ever called into it
 -- from the player's own attacks. This is that missing hook, same shape as enemy damage.
@@ -726,22 +870,84 @@ function R.companionKill() -- test hook: verify death/respawn without waiting fo
 end
 
 -- ================================================================ chat: answer the player's Enter-messages
--- Template fallback so the colonist is genuinely conversational with NO model loaded (the player 20:34/20:42).
--- While companion_driver.py has taken mode="model", it owns replies instead (see the heartbeat watchdog
--- below for what happens if the driver goes quiet).
+-- Template + broad-intent fallback so the colonist is conversational with NO model loaded. When
+-- companion_driver.py is live (mode=="model" + fresh heartbeat) chat is also queued for the driver, but
+-- player commands always execute immediately via R.companionHandleChat.
 local EL_WORDS = { iron = "IRON", coal = "COAL", gold = "GOLD", copper = "CU", wood = "WOOD", stone = "STNE",
   rock = "STNE", clay = "CLST", quartz = "QRTZ", sand = "SAND", ice = "ICE", titanium = "TTAN",
   uranium = "URAN", diamond = "DMND", steel = "STEL" }
+local MANUAL_TASK_NAMES = {
+  mine = 1, mineNearest = 1, chop = 1, fetch = 1, place = 1, buildWall = 1, build = 1, craft = 1,
+  give = 1, take = 1, light = 1, clearTrees = 1, digArea = 1, buildRoom = 1, buildShaft = 1,
+  bridge = 1, stairs = 1, fight = 1,
+}
+local function isManualTaskName(name)
+  return name == "goto" or MANUAL_TASK_NAMES[name] ~= nil
+end
+local function parseElement(msg)
+  local m = (msg or ""):lower()
+  for word, el in pairs(EL_WORDS) do if m:find(word, 1, true) then return el end end
+  return nil
+end
+local function parseCount(msg, default)
+  return tonumber((msg or ""):match("(%d+)")) or default or 1
+end
+local function modelDriverLive()
+  return C.mode == "model" and (R.frame - (C.lastHeartbeat or -999999)) <= MODEL_TIMEOUT
+end
+local function chatSetsManualMode(msg, acted)
+  if not acted then return false end
+  local m = (msg or ""):lower()
+  if m:find("follow") then return false end
+  if m:find("stay") or m:find("wait here") then return false end
+  if m:find("come here") or m:find("come to me") or m == "come" then return false end
+  if m:find("doing") or m:find("status") or m:find("what's up") or m:find("whats up") then return false end
+  return true
+end
+function manualTaskActive()
+  if C.queue and #C.queue > 0 then return true end
+  local a = C.action
+  if not a or a.status ~= "running" then return false end
+  if a.name == "follow" or a.name == "stay" then return false end
+  return a.from == "manual" or isManualTaskName(a.name)
+end
 local function templateReply(msg)
   local m = (msg or ""):lower()
-  if m:find("follow") then C_cmd("follow", {}, "manual"); return "On my way!" end
-  if m:find("stay") or m:find("wait here") then C_cmd("stay", {}, "manual"); return "Staying put." end
+  if m:find("follow") or m:find("come back") or m:find("recall") then
+    R.companionRecall(); return "On my way!", true
+  end
+  if m:find("go away") or m:find("dismiss") or m:find("leave me") or m:find("get lost")
+      or m:find("stop following") or m == "bye" then
+    R.companionDismiss(); return "Okay — I'll stay out of your way.", true
+  end
+  if m:find("stay") or m:find("wait here") then C_cmd("stay", {}, "manual"); return "Staying put.", true end
   if m:find("come here") or m:find("come to me") or m == "come" then
-    C_cmd("goto", { x = floor(R.P.x), y = floor(R.P.y) }, "manual"); return "Coming!"
+    C_cmd("goto", { x = floor(R.P.x), y = floor(R.P.y) }, "manual"); return "Coming!", true
+  end
+  if (m:find("cut") or m:find("chop") or m:find("clear")) and (m:find("tree") or m:find("trees") or m:find("wood")) then
+    C.enqueueChain({
+      { name = "clearTrees", args = viewRect(100, 80) },
+      { name = "give", args = { item = "WOOD" } },
+    }, "manual")
+    return "On it — clearing the trees nearby.", true
+  end
+  if m:find("dig") and (m:find("hole") or m:find("pit") or m:find("big")) then
+    C.enqueueChain({ { name = "digArea", args = viewRect(40, 30) } }, "manual")
+    return "Digging that out for you.", true
+  end
+  if m:find("build") and (m:find("house") or m:find("room") or m:find("shelter")) then
+    local x, y, w, h = houseSite(10, 8)
+    if playerInRect(x, y, x + w - 1, y + h - 1) then
+      return "Need a bit more space — move so I'm not building where you're standing.", false
+    end
+    C.enqueueChain({
+      { name = "buildRoom", args = { x = x, y = y, w = w, h = h, material = "STNE", door = true, torches = 2 } },
+    }, "manual")
+    return "I'll put up a room with walls, floor, and a door.", true
   end
   for word, el in pairs(EL_WORDS) do
     if m:find(word, 1, true) and (m:find("mine") or m:find("get") or m:find("fetch") or m:find("grab") or m:find("dig")) then
-      C_cmd("mineNearest", { element = el }, "manual"); return "Sure, grabbing some " .. R.nice(el) .. "."
+      C_cmd("mineNearest", { element = el }, "manual"); return "Sure, grabbing some " .. R.nice(el) .. ".", true
     end
   end
   if m:find("build") and m:find("wall") then
@@ -750,38 +956,129 @@ local function templateReply(msg)
     if el and cInv(el) > 0 then
       local x0, y0 = floor(C.x), floor(C.y); local n = min(cInv(el), 6)
       C_cmd("buildWall", { x1 = x0, y1 = y0, x2 = x0 + (C.face or 1) * n, y2 = y0, element = el }, "manual")
-      return "On it - walling up with " .. R.nice(el) .. "."
+      return "On it - walling up with " .. R.nice(el) .. ".", true
     end
-    return "I don't have any blocks for that yet - hand me some or tell me to fetch some."
+    return "I don't have any blocks for that yet - hand me some or tell me to fetch some.", false
   end
-  if m:find("fight") or m:find("attack") or m:find("kill") then C_cmd("fight", {}, "manual"); return "Going in!" end
+  if m:find("fight") or m:find("attack") or m:find("kill") then C_cmd("fight", {}, "manual"); return "Going in!", true end
   if m:find("doing") or m:find("status") or m:find("what's up") or m:find("whats up") then
     local a = C.action
-    if not a then return "Just keeping an eye on things." end
-    if a.name == "follow" then return "Following you." end
-    if a.name == "fight" then return "Fighting off a threat!" end
+    if not a then return "Just keeping an eye on things.", false end
+    if a.name == "follow" then return "Following you.", false end
+    if a.name == "fight" then return "Fighting off a threat!", false end
     if a.name == "mine" or a.name == "mineNearest" or a.name == "chop" or a.name == "fetch" then
-      return "Digging up some " .. R.nice((a.args and a.args.element) or "resources") .. "."
+      return "Digging up some " .. R.nice((a.args and a.args.element) or "resources") .. ".", false
     end
-    return "Working on it (" .. a.name .. ")."
+    return "Working on it (" .. a.name .. ").", false
   end
   if m:find("air") or m:find("oxygen") or m:find("breath") then
     local o2 = R.o2 or 100
-    if o2 > 70 then return "Air's good here." end
-    if o2 > 40 then return "Air's a bit thin - could use some ventilation." end
-    return "Air's dangerously thin down here!"
+    if o2 > 70 then return "Air's good here.", false end
+    if o2 > 40 then return "Air's a bit thin - could use some ventilation.", false end
+    return "Air's dangerously thin down here!", false
   end
   if m:find("next") or m:find("goal") or m:find("need") then
     local q = R.QUESTS and R.QUESTS[R.quest]
-    if q then return "Next up: " .. q.txt end
-    return "No pressing goal right now - explore, or tell me what to do."
+    if q then return "Next up: " .. q.txt, false end
+    return "No pressing goal right now - explore, or tell me what to do.", false
   end
-  return "Got it."
+  return nil, false
+end
+local function companionFallbackIntent(msg)
+  local m = (msg or ""):lower()
+  local el, n = parseElement(m), parseCount(m, 1)
+  if m:find("bring") or m:find("give me") or m:find("hand me") or m:find("get me") or m:find("fetch me") then
+    if el then
+      C.enqueueChain({
+        { name = "fetch", args = { item = el, n = n } },
+        { name = "give", args = { item = el, n = n } },
+      }, "manual")
+      return "I'll bring you " .. n .. " " .. R.nice(el) .. ".", true
+    end
+  end
+  if m:find("mine") or m:find("gather") or m:find("collect") or (m:find("get") and not m:find("get me")) or m:find("grab") then
+    if el then
+      C_cmd("mineNearest", { element = el }, "manual")
+      return "Mining " .. R.nice(el) .. ".", true
+    end
+    local r = C.index and C.index.resources and C.index.resources[1]
+    if r then
+      C_cmd("mineNearest", { element = r.el }, "manual")
+      return "I'll grab some " .. R.nice(r.el) .. " nearby.", true
+    end
+  end
+  if m:find("tree") or m:find("trees") or (m:find("wood") and (m:find("cut") or m:find("chop") or m:find("clear") or m:find("gather"))) then
+    C.enqueueChain({
+      { name = "clearTrees", args = viewRect(100, 80) },
+      { name = "give", args = { item = "WOOD" } },
+    }, "manual")
+    return "Clearing trees nearby.", true
+  end
+  if m:find("craft") or m:find("make") or m:find("build") then
+    for _, rc in ipairs(R.RECIPES or {}) do
+      local label = (rc.txt or rc.out or ""):lower()
+      if label ~= "" and (m:find(label, 1, true) or m:find((rc.out or ""):lower(), 1, true)) then
+        C_cmd("craft", { recipe = rc.txt or rc.out }, "manual")
+        return "Crafting " .. (rc.txt or R.nice(rc.out)) .. ".", true
+      end
+    end
+    if el then
+      for _, rc in ipairs(R.RECIPES or {}) do
+        if rc.out == el then
+          C_cmd("craft", { recipe = rc.txt or rc.out }, "manual")
+          return "Making " .. R.nice(el) .. ".", true
+        end
+      end
+    end
+  end
+  if m:find("light") or m:find("torch") then
+    local px, py = floor(R.P.x), floor(R.P.y)
+    C_cmd("light", { x = px + (R.P.face or 1) * 8, y = py - 4 }, "manual")
+    return "Placing a torch.", true
+  end
+  if m:find("shaft") or (m:find("dig") and (m:find("down") or m:find("shaft"))) then
+    local px, py = floor(R.P.x), floor(R.P.y)
+    C.enqueueChain({ { name = "buildShaft", args = { x = px, y = py, depth = parseCount(m, 80), torchEvery = 40 } } }, "manual")
+    return "Digging a shaft down.", true
+  end
+  if m:find("bridge") then
+    local px, py = floor(R.P.x), floor(R.P.y); local span = parseCount(m, 12)
+    C_cmd("bridge", { x1 = px - span, x2 = px + span, y = py, material = el or "STNE" }, "manual")
+    return "Building a bridge.", true
+  end
+  if m:find("stair") or m:find("steps") then
+    local px, py = floor(R.P.x), floor(R.P.y); local run = parseCount(m, 8)
+    C_cmd("stairs", { x = px, y = py, w = run, h = run, dir = (R.P.face or 1), material = el or "STNE" }, "manual")
+    return "Building stairs.", true
+  end
+  if m:find("quest") and (m:find("help") or m:find("what") or m:find("need") or m:find("do")) then
+    local idx = C.index
+    if idx and idx.questTxt then
+      if idx.questMissing and #idx.questMissing > 0 then
+        local parts = {}
+        for _, miss in ipairs(idx.questMissing) do parts[#parts + 1] = (miss.need or 1) .. " " .. R.nice(miss.item) end
+        return "For the quest we still need: " .. table.concat(parts, ", ") .. ".", false
+      end
+      return "Quest: " .. idx.questTxt, false
+    end
+    return "No active quest right now.", false
+  end
+  return nil, false
+end
+function R.companionHandleChat(msg)
+  local reply, acted = templateReply(msg)
+  if not acted then
+    local fReply, fActed = companionFallbackIntent(msg)
+    if fActed then reply, acted = fReply, true
+    elseif fReply then reply = fReply end
+  end
+  if chatSetsManualMode(msg, acted) then C.mode = "manual" end
+  return reply or "Got it.", acted
 end
 hook(R.hooks.chat, function(msg)
-  if C.mode == "model" then return end -- companion_driver.py owns replies while a model is live
   if not C.active or C.dead then return end
-  local ok, reply = pcall(templateReply, msg)
+  if modelDriverLive() then C.chatQueue[#C.chatQueue + 1] = { text = msg, at = R.frame } end
+  local ok, reply = pcall(R.companionHandleChat, msg)
   if ok and reply then sayC(reply) end
 end)
 
@@ -796,6 +1093,7 @@ end)
 -- lighting only ever happen because a real command (chat/model/hub) asked for them.
 local function idleOrFollowing(a) return a == nil or a.name == "follow" or a.status ~= "running" end
 local function scriptedBrainTick()
+  if manualTaskActive() then return end
   if C.mode ~= "auto" then return end
   if R.frame % 20 ~= 0 then return end -- throttle: decisions don't need to be per-frame
   local a = C.action
@@ -888,14 +1186,17 @@ hook(R.hooks.tick, function()
         a._advanced = true -- only ever act on a terminal status once, even though it stays terminal for several ticks
         if st == "success" and C.queue and #C.queue > 0 then
           local nxt = table.remove(C.queue, 1)
-          C_cmd(nxt.name, nxt.args, a.from)
+          C_cmd(nxt.name, nxt.args, a.from, { inChain = true })
         elseif st == "fail" then
-          if C.queue and #C.queue > 0 then C.queue = {} end -- a chain stops cleanly on the first failed step
-          if a.from == "scripted" then C.action = nil end -- let the scripted brain retry with a fresh pick
+          if not attemptChainReplan(a, detail) then
+            if C.queue and #C.queue > 0 then C.queue = {} end -- chain re-plan exhausted (or n/a): drop cleanly
+            if a.from == "scripted" then C.action = nil end -- let the scripted brain retry with a fresh pick
+          end
         end
       end
     end
   end
+  if C.mode == "manual" and not manualTaskActive() then C.mode = "auto" end
   scriptedBrainTick()
 
   if C.hp <= 0 and not C.dead then R.companionKill() end
@@ -906,6 +1207,7 @@ end)
 hook(R.hooks.newworld, function()
   C.hp = C.maxhp; C.inv = {}; C.action = { name = "follow", args = {}, status = "running", start = R.frame, from = "scripted" }
   C.override = nil; C._hits = {}; C.dead = false; C.mode = "auto"; C.active = true; C.queue = {}
+  C.dismissed = false
   C.needsPlace = true -- R.P isn't at its fresh spawn point yet when this hook fires; positioned next tick
   -- F3: 7 fields the original newworld reset missed. Ghost-frame (single 16ms
   -- visual artifact at the previous world's last position): C.x/y/vx/vy.
@@ -939,7 +1241,16 @@ local function drawCompanion()
     graphics.fillRect(x - 7, by - 18, bw, 2, 30, 10, 10, 200)
     graphics.fillRect(x - 7, by - 18, max(0, floor(bw * C.hp / C.maxhp)), 2, 90, 210, 120, 255)
   end
-  graphics.drawText(x - #(C.name or "") * 2, by - 24, C.name or "Aster", 200, 240, 210, 200)
+  -- Nameplate had no width cap: "Aster" is short so nothing looked wrong, but the name
+  -- is player-settable and this draws centered on the colonist, so a long one ran off
+  -- both sides over the world. Clamp to NAME_MAX chars with a "..." tail, same shape as
+  -- the other draw-time clamps in this UI (guide.lua's e.label:sub(1, 22), ui.lua's
+  -- "..." overflow line). Kept as plain locals inside drawCompanion -- no new global,
+  -- nothing to forward-declare, so this cannot become another drawMenu/wrap nil-global.
+  local NAME_MAX = 16
+  local nm = C.name or "Aster"
+  if #nm > NAME_MAX then nm = nm:sub(1, NAME_MAX - 3) .. "..." end
+  graphics.drawText(x - #nm * 2, by - 24, nm, 200, 240, 210, 200)
   if C.sayMsg and R.frame - (C.sayAt or 0) < 150 then
     local msg = C.sayMsg; local w = #msg * 4 + 6
     graphics.fillRect(x - floor(w / 2), by - 38, w, 11, 20, 24, 22, 210)
@@ -988,7 +1299,7 @@ function R.companionStatus() return C.action and C.action.status or "idle" end
 -- ================================================================ ensure the colonist exists even when this
 -- file is (re)loaded into an already-running world (lab dev-loop, or added mid-session) - idempotent: only
 -- fires once, since C.active persists across reloads via the R.COMP-survives pattern at the top of the file.
-if R.active and R.P and not C.active and not C.dead then
+if R.active and R.P and not C.active and not C.dead and not C.dismissed then
   C.x = R.P.x - (R.P.face or 1) * 12; C.y = R.P.y; C.vx, C.vy = 0, 0
   C.active = true; C.action = { name = "follow", args = {}, status = "running", start = R.frame or 0, from = "scripted" }
 end

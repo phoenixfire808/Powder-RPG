@@ -175,7 +175,7 @@ add("surface_farm_plot", "surface",
     ["forest", "swamp"], (-3, 0), True, False, 0.14, 180,
     {"top": 1, "bottom": 0, "left": 1, "right": 1}, (0, 3),
     g, {"D": "clay", "P": "plant", "F": "wood"},
-    "Deliberately small/sparse (a discoverable trace of past habitation) rather than a functional farming feature -- Drew's ask was exploration variety, not a farming mechanic; @progression owns actual farming if that's ever added.")
+    "Deliberately small/sparse (a discoverable trace of past habitation) rather than a functional farming feature -- the owner's ask was exploration variety, not a farming mechanic; @progression owns actual farming if that's ever added.")
 
 g = Grid(24, 6)
 g.fill_rect(0, 4, 2, 5, "F")                       # left pier
@@ -231,7 +231,7 @@ add("underground_mineshaft_junction", "underground",
     ANY, (60, 900), True, False, 0.16, 340,
     {"top": 1, "bottom": 1, "left": 1, "right": 1}, (10, 4),
     g, {"T": "wood", "R": "metal_old", "C": "metal_old"},
-    "Wood framing pattern matches world.lua's existing mineshaftHere() (roof/floor plank + posts) so a generated junction blends with the plain mineshaft corridors either side of it; ore cart + rails are the imported Terraria/Minecraft convention Drew asked for.")
+    "Wood framing pattern matches world.lua's existing mineshaftHere() (roof/floor plank + posts) so a generated junction blends with the plain mineshaft corridors either side of it; ore cart + rails are the imported Terraria/Minecraft convention the owner asked for.")
 
 g = Grid(20, 7)
 g.fill_rect(0, 2, 19, 4, ".")

@@ -713,10 +713,7 @@ end)
 
 -- ================================================================ draw
 hook(R.hooks.drawHUD, function()
-  if not R.guideOpen then
-    graphics.drawText(R.W - 96, 80, "L: Guide (?)", 150, 150, 165, 200)
-    return
-  end
+  if not R.guideOpen then return end
   R.uiPanelOpen = true
   G.links, G.listRects, G.catRects, G.btn = {}, {}, {}, {}
   local B = G.btn

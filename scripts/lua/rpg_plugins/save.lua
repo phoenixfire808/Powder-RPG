@@ -404,7 +404,16 @@ local function doLoad(path, confirmed)
   R.chests = {}
   for _, c in ipairs(data.chests or {}) do R.chests[c.key] = { x = c.x, y = c.y, item = c.item, opened = true } end
   R.weather = data.weather or { rain = false, next = 3000 }
-  if data.plugins then for k, v in pairs(data.plugins) do R[k] = v end end
+  if data.plugins then
+    for k, v in pairs(data.plugins) do
+      if k == "COMP" and type(v) == "table" and type(R.COMP) == "table" then
+        for fk, fv in pairs(v) do R.COMP[fk] = fv end
+      else
+        R[k] = v
+      end
+    end
+  end
+  if R._applyCompanionDefaults then pcall(R._applyCompanionDefaults) end
   R.blockHits, R.log = {}, {}
 
   fillFromTiles(R.M, R.M, R.W - R.M - 1, R.H - R.M - 1)

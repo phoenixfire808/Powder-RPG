@@ -1,5 +1,5 @@
 """RPG development tools -- rapid, constant indexing/work surface for the
-Powder RPG (rpg.lua + scripts/lua/rpg_plugins/*), per Drew's 15:24 hub ask
+Powder RPG (rpg.lua + scripts/lua/rpg_plugins/*), per the owner's 15:24 hub ask
 ("we need an MCP tool so we can rapidly, constantly index and work on this --
 access to everything, all the information and core mechanics").
 
@@ -18,7 +18,7 @@ access to everything, all the information and core mechanics").
   execute_lua (falls back to a static source parse when the bridge is
   unreachable), and every key binding found via ``k == "..."`` checks.
 * ``rpg_hub``         -- read or append to knowledge/rpg-hub.md (the team's
-  shared append-only log), including inserting a "Drew says" line.
+  shared append-only log), including inserting an owner-says line.
 * ``rpg_reload``      -- hot-reload rpg.lua or one plugin without restarting
   powder.exe (mirrors ``scripts/rpg.py start`` / ``R.reloadPlugin``).
 * ``rpg_screenshot``  -- capture the live RPG view, optionally opening the
@@ -58,7 +58,7 @@ LUA_DIR = ROOT / "scripts" / "lua"
 RPG_LUA_PATH = LUA_DIR / "rpg.lua"
 PLUGIN_DIR = LUA_DIR / "rpg_plugins"
 HUB_PATH = KNOW / "rpg-hub.md"
-# same ddir tpt.screenshot() writes into for Drew's live session (see
+# same ddir tpt.screenshot() writes into for the owner's live session (see
 # build_tools.screenshot's SCREENSHOT_DDIR -- kept as a separate constant here
 # so this module has no import-order dependency on build_tools).
 SCREENSHOT_DDIR = BUILD_DIR
@@ -544,7 +544,7 @@ def rpg_hub(arguments: dict[str, Any]) -> dict[str, Any]:
         HUB_PATH.write_text(content, encoding="utf-8")
         return {"ok": True, "tool": "rpg_hub", "action": "post", "appended": line}
 
-    # action == "drew": insert under "## Drew says", just above "## Ownership"
+    # action == "drew": insert under the owner-says section, just above "## Ownership"
     marker = "## Ownership"
     idx = content.find(marker)
     if idx == -1:

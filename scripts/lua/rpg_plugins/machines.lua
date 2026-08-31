@@ -93,14 +93,14 @@ local function nice(n) return (R.nice and R.nice(n)) or n end   -- the player 14
 -- reads it - Lua locals are resolved lexically by textual order, not call order, so this section sits before every
 -- update*/draw function that references gridPowered/R.power below).
 local installRecipes, checkMilestones, recomputePower, genWatts   -- forward decls, assigned further down
-local WATT_PER_HIT = 3      -- 1 real steam->water/condensate conversion ~= 3W (turbine + reactor share this constant)
+-- 1 real steam->water/condensate conversion ~= 3W, shared by turbine + reactor (inlined below)
 local WATT_TEG_K = 1        -- 1W per Kelvin a TEG part sits above its 373.15K (100C) threshold
 local WATT_CRANK = 6        -- a person cranking a real hand generator: a few watts, sustained only while held
 local WATT_WHEEL_K = 5      -- W per (px/frame) of real adjacent WATR speed sampled at the paddles
 local WATT_SOLAR_BASE = 16  -- rated output at local noon with open sky
 local WATT_LIGHTNING = 22   -- flat, only while R.weather.rain is true and the rod sees open sky
 local TICKS_PER_COAL = 900  -- ~15s of real burn time per real COAL cell in the bed (tuned live 19:58, see hub)
-local EMBER_REFRESH = 6     -- same cadence the real R.torches item uses to keep its FIRE particle alive
+-- ember refresh every 6 frames: same cadence R.torches uses to keep its FIRE particle alive (inlined below)
 local UNLOCK10, UNLOCK100 = 10, 100
 local CONDUCTOR = { CU = true, METL = true, PSCN = true, NSCN = true, STEL = true, TRBN = true, TEG = true }
 local ROLE = {
@@ -110,9 +110,9 @@ local ROLE = {
   battery = "store", capacitor = "store", flywheel = "store",
   lamp = "load", door = "load", pump = "load", efurnace = "load", crusher = "load",
   autocraft = "load", turret = "load", turret2 = "load", drill = "load",
-  airpump = "load", o2gen = "load", scrubber = "load", sawmill = "load", desal = "load",
+  airpump = "load", o2gen = "load", scrubber = "load", ventfan = "load", sawmill = "load", desal = "load",
   blastfurnace = "load", elevator = "load", tunneler = "load", sprinkler = "load", breaker = "load",
-  compressor = "load",
+  compressor = "load", lifesupport = "load",
   -- greenhouse/bellows/airline are deliberately absent: greenhouse is passive (real PLNT + daylight),
   -- bellows is hand-operated (F key, no grid), airline is a pure air network with no electrical role
 }
@@ -122,13 +122,13 @@ local TERM = {
   fuelcell = "output", wind = "output", geotap = "output", methanecap = "output",
   battery = "pad", capacitor = "pad", flywheel = "pad", lamp = "core", door = "pad", pump = "pad", efurnace = "pad",
   crusher = "pad", autocraft = "pad", turret = "pad", turret2 = "pad", drill = "pad",
-  airpump = "pad", o2gen = "pad", scrubber = "pad", sawmill = "pad", desal = "pad",
+  airpump = "pad", o2gen = "pad", scrubber = "pad", ventfan = "pad", sawmill = "pad", desal = "pad",
   blastfurnace = "pad", elevator = "pad", tunneler = "pad", sprinkler = "pad", breaker = "pad",
-  compressor = "pad",
+  compressor = "pad", lifesupport = "pad",
 }
 local LOAD_W = { lamp = 2, door = 4, pump = 6, efurnace = 15, crusher = 20, autocraft = 15, turret = 10, turret2 = 25, drill = 18,
-  airpump = 5, o2gen = 12, scrubber = 8, sawmill = 10, desal = 10, blastfurnace = 30, elevator = 6, tunneler = 14,
-  sprinkler = 6, breaker = 0, compressor = 10 }
+  airpump = 5, o2gen = 12, scrubber = 8, ventfan = 5, sawmill = 10, desal = 10, blastfurnace = 30, elevator = 6, tunneler = 14,
+  sprinkler = 6, breaker = 0, compressor = 10, lifesupport = 12 }
 local function machineTerminal(m) local f = TERM[m.kind]; return f and m[f] end
 local function findConductorNear(wx, wy)
   local pts = { { wx, wy }, { wx + 1, wy }, { wx - 1, wy }, { wx, wy + 1 }, { wx, wy - 1 } }
@@ -187,7 +187,7 @@ genWatts = function(m)
   elseif m.kind == "turbine" then
     local h = m.hits or 0; m.hits = 0
     m.spinSpeed = math.min(0.6, h * 0.05)
-    return h * WATT_PER_HIT
+    return h * 3
   elseif m.kind == "reactor" then
     local total = 0
     m.lastTmp = m.lastTmp or {}
@@ -211,7 +211,7 @@ genWatts = function(m)
       end
     end
     m.spinSpeed = math.min(0.6, total * 0.08)
-    local w = total * WATT_PER_HIT + tegw
+    local w = total * 3 + tegw
     if w > 0 then m.online = true; m.sparkedEver = true else m.online = false end
     return w
   elseif m.kind == "rtg" then
@@ -513,12 +513,12 @@ local function buildPump(mx, my)
   R.say("Pump built - power the pad on top; real pipes drag water from the left mouth out through the right mouth")
 end
 
-local CONV_LEN = 8
+-- conveyor length 8 inlined below (200-locals budget, see CLAUDE.md)
 local function buildConveyor(mx, my, dir)
   local wx, wy = mx + R.cam.x, my + R.cam.y
   local gy = groundY(wx, wy)
   local cells = {}
-  for i = 0, CONV_LEN - 1 do local x = wx + i; setAt(x, gy, "BMTL"); cells[#cells + 1] = { x = x, y = gy } end
+  for i = 0, 8 - 1 do local x = wx + i; setAt(x, gy, "BMTL"); cells[#cells + 1] = { x = x, y = gy } end
   R.machines[#R.machines + 1] = { kind = "conveyor", x = wx, y = gy, core = { x = wx, y = gy }, cells = cells, dir = dir >= 0 and 1 or -1 }
   R.say("Conveyor built - loose sand/ore/coal dropped on top rides along; mine the left end block to remove it")
 end
@@ -735,6 +735,25 @@ local function buildO2gen(mx, my)
   R.say("Oxygen generator built - power it with a WATR charge inside; real electrolysis splits it into OXYG and HYGN at the vent")
 end
 
+-- Sealed-base life support (design-vision-2026-08-29.md's remaining unbuilt rung). Deliberately
+-- reuses what already works instead of adding a parallel system: oxygen goes through the existing
+-- O2_RATE/R.o2Sources path (same as the air pump), "is this actually enclosed" goes through the
+-- existing cheap roomSealed multi-ray probe, and power goes through the existing grid/LOAD_W model.
+-- The only genuinely new behaviour is topping up R.need.food/water while you are inside a sealed,
+-- powered base -- see updateLifeSupport below.
+local function buildLifeSupport(mx, my)
+  local wx, wy = mx + R.cam.x, my + R.cam.y
+  local gy = groundY(wx, wy)
+  boxFill(wx, gy - 7, wx + 6, gy, "STEL")
+  clearBox(wx + 1, gy - 6, wx + 5, gy - 2)
+  boxFill(wx + 1, gy - 3, wx + 5, gy - 2, "WATR")   -- visible reservoir: reads as life support, not a blank box
+  setAt(wx + 3, gy - 7, "PSCN")                      -- power pad (TERM.lifesupport = "pad")
+  setAt(wx + 1, gy - 6, "LEDL"); setAt(wx + 5, gy - 6, "LEDL")
+  R.machines[#R.machines + 1] = { kind = "lifesupport", x = wx, y = gy, core = { x = wx, y = gy },
+    pad = { x = wx + 3, y = gy - 7 }, tank = { x = wx + 3, y = gy - 3 }, sealed = false, inRange = false }
+  R.say("Life support built - power it inside a SEALED room; it keeps the air up and slowly tops up food/water while you're inside")
+end
+
 local function buildScrubber(mx, my)
   local wx, wy = mx + R.cam.x, my + R.cam.y
   local gy = groundY(wx, wy)
@@ -744,7 +763,21 @@ local function buildScrubber(mx, my)
   setAt(wx + 2, gy - 5, "PSCN")
   R.machines[#R.machines + 1] = { kind = "scrubber", x = wx, y = gy, core = { x = wx, y = gy },
     pad = { x = wx + 2, y = gy - 5 }, cool = 0 }
-  R.say("CO2 scrubber built - power it; it actively pulls in and breaks down real CO2/smoke in range")
+  R.say("CO2 scrubber built - power it; registers into R.scrubbers and breaks down real CO2/smoke in range")
+end
+
+local function buildVentfan(mx, my)
+  local wx, wy = mx + R.cam.x, my + R.cam.y
+  local gy = groundY(wx, wy)
+  boxFill(wx, gy - 4, wx + 3, gy, VMAT)
+  clearBox(wx + 1, gy - 3, wx + 2, gy - 1)
+  setAt(wx + 1, gy - 2, "METL")
+  boxFill(wx + 4, gy - 2, wx + 9, gy - 2, VMAT)
+  clearBox(wx + 5, gy - 2, wx + 8, gy - 2)
+  setAt(wx + 2, gy - 4, "PSCN")
+  R.machines[#R.machines + 1] = { kind = "ventfan", x = wx, y = gy, core = { x = wx, y = gy },
+    pad = { x = wx + 2, y = gy - 4 }, hub = { x = wx + 1, y = gy - 2 }, duct = { x = wx + 7, y = gy - 2 }, angle = 0 }
+  R.say("Ventilation fan built - power it to vent ambient CO/CO2 (R.scrubbers) and push heavy gases along the duct")
 end
 
 local function buildGreenhouse(mx, my)
@@ -1096,6 +1129,8 @@ local BUILDERS = {
   AIRPUMPKIT = buildAirpump,
   O2GENKIT = buildO2gen,
   SCRUBBERKIT = buildScrubber,
+  LIFESUPPORTKIT = buildLifeSupport,
+  VENTFANKIT = buildVentfan,
   GREENHOUSEKIT = buildGreenhouse,
   SAWMILLKIT = buildSawmill,
   DESALKIT = buildDesal,
@@ -1149,7 +1184,7 @@ local MBOX = {
   teg = { 2, -2, 5 }, battery = { 4, -3, 7 }, capacitor = { 1, -2, 4 }, efurnace = { 3, -3, 6 },
   crusher = { 5, -5, 9 }, autocraft = { 3, -4, 7 }, turret = { 1, -4, 6 }, turret2 = { 1, -4, 6 },
   drill = { 2, -2, 5 }, reactor = { 16, -10, 20 }, airpump = { 4, -5, 9 }, o2gen = { 3, -3, 6 },
-  scrubber = { 2, -3, 5 }, greenhouse = { 3, -3, 6 }, sawmill = { 3, -3, 7 }, desal = { 3, -3, 8 },
+  scrubber = { 2, -3, 5 }, ventfan = { 4, -2, 6 }, greenhouse = { 3, -3, 6 }, sawmill = { 3, -3, 7 }, desal = { 3, -3, 8 },
   blastfurnace = { 3, -6, 9 }, rtg = { 4, -3, 8 }, flywheel = "ring", breaker = { 2, -1, 5 },
   elevator = { 1, -13, 14 }, tunneler = { 2, -2, 5 }, sprinkler = { 1, -2, 4 }, lightning = { 0, -6, 8 },
   gasturbine = { 3, -3, 8 }, bellows = { 2, -3, 7 }, compressor = { 2, -4, 7 },
@@ -1190,10 +1225,12 @@ local LOAD_DESC = {
   autocraft = "Turns a nearby crate's ore into bars", turret = "Fires at hostiles in range",
   turret2 = "Fires at hostiles in range (heavy)", drill = "Auto-mines the block ahead of it",
   airpump = "Freshens the air, feeds the real O2 model", o2gen = "Splits a water charge into O2 + H2",
-  scrubber = "Breaks down real CO2/smoke in range", sawmill = "Turns wood into charcoal",
+  scrubber = "Breaks down real CO2/smoke; registers R.scrubbers", ventfan = "Vents CO/CO2 (R.scrubbers) and pushes heavy gas along duct",
+  sawmill = "Turns wood into charcoal",
   desal = "Turns salt water into fresh water + salt", blastfurnace = "Smelts ore, handles uranium directly",
   elevator = "Lifts loose material up the shaft", tunneler = "Mines forward one hit at a time",
   sprinkler = "Sprays real water on nearby fire", breaker = "Protects its grid from overload",
+  lifesupport = "Keeps a sealed base breathable and stocked while you are inside it",
 }
 -- same vertical-probe "is there open sky above" check core's own O2 model uses (rpg.lua's breathability calc) -
 -- reused here so a life-support machine's panel can tell the player whether the room it is in even needs it
@@ -1211,7 +1248,12 @@ local function realCoalCount(m)
   end end
   return n
 end
-local O2_RATE = { airpump = 10, o2gen = 18, greenhouse = 12, bellows = 8 }
+local O2_RATE = { airpump = 10, o2gen = 18, greenhouse = 12, bellows = 8, lifesupport = 14 }
+-- Declared HERE, above inspect(), on purpose: inspect() reads it and is defined earlier in this
+-- file than updateLifeSupport(). Declaring it only at the update site would leave the inspect
+-- reference resolving to a nil GLOBAL -- the exact drawMenu/wrap/give forward-reference bug class
+-- that has produced per-frame error spam in this project three times already.
+local LIFESUPPORT_RANGE = 90
 local AIRLINE_SEG_RATE, AIRLINE_SEG_RANGE, AIRLINE_SEG_STEP = 4, 40, 6
 local function inspect(m)
   local role = ROLE[m.kind]
@@ -1251,13 +1293,40 @@ local function inspect(m)
     if m.disabled then state = "STOPPED"; nextline = "Press Start to resume"
     elseif w > 0 then state = "RUNNING"; nextline = "Working - wire the output stud to what needs power"
     else state = "IDLE"; nextline = IDLE_HINT[m.kind] or "Check its real input condition (see description)" end
-  elseif m.kind == "airpump" or m.kind == "o2gen" or m.kind == "scrubber" or m.kind == "compressor" then
+  elseif m.kind == "lifesupport" then
+    -- Every failing condition gets its own named line and a single concrete NEXT ACTION, because
+    -- this machine has three independent requirements (power / sealed / you inside) and "it isn't
+    -- working" with no reason shown is exactly the complaint that drove the whole inspect panel.
+    -- roomSealed is recomputed live here rather than read from the 90-frame cache so the panel is
+    -- never up to ~2.5s stale while you are standing there wondering why it is idle. Read-only.
+    local g = m._gid and R.power.grids[m._gid]
+    local need = LOAD_W.lifesupport or 12
+    local sealed = roomSealed(m.x, m.y) and roomSealed(m.x - 6, m.y) and roomSealed(m.x + 6, m.y)
+    local px, py = (R.P and R.P.x or 0), (R.P and R.P.y or 0)
+    local dxp, dyp = px - m.x, py - m.y
+    local dist = math.floor(math.sqrt(dxp * dxp + dyp * dyp))
+    local inRange = dist <= LIFESUPPORT_RANGE
+    inputs[1] = "Power: " .. (g and math.floor(g.gen) or 0) .. "W avail / " .. need .. "W needed"
+    inputs[2] = "Room: " .. (sealed and "SEALED - good" or "NOT sealed - roof it over")
+    inputs[3] = "You: " .. dist .. "px away (" .. (inRange and "inside range" or "outside " .. LIFESUPPORT_RANGE .. "px range") .. ")"
+    outputs[1] = "Oxygen: feeds the real O2 model (~" .. (O2_RATE.lifesupport or 14) .. " O2/s while powered)"
+    outputs[2] = string.format("Stores: food %d%% / water %d%% (+0.9 / +1.2 per 90 frames while running)",
+      math.floor((R.need and R.need.food) or 0), math.floor((R.need and R.need.water) or 0))
+    if m.disabled then state = "STOPPED"; nextline = "Press Start to resume"
+    elseif not m._gid then state = "BLOCKED"; nextline = "Wire it to a generator with copper/iron wire"
+    elseif not gridPowered(m) then state = "STARVED"; nextline = "Needs more generation or a battery on its grid (" .. need .. "W)"
+    elseif not sealed then state = "OPEN ROOM"; nextline = "Roof the room over - it only stocks a genuinely sealed base"
+    elseif not inRange then state = "STANDBY"; nextline = "Working, but you're " .. dist .. "px away - stay within " .. LIFESUPPORT_RANGE .. "px to draw from it"
+    else state = "RUNNING"; nextline = "Working - no action needed" end
+  elseif m.kind == "airpump" or m.kind == "o2gen" or m.kind == "scrubber" or m.kind == "ventfan" or m.kind == "compressor" then
     local g = m._gid and R.power.grids[m._gid]
     local need = LOAD_W[m.kind] or 4
     inputs[1] = "Power: " .. (g and math.floor(g.gen) or 0) .. "W avail / " .. need .. "W needed"
     inputs[2] = "Room: " .. (roomSealed(m.x, m.y) and "sealed - needs a real source" or "open to sky - already fine")
     local rate = O2_RATE[m.kind]
-    outputs[1] = rate and (LOAD_DESC[m.kind] .. " (~" .. rate .. " O2/s while running)") or LOAD_DESC[m.kind]
+    local scrubReg = ({ scrubber = { 28, 70 }, ventfan = { 18, 90 } })[m.kind]
+    if scrubReg then outputs[1] = LOAD_DESC[m.kind] .. " (~" .. scrubReg[1] .. " scrub/s, " .. scrubReg[2] .. "px)"
+    else outputs[1] = rate and (LOAD_DESC[m.kind] .. " (~" .. rate .. " O2/s while running)") or LOAD_DESC[m.kind] end
     if m.disabled then state = "STOPPED"; nextline = "Press Start to resume"
     elseif gridPowered(m) then state = "RUNNING"; nextline = "Working - no action needed"
     elseif not m._gid then state = "BLOCKED"; nextline = "Wire it to a generator with copper/iron wire"
@@ -1409,7 +1478,7 @@ local function updateBoiler()
       m.lit = false
       clearBox(m.coalBox.x1, m.coalBox.y1, m.coalBox.x2, m.coalBox.y2)
       R.say("Boiler ran out of coal")
-    elseif (R.frame % EMBER_REFRESH) == 0 then
+    elseif (R.frame % 6) == 0 then
       local ex, ey = m.ember.x - R.cam.x, m.ember.y - R.cam.y
       if ex >= 0 and ex < W and ey >= 0 and ey < H then
         local p = sim.partID(ex, ey)
@@ -1594,6 +1663,33 @@ local function syncO2Sources()
     end
   end
 end
+-- Sealed-base life support. Runs on core's OWN hunger/thirst cadence (rpg.lua drains on
+-- `R.frame % 90 == 0`: food -0.35, water -0.5 baseline) so the rates below are directly
+-- comparable to the drain instead of being invented numbers: +0.9 food / +1.2 water is a
+-- net gain of roughly 2.5x drain, i.e. a powered sealed base slowly refills you rather than
+-- merely holding you level, and refills 0 -> 100 in about 4-5 real minutes.
+-- Oxygen is deliberately NOT handled here -- it already flows through O2_RATE/syncO2Sources
+-- exactly like the air pump, so there is no second oxygen code path to keep in sync.
+-- "Sealed" reuses the existing cheap roomSealed vertical multi-ray probe at three columns
+-- (centre and +/-6) rather than a bounded flood-fill: a real O(area) region scan is what
+-- caused the oxygen-spawn lag regression earlier in this project, and three rays are enough
+-- to reject the common false positive of a single covered column under an open room.
+local function updateLifeSupport()
+  if (R.frame or 0) % 90 ~= 0 then return end
+  for _, m in ipairs(R.machines) do if m.kind == "lifesupport" then
+    local powered = gridPowered(m)
+    local sealed = roomSealed(m.x, m.y) and roomSealed(m.x - 6, m.y) and roomSealed(m.x + 6, m.y)
+    local px, py = (R.P and R.P.x or 0), (R.P and R.P.y or 0)
+    local dx, dy = px - m.x, py - m.y
+    local inRange = (dx * dx + dy * dy) <= (LIFESUPPORT_RANGE * LIFESUPPORT_RANGE)
+    -- cached for the inspect panel so the player can see exactly which condition is failing
+    m.powered, m.sealed, m.inRange = powered, sealed, inRange
+    if powered and sealed and inRange and R.need and not R.sandbox then
+      R.need.food = math.min(100, R.need.food + 0.9)
+      R.need.water = math.min(100, R.need.water + 1.2)
+    end
+  end end
+end
 local function updateAirpump()
   for _, m in ipairs(R.machines) do if m.kind == "airpump" then
     m.angle = (m.angle or 0) + (gridPowered(m) and 0.3 or 0)
@@ -1663,6 +1759,17 @@ local function updateO2gen()
   end end
 end
 local BADGAS = { CO2 = true, SMKE = true }
+local SCRUB_REG = { scrubber = { rate = 28, range = 70 }, ventfan = { rate = 18, range = 90 } }
+local function syncScrubbers()
+  R.scrubbers = R.scrubbers or {}
+  for i = #R.scrubbers, 1, -1 do if R.scrubbers[i]._src == TAG then table.remove(R.scrubbers, i) end end
+  for _, m in ipairs(R.machines) do
+    local reg = SCRUB_REG[m.kind]
+    if reg and gridPowered(m) then
+      table.insert(R.scrubbers, { x = m.x, y = m.y, rate = reg.rate, range = reg.range, _src = TAG })
+    end
+  end
+end
 local function updateScrubber()
   for _, m in ipairs(R.machines) do if m.kind == "scrubber" then
     m.cool = (m.cool or 0) - 1
@@ -1674,6 +1781,20 @@ local function updateScrubber()
         if p and BADGAS[R.nameOf(sim.partProperty(p, "type"))] then sim.partKill(p); hit = true end
       end end
       m.cool = hit and 10 or 20
+    end
+  end end
+end
+local function updateVentfan()
+  for _, m in ipairs(R.machines) do if m.kind == "ventfan" then
+    m.angle = (m.angle or 0) + (gridPowered(m) and 0.35 or 0)
+    if gridPowered(m) then
+      local dx, dy = m.duct.x - R.cam.x, m.duct.y - R.cam.y
+      if dx > -4 and dx < W + 4 and dy > -4 and dy < H + 4 then
+        for i = 0, 5 do
+          local p = sim.partID(dx + i, dy)
+          if p and BADGAS[R.nameOf(sim.partProperty(p, "type"))] then sim.partProperty(p, "vx", 2.4) end
+        end
+      end
     end
   end end
 end
@@ -1741,14 +1862,14 @@ local function updateSolarDust()
   if R.frame % 600 ~= 0 then return end
   for _, m in ipairs(R.machines) do if m.kind == "solar" then m.dust = math.min(80, (m.dust or 0) + 3) end end
 end
-local BADGAS2 = { CO2 = true, SMKE = true }
+-- (BADGAS2 removed: byte-identical to BADGAS above, which is already in scope here)
 local function updateGasDetector()
   for _, m in ipairs(R.machines) do if m.kind == "gasdetector" then
     local bx, by = m.x - R.cam.x, m.y - R.cam.y
     local bad = false
     for dx = -8, 8, 2 do for dy = -8, 8, 2 do
       local p = sim.partID(bx + dx, by + dy)
-      if p and BADGAS2[R.nameOf(sim.partProperty(p, "type"))] then bad = true end
+      if p and BADGAS[R.nameOf(sim.partProperty(p, "type"))] then bad = true end
     end end
     local near = math.abs(m.x - R.P.x) < 150 and math.abs(m.y - R.P.y) < 150
     local ch4hi = near and R.gas and (R.gas.ch4 or 0) > 25
@@ -1844,6 +1965,7 @@ local TEARDOWN = {
   airpump = function(m) clearBox(m.cx - 5, m.cy - 6, m.cx + 9, m.y) end,
   o2gen = function(m) clearBox(m.x, m.y - 6, m.x + 7, m.y) end,
   scrubber = function(m) clearBox(m.x, m.y - 5, m.x + 4, m.y) end,
+  ventfan = function(m) clearBox(m.x, m.y - 4, m.x + 9, m.y) end,
   greenhouse = function(m) clearBox(m.x, m.y - 6, m.x + 6, m.y) end,
   sawmill = function(m) clearBox(m.x, m.y - 6, m.x + 7, m.y) end,
   desal = function(m) clearBox(m.intake.x, m.y - 5, m.outlet.x, m.y) end,
@@ -1868,9 +1990,9 @@ local TEARDOWN = {
   compressor = function(m) clearBox(m.x - 1, m.y - 7, m.x + 5, m.y) end,
   airline = function(m) for _, seg in ipairs(m.segs) do killAt(seg.x, seg.y) end end,
 }
-local CORE_CHECK_EVERY = 25
+-- machine-core check runs every 25 frames (inlined below)
 local function updateMachineCores()
-  if R.frame % CORE_CHECK_EVERY ~= 0 then return end
+  if R.frame % 25 ~= 0 then return end
   for i = #R.machines, 1, -1 do
     local m = R.machines[i]
     local cx, cy = m.core.x - R.cam.x, m.core.y - R.cam.y
@@ -1893,6 +2015,15 @@ local function updateMachineCores()
       else
         m.coreMiss = nil
       end
+    else
+      -- An OFF-SCREEN core carries no evidence either way, so it must not keep a
+      -- half-accumulated miss count alive. Without this, the grace period above
+      -- defeats itself: a core that read empty twice (coreMiss=2) before the player
+      -- scrolled away kept that 2 while off-screen, so the FIRST transient miss on
+      -- scrolling back -- exactly the tile-cache-refill frame the grace period was
+      -- added to survive -- hit 3 and destroyed the machine. Matches the original
+      -- "I place machines and they disappear (after scrolling away and back)" report.
+      m.coreMiss = nil
     end
   end
 end
@@ -1909,15 +2040,16 @@ end
 hook(R.hooks.tick, function()
   for _, f in ipairs({ updateBoiler, updateTurbines, updateDoors, updatePumps, updateConveyors, updateCranks,
                        updateEFurnace, updateCrusher, updateAutocraft, updateTurret, updateDrill,
-                       updateAirpump, updateBellows, updateCompressor, updateO2gen, updateScrubber, updateSawmill, updateDesal,
+                       updateAirpump, updateBellows, updateCompressor, updateO2gen, updateScrubber, updateVentfan, updateSawmill, updateDesal,
                        updateBlastfurnace, updateSolarFurnace, updateFlare, updateSolarDust, updateGasDetector,
-                       updateBreaker, updateElevator, updateTunneler, updateSprinkler,
+                       updateBreaker, updateElevator, updateTunneler, updateSprinkler, updateLifeSupport,
                        updateMachineCores }) do
     local ok, err = pcall(f); if not ok then R.pluginErr = tostring(err) end
   end
   if (R.frame or 0) % 15 == 0 then
     local ok, err = pcall(recomputePower); if not ok then R.pluginErr = tostring(err) end
     ok, err = pcall(syncO2Sources); if not ok then R.pluginErr = tostring(err) end
+    ok, err = pcall(syncScrubbers); if not ok then R.pluginErr = tostring(err) end
     ok, err = pcall(syncFastMode); if not ok then R.pluginErr = tostring(err) end
   end
 end)
@@ -1927,11 +2059,11 @@ local MLABEL = { boiler = "BOILER", turbine = "TURBINE", door = "DOOR", pump = "
   lamp = "LAMP", crank = "CRANK", wheel = "WATER WHEEL", solar = "SOLAR PANEL", teg = "TEG-GEN", battery = "BATTERY",
   capacitor = "CAPACITOR", efurnace = "E-FURNACE", crusher = "CRUSHER", autocraft = "AUTOCRAFTER",
   turret = "TURRET", turret2 = "TURRET MK2", drill = "DRILL", reactor = "REACTOR",
-  airpump = "AIR PUMP", o2gen = "O2 GENERATOR", scrubber = "CO2 SCRUBBER", greenhouse = "GREENHOUSE",
+  airpump = "AIR PUMP", o2gen = "O2 GENERATOR", scrubber = "CO2 SCRUBBER", ventfan = "VENT FAN", greenhouse = "GREENHOUSE",
   sawmill = "SAWMILL", desal = "DESALINATOR", blastfurnace = "BLAST FURNACE", rtg = "RTG",
   flywheel = "FLYWHEEL", breaker = "BREAKER", elevator = "ELEVATOR", tunneler = "TUNNELER",
   sprinkler = "SPRINKLER", lightning = "LIGHTNING ROD", gasturbine = "GAS TURBINE",
-  bellows = "BELLOWS", airline = "AIR LINE", compressor = "COMPRESSOR",
+  bellows = "BELLOWS", airline = "AIR LINE", compressor = "COMPRESSOR", lifesupport = "LIFE SUPPORT",
   fuelcell = "FUEL CELL", wind = "WIND TURBINE", solarfurnace = "SOLAR FURNACE", flare = "FLARE STACK",
   geotap = "GEOTHERMAL TAP", methanecap = "METHANE CAPTURE", gasdetector = "GAS DETECTOR", leadshield = "LEAD SHIELD" }
 local GAUGE_MAX = { crank = WATT_CRANK, wheel = 30, solar = WATT_SOLAR_BASE, teg = 20, turbine = 60, reactor = 120,
@@ -1972,8 +2104,8 @@ hook(R.hooks.draw, function()
         local hx, hy = x + 2, y - 5
         local a = m.angle or 0
         graphics.drawLine(hx, hy, hx + math.cos(a) * 3, hy + math.sin(a) * 3, 220, 220, 230, 255)
-      elseif m.kind == "airpump" then
-        local hcx, hcy = m.cx - R.cam.x, m.cy - R.cam.y
+      elseif m.kind == "airpump" or m.kind == "ventfan" then
+        local hcx, hcy = (m.cx or m.hub.x) - R.cam.x, (m.cy or m.hub.y) - R.cam.y
         for i = 0, 2 do local a = (m.angle or 0) + i * (math.pi * 2 / 3)
           graphics.drawLine(hcx, hcy, hcx + math.cos(a) * 3, hcy + math.sin(a) * 3, 200, 220, 255, 255) end
       elseif m.kind == "wind" then
@@ -2151,8 +2283,10 @@ R.ITEMS.TURRETKIT2 = { col = { 255, 80, 40 }, desc = "Heavy turret: longer range
 R.ITEMS.DRILLKIT = { col = { 140, 140, 160 }, desc = "Mining drill: auto-mines whatever sits ahead of it, while powered" }
 R.ITEMS.REACTORKIT = { col = { 70, 200, 90 }, desc = "Fission reactor: end-game generator - real UO2/B4C/NAK/TRBN chain" }
 R.ITEMS.AIRPUMPKIT = { col = { 180, 210, 255 }, desc = "Air pump: drives real air along a duct, registers as an oxygen source" }
+R.ITEMS.LIFESUPPORTKIT = { col = { 140, 235, 200 }, desc = "Life support: in a SEALED powered room it holds the air up and slowly restocks your food and water while you're inside" }
 R.ITEMS.O2GENKIT = { col = { 150, 220, 255 }, desc = "Oxygen generator: electrolyses a WATR charge into real OXYG + HYGN" }
-R.ITEMS.SCRUBBERKIT = { col = { 100, 140, 140 }, desc = "CO2 scrubber: pulls in and breaks down real CO2/smoke in range" }
+R.ITEMS.SCRUBBERKIT = { col = { 100, 140, 140 }, desc = "CO/CO2 scrubber: kills real CO2/smoke and registers into R.scrubbers" }
+R.ITEMS.VENTFANKIT = { col = { 160, 180, 200 }, desc = "Ventilation fan: vents ambient CO/CO2 (R.scrubbers) and pushes heavy gas along a duct" }
 R.ITEMS.GREENHOUSEKIT = { col = { 120, 220, 140 }, desc = "Greenhouse: real plants behind glass add oxygen by daylight, no power needed" }
 R.ITEMS.SAWMILLKIT = { col = { 160, 120, 70 }, desc = "Sawmill: pyrolyses wood from your bag into real charcoal" }
 R.ITEMS.DESALKIT = { col = { 90, 160, 200 }, desc = "Desalinator: turns real SLTW into WATR + SALT" }
@@ -2244,11 +2378,15 @@ local TIER10_RECIPES = {
   { out = "GREENHOUSEKIT", n = 1, need = need("GLAS", 8, "WOOD", 4, "PLNT", 2), st = "workbench", txt = "Greenhouse",
     desc = "Unlocked at 10W generated (needs no power itself). Real living plants behind glass photosynthesise by daylight and add fresh oxygen to a nearby sealed room - a passive, renewable life-support layer." },
   { out = "SCRUBBERKIT", n = 1, need = need("STEL", 4, "COAL", 4), st = "anvil", txt = "CO2 scrubber",
-    desc = "Unlocked at 10W generated. Powered, it actively pulls in and breaks down real CO2/smoke in range - smelting and fires both dump exactly these gases, and they count directly against your breathable air." },
+    desc = "Unlocked at 10W generated. Powered, kills real CO2/smoke in range and registers into R.scrubbers to pull down ambient CO/CO2 near you - smelting and fires both dump exactly these gases." },
+  { out = "VENTFANKIT", n = 1, need = need("METL", 4, "STEL", 2, "CU", 1), st = "workbench", txt = "Ventilation fan",
+    desc = "Unlocked at 10W generated. Powered, registers into R.scrubbers (wider but gentler than a scrubber) and pushes real CO2/smoke along its duct - the passive fix for a sealed room with a fire or smelter." },
   { out = "SAWMILLKIT", n = 1, need = need("WOOD", 10, "METL", 2), st = "workbench", txt = "Sawmill",
     desc = "Unlocked at 10W generated. Powered, it pyrolyses raw wood from your bag into real charcoal (same fuel-from-wood chemistry a real charcoal kiln uses) - the first automation loop that turns your forest home base into an ongoing fuel supply." },
 }
 local TIER100_RECIPES = {
+  { out = "LIFESUPPORTKIT", n = 1, need = need("STEL", 8, "CU", 4, "GLAS", 4, "ZIRC", 2), st = "advlab", txt = "Life support",
+    desc = "Advanced Lab tier. Powered, inside a genuinely SEALED room, it holds the air up and slowly restocks your food and water while you are inside - a real reason to build an enclosed base, and a real standing sink for late-game power." },
   { out = "CRUSHERKIT", n = 1, need = need("STEL", 8, "METL", 4), st = "anvil", txt = "Ore crusher",
     desc = "Unlocked at 100W generated. Crushes 1 coal into 2 coal dust while powered - the Factorio-style payoff for having built real generation." },
   { out = "AUTOCRAFTKIT", n = 1, need = need("STEL", 6, "PSCN", 4, "CU", 4), st = "anvil", txt = "Autocrafter",

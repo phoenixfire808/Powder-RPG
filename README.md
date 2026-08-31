@@ -8,7 +8,7 @@ Powder RPG
 **Powder RPG** is a survival game mod for [The Powder Toy](https://powdertoy.co.uk/) — real falling-sand
 physics, not a fake meter on top. You mine, craft, breathe real oxygen, build machines, and survive
 in a side-scrolling world made entirely of simulated particles. This repo is **not** the upstream
-Powder Toy project; it is Drew's RPG fork (`phoenixfire808/Powder-RPG` on GitHub).
+Powder Toy project; it is an RPG fork (`phoenixfire808/Powder-RPG` on GitHub).
 
 **[Download the latest Windows build](https://github.com/phoenixfire808/Powder-RPG/releases/latest)**
 — unzip, then **double-click `PowderToyRPG.exe`**. No batch file required.
@@ -240,12 +240,68 @@ shape, and the material work backing them is already shipped or scoped:
 
 Roadmap
 ===========================================================================
+This section reflects the real, current state of the project — what's actually shipped and
+verified (grounded in `R.CHANGELOG` / `CHANGELOG.md`, not aspiration), what's designed but not
+yet built, and what's still just a proposal. The full running wishlist of proposed systems,
+including newer ones not yet promoted into this roadmap, lives in
+[knowledge/feature-wishlist.md](knowledge/feature-wishlist.md) and is meant to keep growing
+across sessions — check there for the latest state if this section looks stale.
+
+### Shipped (selected — see [CHANGELOG.md](CHANGELOG.md) for the full version-by-version list)
 - [x] **Cave generation, "empty vertical tunnels going straight down"** — root-caused
       with real measured numbers (an entrance-tunnel centerline formula covered too little of
       its own noise cycle to wind naturally for the first 20–40 depth units below the
       surface) and fixed with a second, fast-decaying noise layer active only near the
-      surface; deep-cave behavior is numerically unchanged. Shipped v1.15.0; see
-      [CHANGELOG.md](CHANGELOG.md) for the matching release note.
+      surface; deep-cave behavior is numerically unchanged. Shipped v1.15.0.
+- [x] **Respawn-path-drift bug class closed** — four-version saga (v1.15.7 → v1.15.10)
+      fixing state (companion position, pollution stats, overhead cleanup) that silently
+      didn't apply on the bed-respawn path because it bypassed the main `R.spawnPlayer()`
+      entry point; closed with two shared helpers (`R._resetSpawnState()`,
+      `R._teleportCompanionAndClear()`) called from every spawn path. Full retrospective:
+      [releases/v1.15.7-v1.15.10-retrospective.md](releases/v1.15.7-v1.15.10-retrospective.md).
+- [x] **Tree water routing + underground aquifer soak (v1.15.42 → v1.15.65)** — rain and
+      standing water now visibly route down hollow tree trunks as vein lines, soak into a
+      root-zone moisture band that feeds a small underground aquifer layer
+      (`treeAquiferAt` / `treeAquiferSpreadTick`), and drain correctly out of the gaps
+      *between* adjacent trunks instead of pooling on canopy leaves. Trunk/canopy no
+      longer crumbles to sawdust from nearby digging or hot-reloads (v1.15.65) — though
+      the underlying support check was still wrong at that point and was re-fixed in
+      v1.15.74, which found a direct collapse call on a healthy surface-supported trunk
+      destroying 397 wood cells against a limit of 25. This is
+      real, live, bridge-verified plumbing — but it's scoped to tree-adjacent moisture,
+      not a world-wide water table or player-facing flooding/draining/pumping system; see
+      [knowledge/current-progress.md](knowledge/current-progress.md) for the verification
+      detail and [knowledge/feature-wishlist.md](knowledge/feature-wishlist.md#1-full-aquifer-system)
+      for the full-aquifer-system item this precedent feeds into.
+- [x] **Underground environment feel (v1.15.60 → v1.15.62)** — real depth-scaled
+      geothermal gradient, biome-specific surface temperatures, and per-cave-pocket
+      microclimates, with the TEMP/PRESS HUD reading the full depth column instead of a
+      flat ~72°F everywhere.
+- [x] **Mining ventilation physics (v1.15.28 → v1.15.58)** — newly dug cavities no longer
+      fill with breathable air instantly; ventilation diffuses in from adjacent open air
+      over ~50–90 ticks, mined-cavity water no longer floats mid-air, and dig-pressure lag
+      was root-caused and optimized.
+- [x] **HUD legibility pass (v1.15.24 → v1.15.47)** — multiple rounds closing real overlap
+      bugs (Day/GOAL text collision, minimap crowding, Esc-menu column bleed, TEMP/PRESS
+      gauge labeling) rather than a single redesign; each round is its own verified fix.
+- [x] **Vehicles: minecart + rail + mine-lift kits (v1.15.26)** — buildable rail network
+      (LMB-drag snapped track), rideable minecart, and a powered vertical mine-lift cage.
+- [x] **Inventory UX overhaul (v1.15.28, `UI-INV-1/2/3`)** — Carried tab rebuilt from a
+      scrollable text list into a real bordered grid with Terraria-style left-click
+      pick/place semantics and a stack-merging SORT.
+- [x] **Fail-closed visual verification harness (v1.15.33 → v1.15.38)** — `goal_verify.py`
+      / `verify_claim.py` with a mandatory screenshot gate, because `lastErr == nil` was
+      repeatedly proven **not** sufficient on its own (three real bugs — `drawMenu`,
+      `wrap`, HUD row overlap — all shipped with `lastErr=nil` and passed the old,
+      bridge-only checks). See [knowledge/verification-system.md](knowledge/verification-system.md).
+
+### Near-term (designed or actively in flight)
+- [ ] **Full aquifer system** — extend the tree-water precedent above into a real
+      world-wide water table (connected cavern volume below one global depth fills with
+      real `WATR` via TPT's own hydrostatic settling, replacing today's isolated
+      noise-placed deep-cavern pockets), tunnels that fill/drain in response to player
+      digging, and wells/pumps as a craftable hook into it. Proposed, not yet designed in
+      full — see [feature-wishlist.md #1](knowledge/feature-wishlist.md#1-full-aquifer-system).
 - [ ] **Real geological layering for subsoil / bedrock** — currently the bottom of the
       world keeps defaulting to fired brick, which is structurally fine but cosmetically
       wrong. Researched against actual soil science (topsoil → subsoil / regolith →
@@ -257,14 +313,68 @@ Roadmap
       same session (`STNE` is `Falldown = 1`, i.e. a falling powder, not solid rock). The
       `BSLT` swap itself is researched and spec'd but not yet applied to the world-gen
       fallback; full fix awaits a re-verified code change.
-- [ ] **Real biome-varied geology (V2)** — properly distinct layers per biome: granite
-      under mountains, sandstone under deserts, limestone / shale variation, a real
-      saprolite transition band at the topsoil / bedrock boundary. Each new layer would
-      be its own custom element following the same `elements.allocate("RPG", "NAME")`
-      pattern as `GRSS` / `BLD`, and every one would need its own
-      `Falldown == 0 AND TYPE_SOLID` verification before being trusted as structural
-      fill — the `STNE` regression generalized to a real rule. Flagged as the V2 scope,
-      not V1, per the design doc.
+- [ ] **Structural cave-ins** — wide mining tunnels become genuinely dangerous: ceiling
+      blocks over a large unsupported span convert to a falling-powder copy after a short
+      warning delay, using TPT's own unsupported-granular-fall physics, no new elements.
+      Proposed — see [feature-wishlist.md #5](knowledge/feature-wishlist.md#5-structural-cave-ins).
+- [ ] **Flash-flood caverns** — some deep-cavern water pockets are sealed behind a thin
+      rock membrane; breaking through with a pick lets TPT's real pressure/gravity sim
+      flood the newly opened tunnel instead of just revealing static water. Proposed — see
+      [feature-wishlist.md #6](knowledge/feature-wishlist.md#6-flash-flood-caverns).
+- [ ] **Behavior-kind persistence** — a few of the power / reactor elements (turbine,
+      thermoelectric, reactive concrete) are defined through custom behavior kinds that
+      are not yet re-registered on restart, so they currently only work in a live dev
+      session rather than a fresh launch — everything else in the elements table above
+      survives a restart intact. This is being driven from a single
+      `apply_realism_modules` call against the lab instance so it can be re-tested
+      end-to-end before claiming it's fixed.
+- [ ] **Item quality system** — crafted tools rolling a quality tier that affects their
+      stats, not just their tier.
+
+### Mid-term (proposed, grounded in existing mechanics, not yet designed)
+- [ ] **Landmarks / points of interest** — *placement shipped, discovery not.* A
+      30-structure library (cabins, wells, campsites, watchtowers, mineshaft junctions,
+      shrines, sealed vaults, reactor ruins, crystal chambers, plus 10 small props),
+      authored from 42 analysed community saves, had been wired into nothing; v1.15.72
+      loads and places all 30, and v1.15.78 retuned flatness tolerance so they survive the
+      new mountain terrain (3.7 buildings + 8.9 props per 3000px). What remains is making
+      them *worth finding* — rewards and a discovery hook — e.g. a rare deep-cave `VIRS`
+      outbreak pocket (cured by fire, chest reward gated on infection clearing) or a
+      `PSCN`/`NSCN` logic-gate puzzle vault, both built entirely from existing element
+      behaviors. See
+      [feature-wishlist.md #2](knowledge/feature-wishlist.md#2-landmarks--points-of-interest).
+- [ ] **Biome variety expansion** — visual *and* mechanical variety beyond the current
+      forest/desert/snow/swamp set, pairing real geological strata bands (granite,
+      sandstone, limestone with genuine acid reactivity) with per-biome survival mechanics
+      instead of just re-skinned terrain. See
+      [feature-wishlist.md #3](knowledge/feature-wishlist.md#3-biome-variety-expansion).
+- [x] **Mountains / vertical terrain (v1.15.70)** — shipped as the predicted
+      low-frequency surface-height noise pass: a long-wavelength layer (period 1100px)
+      hard-thresholded to zero across most of the map, so plains stay plains while 22% of
+      columns rise into real ranges. Measured on seed 7, total relief went 61px → 280px
+      across 8000 columns with the steepest slope still 2px per column, so peaks stay
+      walkable without digging. Topsoil was deepened 20px → 50px in the same bump so a
+      hillside can actually be dug into. Applies to newly generated terrain only. See
+      [feature-wishlist.md #4](knowledge/feature-wishlist.md#4-mountains--vertical-terrain).
+- [ ] **Portal-pipe item logistics network** — placeable `PRTI`/`PRTO` portal pairs (real
+      stock teleport-by-channel mechanic) for Terraria-style long-distance item pipes,
+      complementing the fluid/gas logistics tier below. See
+      [feature-wishlist.md #7](knowledge/feature-wishlist.md#7-portal-pipe-item-logistics-network).
+- [ ] **Snow-biome hypothermia + insulated bases** — real cold-drain tick outside
+      snow-biome shelter, countered by real insulator material (`AERO`) and a `TEG` that
+      passively generates power at a warm/cold boundary. See
+      [feature-wishlist.md #8](knowledge/feature-wishlist.md#8-snow-biome-hypothermia--insulated-bases).
+- [ ] **Meteor strike events** — rare scheduled falling hot-rock event that craters
+      terrain and leaves a rare-ore impact site, giving the world something that can
+      *happen* during play rather than only be discovered. See
+      [feature-wishlist.md #9](knowledge/feature-wishlist.md#9-meteor-strike-events).
+- [ ] **Reactor tier, sealed-base life support, fluid/gas logistics tier** — the next
+      three rungs of the industrial-ecosystem tech tree; see the [Vision](#vision) section
+      above for the full grounding (each already reuses existing, live-tested element
+      physics rather than inventing new ones).
+- [ ] More biomes and quest content past the current 14-step starter chain.
+
+### Long-term (real architecture research done, large scope, not started)
 - [ ] **Co-op multiplayer** — real architecture research done, not just an ask. This
       class of falling-sand simulation cannot do peer-to-peer lockstep (physics is
       chaotic and iteration-order-dependent — two machines running the "same" step on the
@@ -316,23 +426,23 @@ Roadmap
       (spawn as particle effects / decals at death instead — cheaper, same visual
       payoff). Not started; awaiting confirmation that "death-only ragdoll" matches the
       intended scope vs. always-on ragdoll movement.
-- [ ] **Item quality system** — crafted tools rolling a quality tier that affects their
-      stats, not just their tier.
-- [ ] **Behavior-kind persistence** — a few of the power / reactor elements (turbine,
-      thermoelectric, reactive concrete) are defined through custom behavior kinds that
-      are not yet re-registered on restart, so they currently only work in a live dev
-      session rather than a fresh launch — everything else in the elements table above
-      survives a restart intact. This is being driven from a single
-      `apply_realism_modules` call against the lab instance so it can be re-tested
-      end-to-end before claiming it's fixed.
-- [ ] More biomes and quest content past the current 14-step starter chain.
+- [ ] **Real biome-varied geology (V2)** — properly distinct layers per biome: granite
+      under mountains, sandstone under deserts, limestone / shale variation, a real
+      saprolite transition band at the topsoil / bedrock boundary. Each new layer would
+      be its own custom element following the same `elements.allocate("RPG", "NAME")`
+      pattern as `GRSS` / `BLD`, and every one would need its own
+      `Falldown == 0 AND TYPE_SOLID` verification before being trusted as structural
+      fill — the `STNE` regression generalized to a real rule. Flagged as the V2 scope,
+      not V1, per the design doc.
 
 For the respawn-path-drift saga spanning v1.15.7 → v1.15.10 (one bug class, four
 versions, helper extraction pattern established), see the cross-version retrospective
 at [releases/v1.15.7-v1.15.10-retrospective.md](releases/v1.15.7-v1.15.10-retrospective.md)
 and the individual release pages linked from its summary table.
 
-Full version-by-version history lives in [CHANGELOG.md](CHANGELOG.md).
+Full version-by-version history lives in [CHANGELOG.md](CHANGELOG.md). The full, growing
+wishlist of proposed systems (including anything added after this roadmap pass) lives in
+[knowledge/feature-wishlist.md](knowledge/feature-wishlist.md).
 
 Running from source
 ===========================================================================

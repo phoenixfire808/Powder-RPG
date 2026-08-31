@@ -1,6 +1,6 @@
 """Harvest community STRUCTURE saves (buildings, ruins, terrain features) into
 knowledge/saves/, using the ISOLATED lab instance (scripts/lab_instance.py)
-instead of Drew's live session.
+instead of the owner's live session.
 
 This is a thin wrapper around scripts/save_research.py's harvest logic: same
 census/logic/map4px/map1px capture, same knowledge/saves/<id>/ output, same
@@ -8,7 +8,7 @@ index.jsonl -- the only two differences are (1) it talks to the lab bridge
 port/token instead of the default 9876, and (2) it drops downloaded .cps
 stamps into the LAB ddir's own stamps folder (ddir redirects stamps just like
 prefs/autorun -- see scripts/lab_instance.py's module docstring), never into
-D:/The-Powder-Toy/build/stamps where Drew's live session reads from.
+D:/The-Powder-Toy/build/stamps where the owner's live session reads from.
 
 Usage (lab instance must already be running -- see lab_instance.py --launch):
     python scripts/harvest_structures.py --queries house village castle cabin ... --n 4

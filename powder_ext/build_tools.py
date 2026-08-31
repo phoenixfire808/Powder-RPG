@@ -497,7 +497,7 @@ except Exception:  # noqa: BLE001
 
 # The live game's ddir (see scripts/lab_instance.py for a second, isolated
 # instance with its own ddir/port); tpt.screenshot() writes into whatever
-# directory is current at startup, which for Drew's session is this one.
+# directory is current at startup, which for the owner's session is this one.
 SCREENSHOT_DDIR = BUILD_DIR
 _SCREENSHOT_STATE = KNOW / "screenshot_labels.json"
 

@@ -75,7 +75,7 @@ static void create(ELEMENT_CREATE_FUNC_ARGS)
 		// melting point and the cool-below-melting-point-reverts-to-solid
 		// transition (Simulation.cpp's t==PT_LQCR case) flips it straight
 		// back to solid within a tick or two, before it's ever seen molten.
-		// +450K above the real threshold -- Drew asked twice for more
+		// +450K above the real threshold -- the owner asked twice for more
 		// headroom after +200K still wasn't hot enough to pour easily
 		// ("that way we can pour it into something a lot easier"). Not
 		// arbitrary: for a representative metal like GOLD (real melting

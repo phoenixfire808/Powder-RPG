@@ -533,9 +533,9 @@ def run_static_checks() -> None:
 # ---------------------------------------------------------------------------
 # Live mode: a self-contained MCP stdio client
 #
-# There is a working reference client at
-# C:/Users/Drew/AppData/Local/Temp/claude/.../scratchpad/ptmcp.py. That path
-# is a session-scoped scratch directory, not part of this repository, so it
+# There is a working reference client (ptmcp.py) in a session-scoped agent
+# scratchpad directory outside this repository. That path
+# is not stable across sessions and not part of this repository, so it
 # is reimplemented (not imported) here: the same minimal JSON-RPC handshake
 # (spawn powder_toy_mcp.py over stdio, `initialize`, `notifications/initialized`,
 # `tools/list`, `tools/call`), plus a background reader thread so a stalled

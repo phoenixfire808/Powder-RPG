@@ -18,7 +18,7 @@ deterministic Python:
   over a region in one bulk Lua pass, so channels and cloner ctypes are plain
   JSON fields;
 * **modules** -- parametric macros distilled from the build-lessons store
-  (pressure chambers, portal pairs, self-healing liners, status panels, Drew's
+  (pressure chambers, portal pairs, self-healing liners, status panels, the owner's
   DEUT cell) that expand to primitives and expose named anchors;
 * **dry_run by default** -- the compiled plan (absolute primitives, count,
   bounds, warnings) comes back *before* anything touches the sim, so a model
@@ -522,7 +522,7 @@ def mod_tank(p: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def mod_deut_cell_mk2(p: dict[str, Any]) -> list[dict[str, Any]]:
-    """Drew's field-proven self-recharging deuterium battery (see memory fsn2-plant-registry).
+    """the owner's field-proven self-recharging deuterium battery (see memory fsn2-plant-registry).
 
     Pure DMND 4px hull, 7x7 pocket, one cold CLNE(DEUT) breeder in a corner,
     one CRAY(NEUT) trigger in the ceiling, fed by a jacketed WIFI on `channel`.
@@ -585,7 +585,7 @@ MODULES: dict[str, dict[str, Any]] = {
     "shld_pipe_riser": {"fn": mod_shld_pipe_riser, "params": {"length": 60, "bore": 2, "vertical": True}, "why": "SHLD sheath self-repairs and insulates the pipe"},
     "lcry_panel": {"fn": mod_lcry_panel, "params": {"width": 12, "height": 8}, "why": "PSCN must touch LCRY directly"},
     "tank": {"fn": mod_tank, "params": {"width": 30, "height": 20, "shell": "GLAS", "liquid": "WATR", "level": 0.7, "sealed": True}, "why": "sealed shells; liquids leak through any gap"},
-    "deut_cell_mk2": {"fn": mod_deut_cell_mk2, "params": {"channel": 10, "pocket": 7}, "why": "Drew's proven DEUT battery: DMND hull, cold CLNE(DEUT), CRAY(NEUT) trigger via WIFI"},
+    "deut_cell_mk2": {"fn": mod_deut_cell_mk2, "params": {"channel": 10, "pocket": 7}, "why": "the owner's proven DEUT battery: DMND hull, cold CLNE(DEUT), CRAY(NEUT) trigger via WIFI"},
     "cooling_tower": {"fn": mod_cooling_tower, "params": {"width": 40, "height": 70, "basin": 8}, "why": "visual tower, DMND base band, DSTW basin"},
     "house": {"fn": mod_house, "params": {"width": 24, "height": 16, "wall_element": "BRCK", "roof_element": "WOOD"}, "why": "simple cottage"},
 }

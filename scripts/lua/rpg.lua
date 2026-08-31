@@ -14,7 +14,7 @@ PBX.state.rpg = R
 R.version = 4
 local W, H = 612, 384
 local DEPTH = 1900                   -- world bottom (bedrock from DEPTH-40)
-local WATER_LEVEL = 200
+-- sea level y=200 inlined at its single use (200-locals budget)
 local function id(name) local i = elem["DEFAULT_PT_"..name]; if i then return i end; for j = 0, 511 do local ok, n = pcall(elem.property, j, "Name"); if ok and n == name then return j end end; return nil end
 local idcache = {}
 local function eid(name) local v = idcache[name]; if v == nil then v = id(name) or false; idcache[name] = v end; return v or nil end
@@ -38,6 +38,11 @@ local function countType(name)
   local t = eid(name); if not t then return 0 end
   local n = 0; for i in sim.parts() do if sim.partProperty(i, "type") == t then n = n + 1 end end
   return n
+end
+local function o2OnScreenCount()
+  if R.frame % 24 ~= 0 and R._o2gCached then return R._o2gCached end
+  R._o2gCached = countType("OXYG")
+  return R._o2gCached
 end
 local colourCache = {}
 local function colourOf(name)
@@ -90,12 +95,81 @@ function R.setTptMenus(on)
   -- the element menu back on. Tying it to the same toggle already used
   -- to mean "give me native TPT controls."
   pcall(tpt.hud, R.tptMenus and 1 or 0)
-  local n = 0; pcall(function() n = tpt.num_menus() end)
+  -- num_menus() defaults to onlyEnabled=true — when menus were off that
+  -- returned 0 and the enable loop never ran, so toggling ON left side
+  -- palettes/categories hidden. Iterate every section index.
+  local n = 0
+  pcall(function() n = tpt.num_menus(false) end)
   for i = 0, (n or 0) - 1 do pcall(tpt.menu_enabled, i, R.tptMenus and 1 or 0) end
   -- Same click that toggles this used to leave R.mouse.l stuck. Clearing it
   -- here is why "TPT menus on then off" stopped the spam -- do it on purpose.
   if R.releaseMouse then R.releaseMouse() end
   return R.tptMenus
+end
+function R.toggleTptMenus()
+  local on = not R.tptMenus
+  pcall(R.setTptMenus, on)
+  say(on and "TPT menus ON — side palettes & categories" or "TPT menus OFF — RPG hotbar mode")
+  return on
+end
+function R.toggleSandbox()
+  R.sandbox = not R.sandbox
+  if R.sandbox then
+    pcall(R.sandboxFill)
+    pcall(R.setTptMenus, true)
+    say("SANDBOX ON — free materials, no damage, TPT menus on")
+  else say("SANDBOX OFF — survival rules") end
+  return R.sandbox
+end
+-- Top-right HUD quick toggles (layout refreshed each draw/click).
+R._quickBtns = R._quickBtns or {
+  { id = "tpt", label = "TPT", w = 40, h = 17, toggle = function() return R.toggleTptMenus() end,
+    on = function() return R.tptMenus end },
+  { id = "box", label = "SANDBOX", w = 64, h = 17, toggle = function() return R.toggleSandbox() end,
+    on = function() return R.sandbox end },
+  { id = "guide", label = "GUIDE", w = 48, h = 17, toggle = function()
+      if R.guideOpen then if R.closeGuide then R.closeGuide() else R.guideOpen = false end
+      else if R.openGuide then R.openGuide() end end
+      return R.guideOpen end,
+    on = function() return R.guideOpen end },
+}
+function R.layoutQuickBar()
+  local x, y = 6, (R._hudLeftEndY or 82) + 6
+  for _, b in ipairs(R._quickBtns) do
+    b.x, b.y = x, y
+    y = y + b.h + 3
+  end
+end
+function R.drawQuickBar()
+  if not R.hud or R.titleScreen or R.menuOpen then return end
+  R.layoutQuickBar()
+  for _, b in ipairs(R._quickBtns) do
+    local on = false
+    if b.on then local ok, v = pcall(b.on); on = ok and v end
+    local hov = R.mouse.x >= b.x and R.mouse.x < b.x + b.w and R.mouse.y >= b.y and R.mouse.y < b.y + b.h
+    local br, bg, bb = 28, 30, 48
+    if on then br, bg, bb = (b.id == "box" and 92 or 34), (b.id == "box" and 58 or 72), (b.id == "box" and 28 or 48) end
+    if hov then br, bg, bb = br + 24, bg + 24, bb + 36 end
+    graphics.fillRect(b.x, b.y, b.w, b.h, br, bg, bb, 235)
+    local er, eg, eb = on and 140 or 90, on and 220 or 110, on and 120 or 130
+    if b.id == "box" and on then er, eg, eb = 255, 180, 80 end
+    if hov then er, eg, eb = 255, 230, 120 end
+    graphics.drawRect(b.x, b.y, b.w, b.h, er, eg, eb, 255)
+    local tw = #b.label * 6
+    graphics.drawText(b.x + floor((b.w - tw) / 2), b.y + 4, b.label, on and 255 or 200, on and 255 or 210, on and 240 or 220, 255)
+  end
+end
+function R.quickBarClick(x, y)
+  if not R.hud or R.titleScreen or R.menuOpen then return false end
+  R.layoutQuickBar()
+  for _, b in ipairs(R._quickBtns) do
+    if x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
+      if b.toggle then pcall(b.toggle) end
+      if R.releaseMouse then R.releaseMouse() end
+      return true
+    end
+  end
+  return false
 end
 if R.tptMenus == nil then R.tptMenus = false end
 -- Fast mode: air pressure/velocity simulation costs ~25% of the frame rate and is only needed for
@@ -190,7 +264,9 @@ end
 --   Ready-to-run build. ...
 -- The "Version:" line drives update detection; the "Changes:" ... "Ready-
 -- to-run" span is exactly what the in-game changelog dialog shows.
-R.VERSION = "1.15.23"
+R.VERSION = "1.15.82"
+R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
+R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
 -- LOCAL DEV CHANGELOG: separate from the GitHub update-checker below, and
 -- doesn't need one -- that system only ever shows something once a real
@@ -204,6 +280,201 @@ R.VERSION = "1.15.23"
 -- they all show up together next time, exactly like the GitHub one does
 -- across skipped releases.
 R.CHANGELOG = {
+  { ver = "1.15.82", notes = {
+    "Trees/air (@systems): found why sawdust keeps appearing on trees, and it was never our code -- the engine itself turns WOOD into SAWD wherever a particle hits it faster than speed 5. The gas-venting fix that was supposed to route trapped oxygen around trunks pushed it at a speed proportional to how far the trunk's hollow column was, with no cap, so venting a pocket ~13px away launched oxygen at ~6.4 and it sandblasted the very trees it was routing around. Released gas is now clamped to a firm 3.2 -- a vent, not a jet. Oxygen should also spread between trees more instead of ricocheting off them."
+  } },
+  { ver = "1.15.81", notes = {
+    "Internal (@locals): rpg.lua and machines.lua were within ~10 declarations of LuaJIT's hard 200-locals-per-scope limit, past which the whole file stops compiling with an error pointing at an unrelated line. Reclaimed slots by deleting two genuinely dead declarations (a never-read FELL_MAX and an unreferenced HELP controls table the Esc menu no longer uses), removing a BADGAS2 table that was byte-identical to the BADGAS already in scope, and inlining single-use layout/tuning constants. No behaviour changes -- every inlined value is the identical literal. Headroom: rpg.lua 10 -> 18, machines.lua 12 -> 17."
+  } },
+  { ver = "1.15.80", notes = {
+    "Bag (@ux): empty inventory cells now highlight when you hover them. Previously only cells that already held an item ever lit up, so while you were carrying a stack looking for somewhere to put it, the empty slots you were actually aiming at gave no feedback at all -- the panel advertised \"drag to move\" with an invisible target."
+  } },
+  { ver = "1.15.79", notes = {
+    "HUD (@ux): the death counter now reads \"Deaths 2\" instead of \"D:2\". Nothing on screen explained what the D stood for, and the changelog entry that introduced this readout had actually promised \"Deaths: N\" -- the code shipped the abbreviation instead. It still fits the top-left band.",
+  } },
+  { ver = "1.15.78", notes = {
+    "World (@world): landmark structures are actually findable now. With real mountains in the world, the flat 3px ground-flatness tolerance was rejecting 9 of 15 landmark-scale placements (60%), leaving only 1.8 buildings per 3000px -- about one per five screens. The tolerance now scales with footprint width (a 15-wide cabin may sit on a 5px rise, which is still near-flat footing) and the surface spawn rate went 0.34 to 0.46. Measured after: 12 placed instead of 6, slope rejections down from 9 to 6, giving 3.7 buildings plus 8.9 small props per 3000px. Genuine cliff edges and cave mouths are still rejected.",
+  } },
+  { ver = "1.15.77", notes = {
+    "World (@world): snow biomes are no longer an unminable ice slab. Snow returned icy strata for the entire top 480px AND skipped ore generation completely, so a measured survey of 207 snow columns found 91.1% of solid cells were ICE and quartz was the biome only ore -- no coal, no iron, no copper, no clay -- meaning the tech tree could not be progressed anywhere in snow. The new mountains made this far more visible by producing large snow landmasses. Snow now has a genuine thick frozen crust (all ice, as before) with normal rock and normal ore beneath it, threaded with ice lenses aligned to the surrounding strata so it still reads as a cold region. Same survey after the change: all five ore types present (coal 319, iron 164, clay 164, copper 50), still 49.6% ice against forest 0.7%. Forest and desert surveys were byte-identical before and after, confirming no spillover.",
+  } },
+  { ver = "1.15.76", notes = {
+    "Crafting (@ux): recipe ingredients you are short of now show how many you actually have, not just how many the recipe wants. A row you cannot afford used to read \"6 Wood\" and nothing else, so working out what you still needed meant closing the panel and counting your inventory. It now reads \"2/6 Wood\" while you are short and goes back to plain \"6 Wood\" once you have enough -- so scanning the list answers \"what can I make next\" on its own, which is the complaint about the crafting screen being confusing.",
+  } },
+  { ver = "1.15.75", notes = {
+    "HUD (@ux): the action hint under the log no longer sticks on screen forever. R.hint is written from 25 places across the core and plugins and was cleared in none of them, and the draw site had no expiry -- so whatever you last did (\"+1 Dirt  +7 Wood\") stayed pinned at full brightness indefinitely, which reads as a stuck UI element rather than feedback about something you just did. It now holds fully legible for about six seconds and then fades out, matching how the log lines above it already behave. Fixed at the draw site, which is the one point all 25 writes flow through, rather than by timestamping every call site.",
+  } },
+  { ver = "1.15.74", notes = {
+    "Trees (@systems): fixed a real bug that could delete a living, rooted tree. The structural-collapse check asked \"is there an unbroken column of pure WOOD from here down to the surface line?\" -- but a real trunk RESTS ON topsoil, so descending from it hits dirt and the old code read that as 'no support', and grass at the trunk base aborted the scan the same way. A direct collapse call on a healthy surface-supported trunk destroyed 397 wood cells against a limit of 25. It now asks the physically correct question -- is this woody mass resting on something solid -- so reaching real ground counts as support and only genuinely open air below counts as unsupported. Measured on the live world: of 47 real trunk cells sampled, 7 that the old rule marked destroyable are now protected. Orphaned canopy after you cut a trunk still crumbles exactly as before, because air below it is still correctly 'unsupported'.",
+    "Machines (@systems): new Life Support kit (Advanced Lab tier). Powered, inside a genuinely SEALED room, it holds the air up (feeding the same real oxygen model the air pump uses) and slowly restocks your food and water while you are inside -- a real reason to build an enclosed base and a standing sink for late-game power. Its panel names every failing condition separately (power / sealed / are you inside range) with one concrete next action, so \"it isn't working\" always says why.",
+  } },
+  { ver = "1.15.73", notes = {
+    "HUD (@ux): fixed a regression this lane introduced one version earlier. The new GOAL wrapping called menuWrap, which is a file-level local that is NOT reachable from inside onDraw -- it resolved as a nil global and threw every single frame. Because onDraw is not wrapped in pcall, that one error silently aborted the entire rest of the HUD: the TEMP/PRESS gauges, the sunburn warning, the depth readout, the hotbar numbers and the version line all stopped drawing, while the bridge still reported lastErr=nil. Same failure mode already on record for wrap (v1.15.35) and drawMenu (v1.15.33). menuWrap and its character-width constant are now exposed on the shared R table, which draw code can always reach. On-screen text capture goes from 6 strings back to 38.",
+  } },
+  { ver = "1.15.72", notes = {
+    "World (@world): the 30-structure community library is finally generating. 30 structures (cabins, wells, campsites, watchtowers, mineshaft junctions, shrines, sealed vaults, reactor ruins, crystal chambers, plus 10 small props like barrels, crates, lamp posts and campfires) were authored into knowledge/structures/*.json from 42 analysed community saves and then never wired into worldgen -- they had been generating nothing at all. world.lua now loads all 30 at plugin init (bridge-confirmed structuresLoaded=30) and places them on a per-category grid with biome filtering and rarity weighting.",
+    "World (@world): fixed the bug that made the surface half of that library impossible -- worldGen returned aboveGround() for every cell above the surface line, so the structure dispatcher was only ever reached underground and any structure with a body above ground (every cabin, well, tower and prop) could never place. A 3001-column scan found zero structure materials above ground before the fix and real ones after it.",
+  } },
+  { ver = "1.15.71", notes = {
+    "HUD (@ux): the GOAL line now shows up to three wrapped rows instead of two, so a full goal like 'Craft a wood pick by hand (E > craft) - 6 Wood' reads end to end rather than stopping at '(E >...'. When a goal is still too long to fit, the ellipsis is now trimmed into the row's width budget instead of being appended past it, which could previously push the last row wider than the panel it sits in.",
+  } },
+  { ver = "1.15.70", notes = {
+    "World (@world): real mountains. The surface had only three noise octaves with periods of 160/60/22px, giving just 61px of total vertical relief across 8000 columns -- roughly five player-heights, which is why the world read as flat-with-holes. Added a long-wavelength mountain layer (period 1100px) that is hard-thresholded to exactly zero across most of the map, so plains stay plains and 22% of columns rise into real ranges. Measured on seed 7: total relief 61px -> 280px, widest continuous range 1763px, and the steepest slope is still 2px per column so every peak is walkable without digging.",
+    "World (@world): topsoil band deepened from 20px to 50px. The player box is ~12px tall, so the old band was under two player-heights -- you hit rock before you could carve out a room with both a floor and a ceiling. 50px is about four player-heights: enough to dig into a hillside and build a real shelter in dirt. Cave entrances are unaffected (those come from world.lua's worm system, which overrides the base generator).",
+    "Both world changes apply to newly generated terrain only -- an existing save keeps the terrain it already has. Start a new world from the title screen to see mountains.",
+  } },
+  { ver = "1.15.69", notes = {
+    "Machines (@systems): fixed the real remaining cause of \"I place machines and they disappear.\" The core-existence check only ran while a machine's core was on screen, but its consecutive-miss counter was never cleared while off screen -- so a core that happened to read empty twice before you scrolled away kept that count, and the very first transient miss when you scrolled back (the tile-cache refill frame the grace period exists to survive) hit the limit and tore the machine down. The counter is now cleared whenever the core is off screen, since an off-screen core is no evidence either way.",
+  } },
+  { ver = "1.15.68", notes = {
+    "HUD (@ux): the GOAL line no longer cuts off mid-word. It was chopped at a hardcoded 24 characters that had nothing to do with the panel width, so 'Craft a wood pick by hand' read as 'Craft a wood pick by han'. It now wraps to the real column width across up to two rows, and only genuinely long goals shorten -- on a word boundary, with an ellipsis.",
+    "HUD (@ux): forage bonus drops now stack instead of repeating. Chopping a tree that dropped dozens of saplings printed '+Sapling' once per drop -- ~47 copies on one unreadable line, with no count. It now reads '+47 Sapling', matching how '+7 Wood' already worked. Fixed for all six bonus drops (Seeds, Berries, Spore, Mushroom, Root, Sapling), not just saplings.",
+  } },
+  { ver = "1.15.67", notes = {
+    "World gen (@bug): starting a new world no longer carries over stale per-tree chop damage or in-progress cavity ventilation from the previous world — R.treeHP and R.pendingAir are now cleared on New World, matching every other world-coordinate-keyed table (radiation zones, stations, torches, chests, block-hit cooldowns).",
+  } },
+  { ver = "1.15.66", notes = {
+    "Companion (@feature): a task chain (\"cut all these trees\" / \"dig me a big hole\" / \"build me a house\") that fails mid-way now gets one reason-aware re-plan attempt instead of dropping outright — a transient stuck-timeout retries the same step fresh, and running out of building material (walls/room/stairs) sends the colonist to fetch more of that exact item before resuming, so it can actually finish the job instead of leaving it half-built.",
+  } },
+  { ver = "1.15.65", notes = {
+    "Trees (@bug): standing trunks/canopies no longer crumble to sawdust when digging nearby, hot-reloading, or ventilating — woody crumble only removes orphaned canopy (no trunk to surface); mining ventilation eases pressure under tree columns.",
+    "Trees (@world): new forest seeds still required for hollow veins/root branches — existing columns keep their particles; Create World / pendingGen for the new tree features.",
+  } },
+  { ver = "1.15.64", notes = {
+    "Trees (@liquids): canopy/gap rain routes harder into hollow trunk veins — stronger horizontal pull, more drain samples, less leaf pooling.",
+    "Trees (@liquids): treeMoisture feeds underground aquifer — wet GOO band under roots retains WATR via treeAquiferSpreadTick + moisture seep.",
+  } },
+  { ver = "1.15.62", notes = {
+    "Environment (@bug): TEMP/PRESS HUD samples full depth column (surface→geothermal deep) — min-max spread reflects real underground variation, not flat ~72°F.",
+    "Blood (@bug): spray only on sharp damage (falls/lava/combat) — passive O2/CO2/poison/hunger no longer leaves growing red pools while idle.",
+    "Trees (@gas): O2 spawn skips tree-gap columns; wedged OXYG/CO2 nudged toward hollow veins or upward instead of pooling between trunks.",
+    "Trees (@liquids): canopy/gap water drain runs at surface even when rain stops — puddles on leaves route down hollow columns.",
+  } },
+  { ver = "1.15.60", notes = {
+    "Environment (@feature): ONI-like underground feel — strong geothermal gradient, biome surface temps, cave pocket microclimates, depth-scaled pressure; TEMP/PRESS HUD wider min-max range.",
+  } },
+  { ver = "1.15.58", notes = {
+    "Dig (@perf): less lag while mining — crumble/checkFell only when relevant; debounced hotbar; cached sky-vent checks; tree/gap liquid ticks skip deep underground; water equalisation throttled in caves.",
+  } },
+  { ver = "1.15.57", notes = {
+    "Trees (@liquids): gap-floor pools between trunks — gapFloor routing now beats treeShadeDrain; stronger pull into hollow column + surface-band sweep during rain.",
+  } },
+  { ver = "1.15.56", notes = {
+    "Trees (@visual): removed green canopy stain — water veins are blue WATR particles in hollow trunk air, not leaf overlay.",
+    "Trees (@liquids): gap-pool drain pulls surface puddles between trunks into hollow columns; less water particle killing.",
+  } },
+  { ver = "1.15.55", notes = {
+    "World (@terrain): 4x thicker topsoil/subsoil before stone strata — more dirt to dig through.",
+    "Trees (@liquids): treeShadeDrain routes rain on canopy/branch air to hollow veins; faster vein tick during rain.",
+  } },
+  { ver = "1.15.54", notes = {
+    "HUD (@ux): top-right quick buttons — TPT (native element palettes), SANDBOX, GUIDE — no Esc menu needed.",
+    "TPT menus (@bug): toggle now enables every menu section (num_menus(false)); sandbox auto-shows native UI for powder-first play.",
+  } },
+  { ver = "1.15.53", notes = {
+    "O2 (@bug): sealed deep pockets no longer read full air with zero OXYG — vent=0 stale-air fix + depth thinning; meter tracks visible particles underground.",
+    "Esc menu (@layout): controls use one wide column (label + description) — no more 9-char vertical word ribbons.",
+  } },
+  { ver = "1.15.52", notes = {
+    "Blood (@bug): spray only on actual HP loss with 0.5s cooldown — passive poison/suffocation was restarting 6-frame mega-bursts every 5 ticks.",
+  } },
+  { ver = "1.15.51", notes = {
+    "Build (@controls): Ctrl+drag = ellipse/box on release (native TPT); Shift+drag = line on release — no more per-tick overlap thickening walls.",
+    "Build (@shell): O toggles hollow brush ring for lines — thinner walls when connecting circle stamps.",
+  } },
+  { ver = "1.15.50", notes = {
+    "Build (@controls): hold Shift with a block selected for full native brush — circle/square/triangle, Shift-drag line, Ctrl+Shift box, any range; Tab/V and wheel/[ ] work.",
+  } },
+  { ver = "1.15.49", notes = {
+    "Esc menu: menuWrap 8px/char + multi-line STATUS — text stays inside left/right column boxes (no horizontal bleed past divider or panel edge).",
+  } },
+  { ver = "1.15.48", notes = {
+    "O2 field (@visual): breathing radius is a large circle (R.O2_BREATH_R=48) centered on chest — matches circular gameplay sample.",
+  } },
+  { ver = "1.15.47", notes = {
+    "HUD (@layout): TEMP/PRESS fixed rows — no overlapping F/kPa gray text; log + hint below gauge band.",
+    "HUD (@visual): taller gradient T/P bars with min-max band + avg marker; O2 breath scan box around player.",
+    "Cursor (@env): when not placing blocks, 7x7 hover shows nearby OXYG/CO2/SMKE counts.",
+  } },
+  { ver = "1.15.46", notes = {
+    "Esc menu: tighter text fit — menu wrap uses 7px/char budget; CONTROLS lines stop at panel bottom; STATUS/GOAL lines constrained to settings column width.",
+  } },
+  { ver = "1.15.45", notes = {
+    "Trees (@liquids): rain/water on forest floor between tree trunks routes to nearest hollow vein or soaks root GOO — gap cells were outside treeVegQuery soak path.",
+    "Mining (@env): shallow digs under tree gaps cap ventilation start — no instant O2 rush through canopy-shaded floor cells.",
+  } },
+  { ver = "1.15.44", notes = {
+    "Esc menu: CONTROLS column text wraps to column width — long tokens (e.g. SHIFT+wheel) break across lines instead of running past the panel edge; SETTINGS labels/status wrapped too.",
+  } },
+  { ver = "1.15.43", notes = {
+    "Mining (@env): delayed cavity air-fill (R.pendingAir) — re-shipped after parallel tree pass; newly dug cells ventilate in from neighbors over ~50–90 ticks instead of instant surface O2.",
+  } },
+  { ver = "1.15.42", notes = {
+    "Trees (@visual): parallax hills no longer wash out trunk/canopy pixels; darker trunk rims + canopy depth accents restore saturation.",
+    "Trees (@visual): visible water veins — dark brown/green funnel lines along hollow trunk interior during rain or when treeMoisture > 0 (blood excluded).",
+    "Trees (@liquids): trunk-base soak spreads into root-zone GOO and underground aquifer wet layer (treeAquiferAt + treeAquiferSpreadTick).",
+  } },
+  { ver = "1.15.41", notes = {
+    "Mining (@env): newly dug underground cavities no longer fill with breathable air instantly — R.pendingAir tracks per-cell ventilation that diffuses in from adjacent open air over ~50–90 ticks; dig pressure eased from instant -8 to a ramping underpressure. Surface breathing and sealed-room logic unchanged.",
+  } },
+  { ver = "1.15.40", notes = {
+    "Esc menu: STATUS footer moved to the right column below settings — no longer overlaps the bottom of the CONTROLS list.",
+  } },
+  { ver = "1.15.39", notes = {
+    "Zoom (Z): edge/corner of the locked zoom window can be dragged and resized again — RPG mouse handler was swallowing every click (return false) so native GameView frame hit-testing never ran.",
+  } },
+  { ver = "1.15.38", notes = {
+    "Esc menu: settings column wheel scroll now moves ~3 rows per notch (was 1px/notch — felt like endless scrolling).",
+  } },
+  { ver = "1.15.37", notes = {
+    "Trees (@liquids): rain and blood no longer pool on canopy/trunk — treeWaterVeinsTick now uses world.lua treeVegQuery (real trunkW + hollow vein) to route WATR/GOO/BLD down the interior column and soak into root-zone GOO; absorbStandingWater skips tree surfaces.",
+  } },
+  { ver = "1.15.36", notes = {
+    "HUD layout: right-column alerts (GOAL, gas, UV, radiation) no longer stack on the minimap — fixed-width column left of the map (x=310..498). UV sunburn labeled 'UV burn' with yellow bar (was mystery yellow). Pressure gauge labeled PRESS with kPa sublabel (was bare P). TEMP/F labels on temperature gauge. Deaths counter moved to HP row. Esc/L/C shortcuts one line below compass; compass depth-only panel moved to y=100; guide.lua removed duplicate L:Guide hint.",
+  } },
+  { ver = "1.15.35", notes = {
+    "Fix: WHAT'S NEW / update dialogs no longer spam 'attempt to call global wrap (a nil value)' every frame. v1.15.32's UI do/end scope defined wrap as a block-local function, but onDraw (outside the block) calls wrap for changelog line-wrapping — same forward-decl pattern as drawMenu/drawTitleScreen.",
+  } },
+  { ver = "1.15.34", notes = {
+    "Companion (@ux): digArea/buildRoom start+halfway chat milestones now live on R.COMP instead of C.action fields, so re-issued dig commands or action-table replacement no longer spam 'Starting to dig that out.' in chat.",
+  } },
+  { ver = "1.15.33", notes = {
+    "Fix: Esc menu no longer spams 'attempt to call global drawMenu (a nil value)' every frame. v1.15.32's UI do/end scope accidentally re-declared `local drawMenu` inside the block, so onDraw called the never-assigned outer forward-decl — same bug class as the drawTitleScreen forward-decl fix.",
+  } },
+  { ver = "1.15.32", notes = {
+    "Fix: hot reload no longer intermittently fails with 'main function has more than 200 local variables'. UI panel/hotbar/menu and title-screen helpers scoped in do/end blocks (same pattern as tree/liquid/env) so the main chunk stays under Lua 5.1's 200-local cap.",
+  } },
+  { ver = "1.15.31", notes = {
+    "Esc menu UX: settings split into labeled sections (Gameplay, Graphics, World, Tools, Meta) with inline ON/OFF and current-value sublabels; active toggles tint green/orange; controls stay in the left column so nothing overlaps.",
+  } },
+  { ver = "1.15.30", notes = {
+    "Trees (@bug): F10 tree trunk ground gap fix in world.lua veg renderer — trunk/cactus base now uses wy <= surf (was strict <), matching genBase; trees no longer float one pixel above grass.",
+  } },
+  { ver = "1.15.29", notes = {
+    "Fix: V/Tab brush-shape hint no longer lies. placeAt called pullNativeBrush from onTick (no interface trait), so placement ignored the cycled shape; onMouseMove kept re-pulling native shape and stomped V/Tab before the next click. placeAt now uses cached R.brushShape; mouse-move only syncs brush radius from native.",
+  } },
+  { ver = "1.15.28", notes = {
+    "Liquids (@bug): mined-cavity water no longer floats midair — settleLiquidsTick nudges WATR/DSTW/SLTW/OIL/BLD downward; nudgeLiquidsNear runs after every dig swing; dig pressure skips full -8 vacuum when adjacent liquid would be yanked upward.",
+    "Environment (@feature): R.env samples temp/pressure min-max-avg on a grid around the player every 15 frames (depth-based geothermal baseline included); T and P HUD gauges show gradient bars with local range, not a single-point readout.",
+    "Water (@feature): waterEqualisation stays on underground (depth > 40) even in fast mode so pooled cave water levels and drains realistically.",
+  } },
+  { ver = "1.15.27", notes = {
+    "Blood (@bug): damage now spawns a vivid red BLD spray from your character over several frames — outward velocity from facing direction, not a tiny upward dribble. BLD colour brightened to 0xFF1020.",
+    "Companion (@feature): Enter-chat always runs Aster's command parser even when a model driver is connected. Broad intent fallbacks (mine/get/gather/craft/light/dig shaft/quest help/bring me) — no more silent 'Got it.' Manual tasks block the scripted follow brain until the chain finishes.",
+    "HUD (@bug): top-left status rows no longer stack AIR/Day/food on the same pixels; survival plugin warmth/events moved out of the HP band. Single version readout at bottom-left.",
+    "Trees (@feature): rain on canopy/trunk routes water down the trunk column before soil soak (treeWaterVeinsTick); trunk WOOD no longer instantly absorbs resting rain.",
+  } },
+  { ver = "1.15.26", notes = {
+    "Vehicles (@vehicles): minecart + rail + mine-lift kits on the workbench/anvil tree. Rail kit: LMB-drag snapped track (flat / 45° / vertical shaft). Minecart: place on track, V to board, D/A drive, S brake/dismount via R.mount/R.ride. Mine lift: vertical shaft cage with grid-powered call buttons. V only steals brush-shape when riding or next to a vehicle.",
+    "Ventilation fan (VENTFANKIT): new powered life-support machine - registers into R.scrubbers to pull down ambient CO/CO2 near you and pushes real CO2/smoke along its duct. CO2 scrubber (SCRUBBERKIT) now also registers into R.scrubbers when powered (was only killing particles, not reducing R.gas.co/co2). Recipe unlocks at 10W tier alongside air pump and scrubber.",
+    "survival.lua (@survival pillar 0b): minimal plant/food loop confirmed live — till SOIL (GOO recipe), plant SEED on patch with nearby WATR, harvest WHEAT, bake BREAD at furnace, right-click any R.FOODS item to eat and refill R.need.food. Idempotent R.eat/R.spawnPlayer wrappers (R._survival guard) so hot-reload no longer stacks illness/bed wraps.",
+  } },
+  { ver = "1.15.25", notes = {
+    "Companion (@feature): refreshIndex now reports nearby LAVA/FIRE/ACID to the model index; chat templates for 'cut trees', 'dig hole', and 'build house' emit multi-step enqueueChain plans; buildRoom refuses to start if the player is inside the rect; digArea/buildRoom speak start + halfway milestones.",
+  } },
+  { ver = "1.15.24", notes = {
+    "Old save files no longer crash companion chat after load (missing chatQueue/queue fields are merged and defaulted). F12 HUD: Day line has its own background row and no longer overlaps the GOAL bar; version readout moved to bottom-left. F13 minimap: 50x30 tiles at 2px, biome tinting, player arrow, north marker, coord readout.",
+  } },
   { ver = "1.15.23", notes = {
     "New seed / Create World no longer sprays sand (or whatever native brush is selected) the moment play starts. Root cause: title-screen and inactive clicks returned nil from onMouseDown, and TPT only blocks native brush placement when Lua returns false -- nil lets the real sim think LMB is held from the Create/Play click. Decorative title embers are HUD-only; the spray was native placement continuing while your finger was still down. Title/inactive mouse handlers now return false, onMouseUp always clears RPG state even when inactive, and a short post-start grace blocks RPG placement until the next real click.",
   } },
@@ -537,6 +808,14 @@ R.o2Sources = R.o2Sources or {}   -- plugins register {x=, y=, rate=, range=} ox
 R.scrubbers = R.scrubbers or {}   -- CO/CO2 scrubbers: {x=, y=, rate=, range=}
 R.coolers   = R.coolers or {}     -- climate control against deep heat: {x=, y=, rate=, range=}
 R.gas = R.gas or { co = 0, co2 = 0, ch4 = 0, rad = 0, heat = 0 }
+-- Delayed cavity air-fill: newly mined cells start unventilated and diffuse O2/pressure
+-- in from neighbors over time instead of instant surface-level air the frame rock breaks.
+R.pendingAir = R.pendingAir or {}   -- "wx,wy" -> {x, y, vent=0..1, born=frame, liq=bool}
+R.AIR_VENT_RATE = R.AIR_VENT_RATE or 0.018   -- neighbor-to-neighbor fill speed (~55 ticks/cell)
+R.AIR_VENT_TICK = R.AIR_VENT_TICK or 2
+R.AIR_DIG_PRESS_MAX = R.AIR_DIG_PRESS_MAX or -9   -- stronger underpressure vs surface +depth baseline
+R.AIR_DIG_PRESS_LIQ = R.AIR_DIG_PRESS_LIQ or -1
+R.AIR_PENDING_MAX = R.AIR_PENDING_MAX or 400
 -- FALLOUT-STYLE RADIATION: G.rad above is the *live* reading (how hot it is
 -- right here, right now) -- it clears fast once you leave, so a source that
 -- melts down or gets mined out stops being dangerous instantly, nothing
@@ -571,7 +850,7 @@ R.hooks = { tick = { profile = true, throttle = true }, draw = { profile = true 
 -- often so one heavy plugin can never eat the frame rate. R.perf holds the measured cost of each hook.
 R.perf = R.perf or {}          -- tag -> { ms = exponential moving average, skip = run 1 frame in N }
 R.perfOn = (R.perfOn == nil) and true or R.perfOn
-local TICK_BUDGET_MS = 1.2     -- per hook, per frame
+-- per-hook per-frame budget 1.2ms (inlined below)
 local function hookTag(f, i) return (type(f) == "table" and f.tag) or ("#" .. i) end
 local function runHooks(list, ...)
   local sample = R.perfOn and list.profile and (R.frame or 0) % 11 == 0
@@ -589,8 +868,8 @@ local function runHooks(list, ...)
         rec.ms = rec.ms * 0.7 + ms * 0.3
         if list.throttle then
           -- a hook that costs more than the budget runs on fewer frames; cheap hooks go back to every frame
-          if rec.ms > TICK_BUDGET_MS * 4 then rec.skip = 4
-          elseif rec.ms > TICK_BUDGET_MS then rec.skip = 2
+          if rec.ms > 1.2 * 4 then rec.skip = 4
+          elseif rec.ms > 1.2 then rec.skip = 2
           else rec.skip = 1 end
         end
         R.perf[tag] = rec
@@ -619,13 +898,35 @@ local function vnoise(x, y, salt)
   return (a + (b-a)*fx) * (1-fy) + (c + (d-c)*fx) * fy
 end
 local function smooth1(x, period, salt) return vnoise(x / period, 0.5, salt) end
+-- Mountain relief layer (2026-08-30, @world). Measured complaint, quantified:
+-- the three detail octaves below have periods of only 160/60/22px and sum to
+-- a 100px span, so a real seed produced just 61px of total vertical relief
+-- across 8000 columns -- about five player-heights. That is the "terrain is
+-- too flat, I want actual Terraria terrain" report as a number.
+--
+-- One extra octave with a period ~7x longer than the largest existing one,
+-- hard-thresholded so it is exactly zero across most of the world: plains
+-- stay plains, and where it does fire it ramps into a real range. Threshold
+-- 0.58 came from a measured distribution sweep (26% of columns pass it);
+-- amplitude 900 was then solved from the observed max m (0.388^1.3*900
+-- ~= 260px peak lift) rather than guessed. Measured on live seed 7:
+-- relief 61px -> 280px, 22% of columns mountainous, widest continuous range
+-- 1763px, max slope still 2px/px so peaks stay walkable without digging.
+-- Subtracts only (never pushes terrain down), so the WATER_LEVEL sea rule in
+-- genBase is untouched. Salt 71 is fresh -- salt 11 is already taken by the
+-- cave ridge field.
+local function mountainAt(wx)
+  local m = (smooth1(wx, 1100, 71) - 0.58) / 0.42
+  if m < 0 then return 0 end
+  return m ^ 1.3
+end
 local surfCache = {}
 local function surfaceAt(wx)
   local s = surfCache[wx]; if s then return s end
   local v = 0.55 * smooth1(wx, 160, 1) + 0.30 * smooth1(wx, 60, 2) + 0.15 * smooth1(wx, 22, 3)
-  s = floor(120 + v * 100); surfCache[wx] = s; return s
+  s = floor(120 + v * 100 - mountainAt(wx) * 900); surfCache[wx] = s; return s
 end
-local BIOME_W = 900
+-- biome width 900 inlined at its single use (200-locals budget, see CLAUDE.md)
 local MAP_TYPES = { "mixed", "forest", "desert", "snow", "swamp" }
 local MAP_TYPE_OK = { mixed = 1, forest = 1, desert = 1, snow = 1, swamp = 1 }
 local MAP_TYPE_LABEL = {
@@ -657,7 +958,7 @@ local function biomeMix(wx)
   local forced = forcedBiome()
   if forced then return forced, nil, 0 end
   local warp = (vnoise(wx / 260, 0.5, 71) - 0.5) * 190 + (vnoise(wx / 70, 0.5, 72) - 0.5) * 60
-  local u = (wx + warp) / BIOME_W
+  local u = (wx + warp) / 900
   local c = floor(u); local f = u - c
   local here, other, t = biomeOfCell(c), nil, 0
   local EDGE = 0.10                        -- fraction of a biome that is transition on each side
@@ -698,9 +999,10 @@ local GRASS = has("GRSS") and "GRSS" or "PLNT"
 -- own hand-rolled particle type.
 if not has("BLD") and elements and elements.allocate then
   local ok, b = pcall(elements.allocate, "RPG", "BLD")
-  if ok and b and b >= 0 then local props = elements.element(elements.DEFAULT_PT_WATR); props.Name = "BLD"; props.Description = "Blood."; props.Colour = 0xAA1020
+  if ok and b and b >= 0 then local props = elements.element(elements.DEFAULT_PT_WATR); props.Name = "BLD"; props.Description = "Blood."; props.Colour = 0xFF1020
     pcall(elements.element, b, props); idcache["BLD"] = b end
 end
+if has("BLD") then pcall(elements.property, idcache["BLD"], "Colour", 0xFF1020) end
 -- coal must smoulder slowly (stock behaviour); the realism patch made it flash-burn (Flammable 40)
 pcall(elements.property, elements.DEFAULT_PT_COAL, "Flammable", 0)
 pcall(elements.property, elements.DEFAULT_PT_BCOL, "Flammable", 0)
@@ -727,14 +1029,18 @@ pcall(elements.property, elements.DEFAULT_PT_GAS, "Gravity", -0.08)
 -- least genuinely static/solid even though it's not geologically accurate;
 -- fixing that for real needs an actual static rock element, verified for
 -- Falldown=0/TYPE_SOLID before it's ever used as terrain fill again.
-local ROCK = has("GRNT") and "GRNT" or "BRCK"
+-- FIXED 2026-08-30: bridge-verified BSLT (id=503) has Falldown=0 and
+-- Properties & TYPE_SOLID == 4 (bit set) -- a real static solid, unlike
+-- STNE/GRAV/BRMT/BCOL/CLST/SAND (all Falldown=1, SOLIDbit=0). GRNT still
+-- doesn't exist in this fork (has("GRNT")==false), so BSLT is now primary.
+local ROCK = has("BSLT") and "BSLT" or "BRCK"
 local UORE = has("DU") and "DU" or "URAN"
 local HASCU = has("CU")
 local function genBase(wx, wy)
   if wy >= DEPTH then return "DMND" end
   local surf = surfaceAt(wx)
   if wy <= surf then
-    if surf > WATER_LEVEL + 3 and wy > WATER_LEVEL then return "WATR" end
+    if surf > 200 + 3 and wy > 200 then return "WATR" end
     -- F10: tree trunk was drawing WOOD up to wy < t.s (one pixel short of the
     -- surface), and the surface row itself was always b.grass via the early
     -- return below -- leaving a 1-pixel air gap that the eye reads as the
@@ -765,7 +1071,16 @@ local function genBase(wx, wy)
       end
     end
   end
-  if wy <= surf + 20 then return b.soil end       -- a real topsoil band before caves can start, not a thin skin over them
+  -- Topsoil depth 20 -> 50 (2026-08-30, @world): "we need a larger dirt layer
+  -- so we can actually dig down and make a house or shelter." The player box is
+  -- ~12px tall, so a 20px band was under two player-heights -- you hit rock
+  -- before you could carve a room with a floor and a ceiling. 50px is ~4
+  -- player-heights: enough to dig in and build out a real shelter in dirt.
+  -- Knock-on (intended): genBase's own fallback cave field starts at d>24, so
+  -- it now begins below the soil instead of inside it -- caves stop opening
+  -- into the shelter band. world.lua's worm/entrance system is a gen HOOK and
+  -- overrides genBase, so surface cave entrances are unaffected.
+  if wy <= surf + 50 then return b.soil end
   if wy >= DEPTH - 40 then return "DMND" end
   local d = wy - surf
   if d > 24 then
@@ -850,7 +1165,7 @@ local function shiftCam(dx, dy)
 end
 local function flushFill() local pf = R.pendingFill; if not pf or #pf == 0 then return end; R.pendingFill = {}; for _, r in ipairs(pf) do fillRegion(r[1], r[2], r[3], r[4]) end end
 R._testShiftCam = shiftCam; R._testFlushFill = flushFill   -- dev-only verification exposure
-local CAM_MAX = 4   -- smooth follow: up to 4px every other frame (a full-canvas shift costs ~15ms, so not every frame)
+-- smooth follow: up to 4px every other frame (a full-canvas shift costs ~15ms). Inlined below.
 -- Arrow keys nudge these, shifting where on screen the auto-follow below
 -- targets the character -- lets you see further above/below/either side
 -- without taking over the camera outright; it still follows your character,
@@ -862,8 +1177,8 @@ local function updateCamera()
   if R.frame % 2 == 1 then return end
   local px, py = R.P.x - R.cam.x, R.P.y - R.cam.y
   local ex, ey = px - (306 + R.camXOffset), py - (200 + R.camYOffset)
-  local dx = (math.abs(ex) > 20) and math.max(-CAM_MAX, math.min(CAM_MAX, floor(ex * 0.25 + (ex > 0 and 0.5 or -0.5)))) or 0
-  local dy = (math.abs(ey) > 28) and math.max(-CAM_MAX, math.min(CAM_MAX, floor(ey * 0.25 + (ey > 0 and 0.5 or -0.5)))) or 0
+  local dx = (math.abs(ex) > 20) and math.max(-4, math.min(4, floor(ex * 0.25 + (ex > 0 and 0.5 or -0.5)))) or 0
+  local dy = (math.abs(ey) > 28) and math.max(-4, math.min(4, floor(ey * 0.25 + (ey > 0 and 0.5 or -0.5)))) or 0
   if math.abs(ex) > 20 and dx == 0 then dx = ex > 0 and 1 or -1 end
   if math.abs(ey) > 28 and dy == 0 then dy = ey > 0 and 1 or -1 end
   if R.cam.y + dy < -300 then dy = -300 - R.cam.y end
@@ -893,7 +1208,7 @@ end
 -- A real "zoom the whole view in on the player" needs an actual engine
 -- rendering change; flagged in TODO.md rather than re-attempted here.
 function R.generateWorld(seed)
-  R.seed = seed or 7; R.tiles = {}; surfCache = {}; treeCache = {}
+  R.seed = seed or 7; R.tiles = {}; surfCache = {}; treeCache = {}; R.treeMoisture = {}
   -- a new world is a fresh start: nothing carries over
   R.inventory = {}; R.hotbar = {}; R.sel = 1; R.acc = {}; R.accOff = {}; R.accOwned = {}; R.deaths = 0
   R.TOOLS = { pick = { name="wood pick", power=1, reach=24, speed=8, radius=3 }, axe = { name="axe", power=1, reach=26, speed=6, radius=4, only={WOOD=1, PLNT=1, GRSS=1} },
@@ -918,7 +1233,7 @@ function R.generateWorld(seed)
   -- toolbar and bottom bar) was ONLY ever invoked manually from the Esc menu
   -- toggle -- never automatically at world start. R.tptMenus reading false by
   -- default is just an inert Lua variable; it never proved the real native
-  -- HUD calls actually fired. Drew: native menus visible unless he's actually
+  -- HUD calls actually fired. the owner: native menus visible unless he's actually
   -- in sandbox/build mode. Calling it for real here so the native UI state
   -- actually matches the RPG's own state from the first frame of play.
   pcall(R.setTptMenus, false)
@@ -929,6 +1244,15 @@ function R.generateWorld(seed)
   R.lastMine, R.lastPlace, R.lastSwing, R.lastHitAt, R.lastSunburnAt, R.hurt, R.shake, R.swingAt, R.blockHits = nil, nil, nil, nil, nil, nil, nil, nil, {}
   R.stations, R.torches, R.chests, R.oreCells = {}, {}, {}, nil; R.stats = { mined = {}, crafted = {}, chests = 0, maxDepth = 0 }; R.quest = 1
   R.radZones = {}   -- new world, new coordinates -- old contamination marks would be meaningless here (R.radAccum, the player's own dose, persists on purpose)
+  -- Same argument as R.radZones above, for the two world-coordinate-keyed tables that
+  -- were missed: R.treeHP is keyed by a packed absolute world coord, so a leftover
+  -- "this trunk already took 40 damage" entry silently applies to whatever brand-new
+  -- tree lands on that coord in the fresh world (it has no self-cleanup -- checkFell
+  -- only drops a key when that exact tree is fully felled, so partially-chopped trees
+  -- accumulate forever across regens). R.pendingAir ("wx,wy" -> delayed cavity
+  -- ventilation) does self-heal via pendingAirTick, but a stale entry can still
+  -- mis-prime R.ventilationAt for a cell that is solid rock in the new world.
+  R.treeHP = {}; R.pendingAir = {}
   R.lastMine = nil; R.lastSwing = nil; R.lastPlace = nil; R.lastHitAt = nil; R.blockHits = {}  -- frame-stamped cooldowns must reset with R.frame, or mining/chopping/placing stays dead after a new seed until the frame counter climbs back up
   if R.grid == nil then R.grid = true end  -- build grid on by default
   R.P.x = 0; R.P.y = surfaceAt(0) - 1; R.P.vx, R.P.vy = 0, 0
@@ -941,7 +1265,7 @@ function R.generateWorld(seed)
   end
   say("World " .. R.seed .. "  " .. (MAP_TYPE_LABEL[R.mapType or "mixed"] or "Mixed") .. ".  Esc = menu & controls")
   R.setMenuOpen(R.tipsOn ~= false)
-  if wantSandbox then R.sandbox = true; pcall(R.sandboxFill); say("SANDBOX: everything unlocked") end
+  if wantSandbox then R.sandbox = true; pcall(R.sandboxFill); pcall(R.setTptMenus, true); say("SANDBOX: everything unlocked + TPT menus on") end
   if R.releaseMouse then R.releaseMouse() end
   R._placeGraceUntil = (R.frame or 0) + 48
 end
@@ -996,7 +1320,7 @@ function R._resetSpawnState()
   R.o2 = 100
   if R.gas then R.gas.co = 0; R.gas.co2 = 0; R.gas.ch4 = 0; R.gas.rad = 0; R.gas.heat = 0 end
   if R.need then R.need.food = 100; R.need.water = 100 end
-  R.hurt = nil; R.bloodLast = nil; R.uvAccum = 0; R.radAccum = 0
+  R.hurt = nil; R.bloodLast = nil; R.bloodSprayLeft = 0; R.lastBloodBurst = nil; R.uvAccum = 0; R.radAccum = 0
 end
 -- Companion teleport + spawn-area clear. v1.15.7 added both inline to
 -- R.spawnPlayer() body (F1 companion teleport at the time, F8 R.clearAround()),
@@ -1037,6 +1361,8 @@ local function movePlayer()
   -- freeze the character too instead of quietly still walking/jumping around while
   -- everything else in the world stands still.
   if sim.paused() then return end
+  R._hpTickStart = R.hp or 100
+  R._bloodEligible = false   -- only falls/lava/combat set true; passive O2/poison/hunger must not spray BLD
   local P = R.P
   -- RIDING: a vehicle plugin owns movement while mounted; it sets R.ride.x/y each tick and we follow it
   if R.ride then
@@ -1099,7 +1425,7 @@ local function movePlayer()
   if P.onGround then
     if P.apex and not inWater then local fall = P.y - P.apex; local landVy = P.landVy or 0
       -- hurts only when you hit the ground fast: hovering/braking (jetpack, rocket boots) before impact makes any fall safe
-      if fall > 60 and landVy >= 3.8 and not (R.accOn("cloud") and fall < 90) then local dmg = floor((fall - 60) * 0.5); if dmg > 0 then R.hp = math.max(0, R.hp - dmg); R.hurt = R.frame; R.shake = { t = R.frame, mag = math.min(8, 2 + dmg / 5) }; say("Ouch! Fell " .. floor(fall / 4) .. "m (-" .. dmg .. " HP)") end end end
+      if fall > 60 and landVy >= 3.8 and not (R.accOn("cloud") and fall < 90) then local dmg = floor((fall - 60) * 0.5); if dmg > 0 then R.hp = math.max(0, R.hp - dmg); R.hurt = R.frame; R._bloodEligible = true; R.shake = { t = R.frame, mag = math.min(8, 2 + dmg / 5) }; say("Ouch! Fell " .. floor(fall / 4) .. "m (-" .. dmg .. " HP)") end end end
     P.apex = nil
     if P.vy > 0 then P.vy = 0 end; P.coyote = 6; P.dj = false; P.fuel = 45 else P.coyote = math.max(0, P.coyote - 1) end
   if math.abs(P.vx) > 0.2 and P.onGround then P.anim = (P.anim or 0) + 1 end
@@ -1107,7 +1433,7 @@ local function movePlayer()
     for yy = y + BOXT - 1, y do for xx = x + BOXL - 1, x + BOXR + 1 do local p = sim.partID(xx - R.cam.x, yy - R.cam.y)
       if p then local n = nameOf(sim.partProperty(p, "type")); local t = sim.partProperty(p, "temp") or 295
         if (n == "LAVA" or n == "FIRE" or n == "PLSM") then if not R.accOn("lava") then dmg = dmg + 3 end elseif n == "ACID" or n == "CAUS" then dmg = dmg + 2 elseif t > 500 and not R.accOn("lava") then dmg = dmg + 1 elseif n == "NEUT" then dmg = dmg + 1 end end end end
-    if dmg > 0 then R.hp = math.max(0, R.hp - dmg); R.hurt = R.frame end
+    if dmg > 0 then R.hp = math.max(0, R.hp - dmg); R.hurt = R.frame; R._bloodEligible = true end
     -- Ambient comfort commentary: a wider, non-damaging temperature sense
     -- (nearby fire/lava reads hot well before it's actually touching you)
     -- that only speaks up when you cross into a new tier, not on a timer,
@@ -1126,7 +1452,7 @@ local function movePlayer()
         elseif tier == "cold" then say("It's getting cold") end
       end
       R.comfortTier = tier
-      R.feltTempK = hottest   -- persistent top-left HUD readout reads this (drawn in the main draw function)
+      -- feltTempK owned by sampleEnvGradient (depth-column min/max); comfort scan is commentary only
     end
     -- OXYGEN as a real concentration, not a timer:
     -- breathable air comes from (a) open sky above you, (b) real OXYG particles nearby, (c) plants/machines
@@ -1139,10 +1465,15 @@ local function movePlayer()
       -- two off-grid, so breathing only "counted" when you happened to be standing
       -- exactly on a sample point -- reads as needing to be right on top of it.
       local o2p, bad, liq, cells = 0, 0, 0, 0
-      for oy = -14, 2 do for ox = -8, 8 do cells = cells + 1
-        local p = sim.partID(x + ox - R.cam.x, y + oy - R.cam.y)
-        if p then local n = nameOf(sim.partProperty(p, "type"))
-          if n == "OXYG" then o2p = o2p + 1 elseif BAD[n] then bad = bad + 1 end end
+      local BR = R.O2_BREATH_R or 48
+      local BCY = R.O2_BREATH_CY or -8
+      for oy = -BR, BR, 2 do for ox = -BR, BR, 2 do
+        if ox * ox + (oy + BCY) * (oy + BCY) <= BR * BR then
+          cells = cells + 1
+          local p = sim.partID(x + ox - R.cam.x, y + oy - R.cam.y)
+          if p then local n = nameOf(sim.partProperty(p, "type"))
+            if n == "OXYG" then o2p = o2p + 1 elseif BAD[n] then bad = bad + 1 end end
+        end
       end end
       -- you only drown when your HEAD is under: wading through shallow water is fine
       for oy = -12, -8 do local p = sim.partID(x - R.cam.x, y + oy - R.cam.y)
@@ -1166,25 +1497,38 @@ local function movePlayer()
       for _, s2 in ipairs(R.o2Sources or {}) do
         if math.abs(s2.x - R.P.x) < (s2.range or 60) and math.abs(s2.y - R.P.y) < (s2.range or 60) then src = src + (s2.rate or 20) end end
       R.o2conc = math.min(100, floor(o2p / math.max(1, cells) * 300))     -- measured O2 enrichment
+      local particleBreath = math.min(100, R.o2conc * 1.4)
       local target
-      -- the surface is free air; the deeper you go the thinner and staler it gets, so a deep base needs life support
+      -- Depth thinning: meaningful by ~200px (old curve needed 1000px+ to matter).
       local depth = R.P.y - surfaceAt(floor(R.P.x))
-      local thin = math.max(0, math.min(60, (depth - 140) / 900 * 60))
+      local thin = math.max(0, math.min(80, (depth - 20) / 200 * 80))
+      local pvent = (depth > 8 and R.ventilationAt) and R.ventilationAt(x, y) or 1
       if liq > 0 and (R.acc and R.accOn("dive")) ~= true then target = 0   -- underwater: nothing to breathe
       else
-        -- Confirmed live and by screenshot: a shallow (16m) sealed pocket was reading
-        -- "stale air" and draining almost immediately -- the sealed branch used to have
-        -- a flat baseline of 12, meaning ANY enclosed room (a house, a shallow dug-out,
-        -- a shed) was treated as near-vacuum regardless of depth. That's backwards: a
-        -- sealed room already has whatever air was in it when it was sealed, and this
-        -- should only turn genuinely dangerous far underground, exactly the reported
-        -- expectation. Both branches now start from the same depth-only baseline
-        -- (thin=0 near the surface -> ~100 either way); sealing only adds an EXTRA
-        -- depth-scaled penalty on top (worse the deeper you are, ~0 near the surface),
-        -- instead of an instant, depth-independent floor.
         local base = 100 - thin + src
-        if sealed then target = math.max(0, base - thin * 0.7 - bad * 12 + R.o2conc * 1.2)
-        else target = base end
+        if sealed then
+          -- Sealed pocket: small trapped reservoir; real OXYG particles or ventilation refill it.
+          local pocket = math.max(0, 24 - thin * 0.4 - bad * 10)
+          target = math.max(pocket, particleBreath * 0.55)
+        else
+          target = base
+        end
+        -- Freshly mined / unventilated cavities: stale air, NOT full target (bug was stale=target when sealed).
+        -- Skip when real OXYG particles are already in the breath circle — visible bubbles ARE breathable air.
+        if depth > 8 and pvent < 1 and particleBreath < 18 then
+          local stale = base * 0.28 + particleBreath * 0.85
+          if sealed and particleBreath < 12 then stale = math.min(stale, 10 + particleBreath * 1.2) end
+          target = stale + (target - stale) * pvent
+        end
+        -- Deep with no visible OXYG and no shaft vent: meter cannot stay "fine".
+        if depth > 40 and R.o2conc < 4 and pvent < 0.35 then
+          target = math.min(target, 6 + R.o2conc * 2 + pvent * 25)
+        end
+        -- Measured OXYG must not lose to abstract vent/stale math (shallow hole + bubbles bug).
+        if particleBreath >= 10 then
+          local pf = particleBreath * (depth < 50 and 0.92 or 0.82)
+          target = math.max(target, pf)
+        end
       end
       R.o2 = R.o2 or 100
       local rate = (target > R.o2) and 3 or ((liq > 0) and 1.6 or 0.9)
@@ -1211,7 +1555,7 @@ local function movePlayer()
       -- that's what makes "dig a hole to the surface and oxygen pools in" actually true
       -- instead of an illusion.
       local OXYG_CAP = 220
-      if liq == 0 and R.frame % 5 == 0 and countType("OXYG") < OXYG_CAP then
+      if liq == 0 and R.frame % 5 == 0 and o2OnScreenCount() < OXYG_CAP and depth < 50 then
         for i = 1, 6 do
           local sx = math.random(2, W - 3)
           local wx = sx + R.cam.x
@@ -1225,9 +1569,12 @@ local function movePlayer()
           -- it directly into a spot it can't easily get back out of.
           local wy = surfY - math.random(2, 8)
           local sy = wy - R.cam.y
+          if R.nearestTreeDrain and R.nearestTreeDrain(wx, wy) then goto o2_spawn_next end
+          if R.treeShadeDrain and R.treeShadeDrain(wx, wy) then goto o2_spawn_next end
           if sy >= 2 and sy < H - 2 and not sim.partID(sx, sy) then
             local e = eid("OXYG"); if e then sim.partCreate(-1, sx, sy, e) end
           end
+          ::o2_spawn_next::
         end
       end
       -- Real positive atmospheric pressure at the surface, not just a low-pressure dip
@@ -1247,7 +1594,7 @@ local function movePlayer()
           if sy >= 2 and sy < H - 2 and not solidW(sx + R.cam.x, wy) then
             local cx, cy = floor(sx / sim.CELL), floor(sy / sim.CELL)
             local ok, cur = pcall(sim.pressure, cx, cy)
-            if ok and cur < 3 then pcall(sim.pressure, cx, cy, math.min(3, cur + 1)) end
+            if ok and cur < 5.5 then pcall(sim.pressure, cx, cy, math.min(5.5, cur + 1.2)) end
           end
         end
       end
@@ -1268,23 +1615,57 @@ local function movePlayer()
       -- particle, not the player-collision table. Also switched from randomly sampling
       -- 10 of potentially hundreds of thousands of on-screen pixels (near-zero odds of
       -- ever landing on a real OXYG particle) to actually scanning live OXYG particles.
-      if R.frame % 60 == 0 then
-        local oxid = eid("OXYG")
-        if oxid then
-          local released = 0
+      if R.frame % 45 == 0 then
+        local released = 0
+        for _, gasNm in ipairs({"OXYG", "CO2"}) do
+          local gasid = eid(gasNm)
+          if not gasid then goto gas_next end
           for i in sim.parts() do
-            if released >= 20 then break end
-            if sim.partProperty(i, "type") == oxid then
-              local sx, sy = sim.partPosition(i)
-              sx, sy = floor(sx), floor(sy)
-              local blocked = 0
-              for _, d in ipairs({{1,0},{-1,0},{0,1},{0,-1}}) do
-                local q = sim.partID(sx + d[1], sy + d[2])
-                if q and realSolid(sim.partProperty(q, "type")) then blocked = blocked + 1 end
-              end
-              if blocked >= 3 then sim.partKill(i); released = released + 1 end
+            if released >= 28 then break end
+            if sim.partProperty(i, "type") ~= gasid then goto part_next end
+            local sx, sy = sim.partPosition(i)
+            sx, sy = floor(sx), floor(sy)
+            local wx, wy = sx + R.cam.x, sy + R.cam.y
+            local blocked = 0
+            for _, d in ipairs({{1,0},{-1,0},{0,1},{0,-1}}) do
+              local q = sim.partID(sx + d[1], sy + d[2])
+              if q and realSolid(sim.partProperty(q, "type")) then blocked = blocked + 1 end
             end
+            if blocked >= 2 then
+              local shade = R.treeShadeDrain and R.treeShadeDrain(wx, wy)
+              local nvx, nvy
+              if shade and shade.hollowCol then
+                local hx = shade.hollowCol - R.cam.x
+                nvx = (hx - sx) * 0.4
+                nvy = -2.8 - math.random() * 1.5
+              elseif blocked >= 3 then
+                nvy = -2.5 - math.random() * 1.5
+                nvx = (sim.partProperty(i, "vx") or 0) * 0.5 + (math.random() - 0.5) * 2.2
+              end
+              if nvx then
+                -- SAWDUST ROOT CAUSE (2026-08-31). Native TPT turns WOOD into SAWD wherever a
+                -- particle collides with it at speed > 5 (Simulation.cpp: `if (vel > 5)
+                -- part_change_type(..., PT_SAWD)`). Nothing in this codebase creates SAWD at all,
+                -- which is why grepping our own Lua for a sawdust source finds nothing.
+                -- The hollow-column nudge here is distance-proportional and was unbounded: venting
+                -- a pocket ~13px from its tree's hollow column gives vx = 5.2 on its own, ~6.4 once
+                -- combined with vy. So the code written to route oxygen AROUND trunks was blasting
+                -- those same trunks into sawdust. Measured live before this fix: the fastest
+                -- particles anywhere in the world were OXYG at 4.24-4.62, with nothing else above
+                -- 0.01 -- consistent with the observed idle-play drift of WOOD -30 / SAWD +29.
+                -- Clamp total speed well under the threshold: this is meant to be a vent, not a
+                -- jet, and gas flung at near-destructive speed ricochets instead of diffusing
+                -- between trunks the way it's supposed to.
+                local mag = math.sqrt(nvx * nvx + nvy * nvy)
+                if mag > 3.2 then nvx, nvy = nvx * 3.2 / mag, nvy * 3.2 / mag end
+                sim.partProperty(i, "vx", nvx)
+                sim.partProperty(i, "vy", nvy)
+                released = released + 1
+              end
+            end
+            ::part_next::
           end
+          ::gas_next::
         end
       end
       -- Breathing consumes real oxygen particles when they're in range, always -- not
@@ -1296,6 +1677,7 @@ local function movePlayer()
         for oy = -12, 0 do for ox = -6, 6 do local sx, sy = x + ox - R.cam.x, y + oy - R.cam.y; local p = sim.partID(sx, sy)
           if p and nameOf(sim.partProperty(p, "type")) == "OXYG" then
             sim.partKill(p)
+            R.o2 = math.min(100, (R.o2 or 50) + 7)   -- inhaling a real OXYG particle refills the meter
             -- Exhaled CO2: breathing in real O2 breathes real CO2 back out, right where you're
             -- standing. In a sealed space this is what actually makes staying put dangerous over
             -- time (CO2 sinks -- see the H2/GAS/CO2 gravity notes above -- so it pools at your feet
@@ -1471,6 +1853,26 @@ local function movePlayer()
   end
 end
 local TOOLCOL = { pick={180,180,190}, axe={170,120,60}, sword={220,220,240}, torch={255,180,60}, bucket={150,150,160} }
+local function drawO2BreathField()
+  if not R.hud or R.titleScreen or R.menuOpen or R.invOpen then return end
+  local fx, fy = floor(R.P.x) - R.cam.x, floor(R.P.y) - R.cam.y
+  local BR = R.O2_BREATH_R or 48
+  local cx, cy = fx, fy + (R.O2_BREATH_CY or -8)
+  local pulse = 0.55 + 0.45 * math.sin((R.frame or 0) / 30)
+  local fillA = floor(14 + 18 * pulse)
+  local edgeA = floor(65 + 50 * pulse)
+  pcall(graphics.fillCircle, cx, cy, BR, BR, 30, 120, 200, fillA)
+  pcall(graphics.drawCircle, cx, cy, BR, BR, 70, 170, 255, edgeA)
+  local BCY = R.O2_BREATH_CY or -8
+  for oy = -BR, BR, 3 do for ox = -BR, BR, 3 do
+    if ox * ox + (oy + BCY) * (oy + BCY) <= BR * BR then
+      local p = sim.partID(fx + ox, fy + oy)
+      if p and nameOf(sim.partProperty(p, "type")) == "OXYG" then
+        graphics.fillRect(fx + ox - 1, fy + oy - 1, 3, 3, 100, 210, 255, floor(90 + 70 * pulse))
+      end
+    end
+  end end
+end
 local function drawPlayer()
   local P = R.P; local x, y = floor(P.x) - R.cam.x, floor(P.y) - R.cam.y; local f = P.face
   if R.shake and R.frame - R.shake.t < 14 then local m = R.shake.mag * (1 - (R.frame - R.shake.t) / 14); x = x + floor((math.random() - 0.5) * 2 * m); y = y + floor((math.random() - 0.5) * 2 * m)
@@ -1672,7 +2074,7 @@ R.stats = R.stats or { mined = {}, crafted = {}, chests = 0, maxDepth = 0 }
 local function give(el, n) R.inventory[el] = inv(el) + n; if n > 0 then R.stats.mined[el] = (R.stats.mined[el] or 0) + n; runHooks(R.hooks.mine, el, n) end end
 R.inv, R.give = inv, give
 local TOOLSLOTS = { "tool:pick", "tool:axe", "tool:sword", "tool:torch", "tool:bucket" }
-function R.rebuildHotbar()
+function R.rebuildHotbarNow()
   R.hotbar = R.hotbar or {}
   for s = 1, 5 do R.hotbar[s] = TOOLSLOTS[s] end
   local seen = {}; for s = 6, 10 do local v = R.hotbar[s]; if v and not v:find("^tool:") then seen[v] = true else R.hotbar[s] = nil end end
@@ -1680,6 +2082,7 @@ function R.rebuildHotbar()
   for s = 6, 10 do if not R.hotbar[s] then R.hotbar[s] = table.remove(names, 1) end end
   R.sel = R.sel or 1
 end
+function R.rebuildHotbar() R._hotbarDirty = true end
 local function selected() return (R.hotbar or {})[R.sel or 1] end
 local function canAfford(need) if R.sandbox then return true end; for el, n in pairs(need) do if inv(el) < n then return false end end; return true end
 local function spend(need) if R.sandbox then return end; for el, n in pairs(need) do R.inventory[el] = inv(el) - n end end
@@ -1711,7 +2114,7 @@ local RUBBLE = { GRNT="STNE", BRCK="STNE", STEL="STNE", TTAN="STNE", METL="STNE"
 -- chip of trunk or canopy left behind by a chop that broke the tree's flood-fill
 -- connectivity (see R.fellFrom) has to be swept away outright instead of converted.
 local WOODY = { WOOD = true, GRSS = true }
-local MAX_CLUMP = 5            -- only genuinely tiny floating fragments (5 cells or fewer) are unsupported
+-- only genuinely tiny floating fragments (5 cells or fewer) are unsupported (inlined below)
 -- MAX_CLUMP makes sense for RUBBLE (a small floating rock chip vs a big cliff that's
 -- clearly still structurally sound) but not for WOODY -- a chopped tree's whole
 -- leftover canopy is easily 100+ cells and has zero self-support at ANY size, so
@@ -1719,8 +2122,48 @@ local MAX_CLUMP = 5            -- only genuinely tiny floating fragments (5 cell
 -- (confirmed the actual cause of "chopped the tree but the canopy's still there"
 -- alongside the fellFrom connectivity gap above). Pure-woody clumps use a much
 -- higher practical cap instead of none, just to bound one scan's worst case.
-local MAX_WOODY_CLUMP = 4000
+-- woody clumps up to 4000 cells are a standing tree, not debris (inlined below)
 local function crumbleOk(nm) return nm and (RUBBLE[nm] or WOODY[nm]) end
+-- Standing trees are < MAX_WOODY_CLUMP cells, so the old crumble path treated an
+-- entire rooted oak as "unsupported debris" whenever crumble ran nearby (dig
+-- ventilation, actorMine, axe chips) and partKill'd the whole trunk/canopy --
+-- reads as sawdust/DUST in the sim. Only crumble woody clumps that no longer have
+-- a WOOD column reaching the surface (orphaned canopy after a trunk cut).
+-- FIXED 2026-08-30 (@systems). Confirmed live failure: R.crumble fired directly at a living,
+-- surface-supported trunk destroyed 397 WOOD against a limit of 25, because this predicate
+-- answered "no support" for a perfectly rooted tree. Two independent reasons, both from the
+-- old rule "there must be an unbroken column of pure WOOD from this cell down to the surface
+-- row":
+--   1. A trunk RESTS ON topsoil -- its lowest WOOD cell sits on GOO/rock. Descending from a
+--      trunk cell therefore hits a non-WOOD particle and the old code treated that as failure
+--      (`break`), even though hitting solid ground is the strongest possible proof of support.
+--   2. GRSS is woody per the WOODY table and real grass/leaf cells occur in and around the
+--      trunk base, so the strict `type ~= wood` test aborted the descent mid-trunk.
+-- The physically correct question is "is this woody mass resting on something solid", not "is
+-- it made of an unbroken wood column". So: walk DOWN through the clump's own woody material,
+-- and if we reach any non-woody particle we are resting on it -> supported. Only genuinely
+-- open air below (`not p`) still means unsupported, which is exactly the orphaned-canopy case
+-- this guard exists to allow crumbling, so that feature is preserved.
+-- Bias is deliberately conservative (anything solid-ish below counts, including liquids): the
+-- failure being fixed is over-destruction of the owner's real trees, so a false "supported" merely
+-- leaves debris standing, while a false "unsupported" deletes a living tree.
+local function woodyHasTrunkSupport(cells)
+  local wood = eid("WOOD"); if not wood then return false end
+  for _, c in ipairs(cells) do
+    local x, y = c[1], c[2]
+    for dx = -2, 2 do
+      local col = x + dx
+      for sy = y, H - M - 1 do
+        local p = sim.partID(col, sy)
+        if not p then break end                                   -- open air below: this column holds nothing up
+        if not WOODY[nameOf(sim.partProperty(p, "type"))] then return true end  -- resting on real ground
+        local wy = sy + R.cam.y
+        if wy >= surfaceAt(col + R.cam.x) - 1 then return true end
+      end
+    end
+  end
+  return false
+end
 function R.crumble(cx, cy, rad)
   local x0, y0 = math.max(M, cx - rad), math.max(M, cy - rad)
   local x1, y1 = math.min(W - M - 1, cx + rad), math.min(H - M - 1, cy + rad)
@@ -1742,12 +2185,12 @@ function R.crumble(cx, cy, rad)
             if q and crumbleOk(nameOf(sim.partProperty(q, "type"))) then
               seen[k] = true; cells[#cells + 1] = { ax, ay, q }
               if not WOODY[nameOf(sim.partProperty(q, "type"))] then allWoody = false end
-              if #cells > (allWoody and MAX_WOODY_CLUMP or MAX_CLUMP) then big = true; break end
+              if #cells > (allWoody and 4000 or 5) then big = true; break end
               for dy = -1, 1 do for dx = -1, 1 do stack[#stack + 1] = { ax + dx, ay + dy } end end
             end
           end
         end
-        if not big and #cells > 0 then
+        if not big and #cells > 0 and not (allWoody and woodyHasTrunkSupport(cells)) then
           for _, c in ipairs(cells) do local q = c[3]
             if sim.partExists(q) then local n2 = nameOf(sim.partProperty(q, "type"))
               if WOODY[n2] then sim.partKill(q); if n2 == "WOOD" then give("WOOD", 1) end; broke = broke + 1
@@ -1802,6 +2245,7 @@ function R.updateFalling()
   end
 end
 local checkFell   -- forward declaration: useTool calls it after a chop (defined below)
+local nudgeLiquidsNear   -- forward: useTool calls after mining (defined below)
 local function smartTarget(mx, my, reach, only, power)  -- first mineable block along the ray player -> cursor (Terraria smart cursor)
   local px, py = pcanvas(); local dx, dy = mx - px, my - py; local d = math.sqrt(dx*dx + dy*dy); if d < 1 then return nil end
   local ux, uy = dx / d, dy / d; local maxd = math.min(math.max(d, 10), reach)
@@ -1822,7 +2266,15 @@ local function useTool(mx, my, fine)
   elseif not inReach(mx, my, tool.reach) then R.hint = "out of reach"; return end
   if key == "pick" or key == "axe" then
     if (R.frame - (R.lastMine or -99)) < tool.speed then return end; R.lastMine = R.frame
-    local got = {}; local r = fine and (R.brush or 0) or (tool.radius or 3); local blocked; local chipped = 0
+    local got = {}; local r = fine and (R.brush or 0) or (tool.radius or 3); local blocked; local chipped = 0; local dug = false; local hadAdjLiq = false; local digQueued = false
+    local LIQUID_DIG = { WATR=1, DSTW=1, SLTW=1, OIL=1, BLD=1 }
+    local function digAdjacentLiquid(cx, cy)
+      for _, d in ipairs({{0,1},{0,-1},{1,0},{-1,0}}) do
+        local q = sim.partID(cx + d[1], cy + d[2])
+        if q and LIQUID_DIG[nameOf(sim.partProperty(q, "type"))] then return true end
+      end
+      return false
+    end
     R.lastHitAt = R.frame; R.swingAt = { mx, my, R.frame }
     for y = my-r, my+r do for x = mx-r, mx+r do local p = sim.partID(x, y)
       if p and (x-mx)^2 + (y-my)^2 <= r*r + 1 then local nm = nameOf(sim.partProperty(p, "type")); local tier = R.MINEABLE[nm]
@@ -1830,7 +2282,7 @@ local function useTool(mx, my, fine)
           if tier > tool.power + 1 then blocked = nm
           else local need = fine and 1 or math.max(1, (R.HARD[nm] or 3) - (tool.power - tier)); if tier > tool.power then need = need * 2 end
             local hits = (R.blockHits[p] or 0) + 1      -- per particle: ids are stable across camera shifts
-            if hits >= need then R.blockHits[p] = nil; sim.partKill(p); local item = (nm == "BCOL") and "COAL" or nm; give(item, 1); got[item] = (got[item] or 0) + 1
+            if hits >= need then R.blockHits[p] = nil; sim.partKill(p); local item = (nm == "BCOL") and "COAL" or nm; give(item, 1); got[item] = (got[item] or 0) + 1; dug = true
               -- Real negative pressure, not scripted particle spawning: the previous
               -- attempt (spawn an OXYG particle on ~55% of hits) called an O(particle
               -- count) scan PER DESTROYED CELL inside this radius loop -- fine for one
@@ -1843,13 +2295,29 @@ local function useTool(mx, my, fine)
               -- pressure range goes to -256, so -2 was barely a ripple. Bumped to a real,
               -- immediately-felt pull; still self-limiting since the sim's own physics
               -- equalizes it back out over time rather than staying a permanent vacuum.
-              pcall(sim.pressure, floor(x / sim.CELL), floor(y / sim.CELL), -8)
+              -- Full -8 beside liquid was yanking water upward into mined air pockets
+              -- (reads as floating midair). Ease off when a liquid neighbor exists.
+              -- v1.15.41: queue delayed ventilation instead of instant full vacuum.
+              if R.queuePendingAir then
+                local nearLiq = digAdjacentLiquid(x, y)
+                hadAdjLiq = nearLiq or hadAdjLiq
+                if not digQueued then
+                  R.queuePendingAir(x + R.cam.x, y + R.cam.y, nearLiq)
+                  digQueued = true
+                end
+              else
+                local pcx, pcy = floor(x / sim.CELL), floor(y / sim.CELL)
+                pcall(sim.pressure, pcx, pcy, digAdjacentLiquid(x, y) and -2 or -8)
+              end
             else R.blockHits[p] = hits; chipped = chipped + 1 end end end end end end
     -- every swing near a trunk damages the tree, even once the aim point is already hollow
-    if key == "axe" or key == "pick" then pcall(checkFell, mx, my, (key == "axe") and 1.4 or 0.55) end
-    pcall(R.crumble, mx, my, (tool.radius or 3) + 2)
+    if key == "axe" then pcall(checkFell, mx, my, 1.4) end
+    if dug and hadAdjLiq then pcall(nudgeLiquidsNear, mx + R.cam.x, my + R.cam.y, math.min(r + 3, 6)) end
+    if dug and key == "axe" and (got.WOOD or got.GRSS or got.PLNT) then pcall(R.crumble, mx, my, (tool.radius or 3) + 2) end
     local t = {}; for k, v in pairs(got) do t[#t+1] = "+" .. v .. " " .. nice(k) end
-    if #t > 0 then R.hint = table.concat(t, "  ") .. (chipped > 0 and "  (chipping...)" or ""); R.rebuildHotbar()
+    if #t > 0 then
+      R.hint = table.concat(t, "  ") .. (chipped > 0 and "  (chipping...)" or "")
+      if (R.frame - (R._hotbarHintAt or -999)) > 8 then R.rebuildHotbar(); R._hotbarHintAt = R.frame end
     elseif chipped > 0 then R.hint = "chipping..." elseif blocked then R.hint = nice(blocked) .. " needs a better pick" end
   elseif key == "sword" then
     if (R.frame - (R.lastSwing or -99)) < tool.speed then return end; R.lastSwing = R.frame
@@ -1896,7 +2364,6 @@ end
 R.buildStation = buildStation
 -- TREE FELLING: cutting enough of a trunk collapses everything the tree was holding up.
 -- Flood-fills the connected WOOD/GRSS/PLNT above the cut, checks it is no longer supported, then drops it as real falling particles.
-local FELL_MAX = 6000
 function R.fellFrom(cx, cy)
   local wood, leaf = eid("WOOD"), eid("GRSS") or eid("PLNT")
   if not wood then return 0 end
@@ -1988,20 +2455,19 @@ function checkFell(mx, my, power)   -- Terraria model: the trunk has HP; only th
   if hp <= 0 then R.treeHP[key] = nil; R.fellFrom(hx, base - 1) end
 end
 R.checkFell = checkFell
--- Native TPT brush (Tab / options menu / HUD wheel) is the source of truth.
--- Survival placeAt used to ignore it and keep a private 0-4 square, so changing
--- the brush in the menu did nothing in-game. These must run inside a real
--- interface event (onTick / onKey / onWheel) -- tpt.brushID/brushRadius assert that.
+-- Native TPT brush radius (and optionally shape) sync. tpt.brushID/brushRadius
+-- assert eventTraitInterface -- KEY/MOUSE/WHEEL only, never onTick/placeAt.
+-- RPG placement uses cached R.brushShape + R.brushHit; V/Tab own shape locally.
 local BRUSH_ID = { circle = 0, square = 1, triangle = 2 }
 local BRUSH_NAME = { [0] = "circle", [1] = "square", [2] = "triangle" }
 local BRUSH_R_MAX = 40
-function R.pullNativeBrush()
-  -- tpt.brushID / brushRadius assert eventTraitInterface. TICK does not have
-  -- it; KEY/MOUSE/WHEEL do. Only call this from those handlers.
+function R.pullNativeBrush(shapeToo)
+  -- shapeToo=false: sync radius only (mouse-move) so V/Tab shape isn't stomped.
+  if shapeToo == nil then shapeToo = true end
   local ok, id = pcall(tpt.brushID)
   local ok2, rx, ry = pcall(tpt.brushRadius)
   R._brushPullErr = (not ok and tostring(id)) or (not ok2 and tostring(rx)) or nil
-  if ok and type(id) == "number" then
+  if shapeToo and ok and type(id) == "number" then
     R.brushShape = BRUSH_NAME[id] or "circle"
     R._nativeBrushId = id
   end
@@ -2044,45 +2510,136 @@ function R.brushHit(x, y, mx, my, rx, ry, shape)
   end
   return true
 end
+function R.brushShellHit(x, y, mx, my, rx, ry, shape)
+  if not R.brushHit(x, y, mx, my, rx, ry, shape) then return false end
+  local irx, iry = math.max(0, rx - 1), math.max(0, ry - 1)
+  if irx <= 0 and iry <= 0 then return true end
+  return not R.brushHit(x, y, mx, my, irx, iry, shape)
+end
+local function isPlaceableBlock(el)
+  return el and not el:find("^tool:") and not R.ITEMS[el]
+end
+local function shiftBuildMode()
+  return R.shiftHeld and isPlaceableBlock(selected())
+end
+local function placeCommitContext(el)
+  local t = eid(el == "COAL" and has("BCOL") and "BCOL" or el)
+  if not t then return nil end
+  return t, R.P.x - R.cam.x, R.P.y - R.cam.y
+end
+local function stampBrushAt(mx, my, el, t, px, py, fine)
+  local rx = fine and 0 or (R.brushRx or R.brush or 1)
+  local ry = fine and 0 or (R.brushRy or R.brush or 1)
+  local shape = R.brushShape or "square"
+  local hitFn = R.brushShell and R.brushShellHit or R.brushHit
+  local g = R.gridSize or 4
+  local x1, y1, x2, y2 = mx - rx, my - ry, mx + rx, my + ry
+  if R.grid or R.ctrlHeld or R.shiftHeld then
+    local gx = floor((mx + R.cam.x) / g) * g - R.cam.x
+    local gy = floor((my + R.cam.y) / g) * g - R.cam.y
+    x1, y1, x2, y2 = gx - g * rx, gy - g * ry, gx + g * rx + g - 1, gy + g * ry + g - 1
+  end
+  local placed = 0
+  for yy = y1, y2 do for xx = x1, x2 do
+    if hitFn(xx, yy, mx, my, rx, ry, shape) then
+      local inPlayer = xx >= px + BOXL - 1 and xx <= px + BOXR + 1 and yy >= py + BOXT - 1 and yy <= py
+      if inv(el) > 0 and not sim.partID(xx, yy) and not inPlayer then
+        local n = sim.partCreate(-1, xx, yy, t)
+        if n and n >= 0 then R.inventory[el] = inv(el) - 1; placed = placed + 1; setMoltenTemp(n, el) end
+      end
+    end
+  end end
+  return placed
+end
+local function snapLineEnd(ax, ay, mx, my)
+  if math.abs(mx - ax) >= math.abs(my - ay) then return mx, ay else return ax, my end
+end
+local function commitLine(mx, my)
+  local el = selected(); if not el or el:find("^tool:") or R.ITEMS[el] then return end
+  if inv(el) <= 0 then return end
+  local t, px, py = placeCommitContext(el); if not t then return end
+  local ax, ay = mx, my
+  if R.placeAnchor then ax, ay = R.placeAnchor[1], R.placeAnchor[2] end
+  mx, my = snapLineEnd(ax, ay, mx, my)
+  local placed = 0
+  local cx, cy = ax, ay
+  local dx, dy = math.abs(mx - ax), math.abs(my - ay)
+  local sx = ax < mx and 1 or -1
+  local sy = ay < my and 1 or -1
+  local err = dx - dy
+  while true do
+    placed = placed + stampBrushAt(cx, cy, el, t, px, py, false)
+    if cx == mx and cy == my then break end
+    local e2 = 2 * err
+    if e2 > -dy then err = err - dy; cx = cx + sx end
+    if e2 < dx then err = err + dx; cy = cy + sy end
+  end
+  if placed > 0 then R.hint = "placed " .. nice(el) .. (R.brushShell and " (shell)" or "") end
+end
+local function commitRect(mx, my)
+  local el = selected(); if not el or el:find("^tool:") or R.ITEMS[el] then return end
+  if inv(el) <= 0 then return end
+  local t, px, py = placeCommitContext(el); if not t then return end
+  local ax, ay = mx, my
+  if R.placeAnchor then ax, ay = R.placeAnchor[1], R.placeAnchor[2] end
+  local x1, y1 = math.min(ax, mx), math.min(ay, my)
+  local x2, y2 = math.max(ax, mx), math.max(ay, my)
+  local shape = R.brushShape or "square"
+  local placed = 0
+  if shape == "circle" then
+    local rcx, rcy = (x1 + x2) / 2, (y1 + y2) / 2
+    local erx = math.max(1, (x2 - x1) / 2)
+    local ery = math.max(1, (y2 - y1) / 2)
+    for yy = y1, y2 do for xx = x1, x2 do
+      local ndx = (xx - rcx) / erx
+      local ndy = (yy - rcy) / ery
+      if ndx * ndx + ndy * ndy <= 1.001 then
+        local inPlayer = xx >= px + BOXL - 1 and xx <= px + BOXR + 1 and yy >= py + BOXT - 1 and yy <= py
+        if inv(el) > 0 and not sim.partID(xx, yy) and not inPlayer then
+          local n = sim.partCreate(-1, xx, yy, t)
+          if n and n >= 0 then R.inventory[el] = inv(el) - 1; placed = placed + 1; setMoltenTemp(n, el) end
+        end
+      end
+    end end
+  else
+    for yy = y1, y2 do for xx = x1, x2 do
+      local inPlayer = xx >= px + BOXL - 1 and xx <= px + BOXR + 1 and yy >= py + BOXT - 1 and yy <= py
+      if inv(el) > 0 and not sim.partID(xx, yy) and not inPlayer then
+        local n = sim.partCreate(-1, xx, yy, t)
+        if n and n >= 0 then R.inventory[el] = inv(el) - 1; placed = placed + 1; setMoltenTemp(n, el) end
+      end
+    end end
+  end
+  if placed > 0 then R.hint = "placed " .. nice(el) .. " region" end
+end
 local function placeAt(mx, my, fine)
   local el = selected(); if not el or el:find("^tool:") then R.hint = "pick a block (palette or slots 6-0) to place"; return end
   if inv(el) <= 0 then R.hint = "none left"; return end
   if runHooks(R.hooks.place, el, mx, my, fine) then return end   -- a plugin handled this item
   if R.ITEMS[el] then if (R.frame - (R.lastPlace or -99)) < 20 then return end; R.lastPlace = R.frame; R.inventory[el] = inv(el) - 1; buildStation(el, mx, my); R.mouse.r = false; return end
-  if not fine and not inReach(mx, my, 30) then R.hint = "out of reach"; return end
+  if shiftBuildMode() then fine = false end   -- Shift+block: full native brush (circle/square/triangle), not 1px zoom mode
+  if not fine and not inReach(mx, my, 30) and not shiftBuildMode() then R.hint = "out of reach"; return end
   if (R.frame - (R.lastPlace or -99)) < 2 then return end; R.lastPlace = R.frame
-  R.pullNativeBrush()
-  local t = eid(el == "COAL" and has("BCOL") and "BCOL" or el); if not t then return end
-  local placed = 0; local px, py = R.P.x - R.cam.x, R.P.y - R.cam.y
-  local rx = fine and 0 or (R.brushRx or R.brush or 1)
-  local ry = fine and 0 or (R.brushRy or R.brush or 1)
-  local shape = R.brushShape or "square"
-  -- CTRL+SHIFT together: box mode -- track the anchor only, the whole rectangle
-  -- is filled once on release (see onMouseUp/commitBox), not per-tick like a line.
+  local t, px, py = placeCommitContext(el); if not t then return end
+  -- Native TPT draw modes: Ctrl+drag = ellipse/box on release, Shift+drag = line on release,
+  -- Ctrl+Shift = flood box on release. Per-tick stamping along a locked axis was overlapping
+  -- full brush circles every frame and made walls far thicker than intended.
   if R.ctrlHeld and R.shiftHeld then
     if not R.placeAnchor then R.placeAnchor = { mx, my }; R.placeBox = true end
+    R.placeRect = false; R.placeLine = false
     return
   end
-  -- CTRL or SHIFT alone: snap to the grid and lock to a straight line from where
-  -- the stroke began (fast walls and floors) -- SHIFT does the same thing CTRL
-  -- already did, since "Shift-drag to draw a line" was the actual reported gesture.
-  if R.ctrlHeld or R.shiftHeld then
-    if not R.placeAnchor then R.placeAnchor = { mx, my } end
-    local ax, ay = R.placeAnchor[1], R.placeAnchor[2]
-    if math.abs(mx - ax) >= math.abs(my - ay) then my = ay else mx = ax end
+  if R.ctrlHeld then
+    if not R.placeAnchor then R.placeAnchor = { mx, my }; R.placeRect = true end
+    R.placeBox = false; R.placeLine = false
+    return
   end
-  local g = R.gridSize or 4
-  local x1, y1, x2, y2 = mx - rx, my - ry, mx + rx, my + ry
-  if R.grid or R.ctrlHeld then
-    local gx = floor((mx + R.cam.x) / g) * g - R.cam.x; local gy = floor((my + R.cam.y) / g) * g - R.cam.y
-    x1, y1, x2, y2 = gx - g*rx, gy - g*ry, gx + g*rx + g - 1, gy + g*ry + g - 1
+  if R.shiftHeld then
+    if not R.placeAnchor then R.placeAnchor = { mx, my }; R.placeLine = true end
+    R.placeBox = false; R.placeRect = false
+    return
   end
-  for y = y1, y2 do for x = x1, x2 do
-    if R.brushHit(x, y, mx, my, rx, ry, shape) then
-      local inPlayer = x >= px + BOXL - 1 and x <= px + BOXR + 1 and y >= py + BOXT - 1 and y <= py
-      if inv(el) > 0 and not sim.partID(x, y) and not inPlayer then local n = sim.partCreate(-1, x, y, t); if n and n >= 0 then R.inventory[el] = inv(el) - 1; placed = placed + 1; setMoltenTemp(n, el) end end
-    end
-  end end
+  local placed = stampBrushAt(mx, my, el, t, px, py, fine)
   if placed > 0 then R.hint = "placed " .. nice(el); if inv(el) <= 0 then R.hint = "placed " .. nice(el) .. " - none left"; R.mouse.r = false end end
 end
 -- release point, committed once (not per-tick) so it doesn't burn through
@@ -2110,14 +2667,38 @@ end
 
 -- ================================================================ input (unhandled keys/clicks fall through to TPT: Z zoom etc.)
 R.mouse = R.mouse or {x=0, y=0, l=false, r=false}
--- BUILD MODE: while the TPT zoom window is locked open and the mouse is inside it, every mouse event goes to TPT
--- (native brush, wheel = brush size, right-click erase); the RPG resumes when the mouse leaves the window.
+-- BUILD MODE: while the TPT zoom window is locked open and the mouse is inside it, RPG handles
+-- fine placement; the decorative frame (edge/corners) must pass clicks to native GameView so
+-- the window can be dragged/resized (see zoomFrameHit, mirrors GameView::HitTestZoomWindowFrame).
 local function inZoom(x, y)
   local ok, en = pcall(ren.zoomEnabled); if not ok or not en then return false end
   local ok2, zx, zy, zf, zs = pcall(ren.zoomWindow); if not ok2 then return false end
   return x >= zx and x < zx + zs and y >= zy and y < zy + zs
 end
 R.inZoom = inZoom
+-- Grabbable zoom frame zone (frameMargin px straddling the border, cornerSize for resize handles).
+-- Returns "move", "resizeTL"/"TR"/"BL"/"BR", or nil (not on frame / still placing).
+local function zoomFrameHit(x, y)
+  local ok, en = pcall(ren.zoomEnabled); if not ok or not en or R.zoomPending then return nil end
+  local ok2, zx, zy, zf, zs = pcall(ren.zoomWindow); if not ok2 then return nil end
+  local frameMargin, cornerSize = 10, 16
+  local outerTLx, outerTLy = zx - frameMargin, zy - frameMargin
+  local outerBRx, outerBRy = zx + zs + frameMargin, zy + zs + frameMargin
+  if x < outerTLx or y < outerTLy or x >= outerBRx or y >= outerBRy then return nil end
+  local innerTLx, innerTLy = zx + frameMargin, zy + frameMargin
+  local innerBRx, innerBRy = zx + zs - frameMargin, zy + zs - frameMargin
+  if x >= innerTLx and y >= innerTLy and x < innerBRx and y < innerBRy then return nil end
+  local nearLeft = x < outerTLx + cornerSize
+  local nearRight = x >= outerBRx - cornerSize
+  local nearTop = y < outerTLy + cornerSize
+  local nearBottom = y >= outerBRy - cornerSize
+  if nearLeft and nearTop then return "resizeTL" end
+  if nearRight and nearTop then return "resizeTR" end
+  if nearLeft and nearBottom then return "resizeBL" end
+  if nearRight and nearBottom then return "resizeBR" end
+  return "move"
+end
+R.zoomFrameHit = zoomFrameHit
 local function zoomToCanvas(x, y)  -- screen point inside the zoom window -> magnified canvas point
   local ok, zx, zy, zf, zs = pcall(ren.zoomWindow); local ok2, sx, sy, ss = pcall(ren.zoomScope)
   if not ok or not ok2 then return x, y end
@@ -2162,6 +2743,7 @@ local function onMouseDown(x, y, button)
   if R.updatePromptOpen then if hitRect(x, y, R.updateBtnRect) then R.updatePromptOpen = false end; return false end
   if runHooks(R.hooks.mousedown, x, y, button) then return false end
   if R.menuOpen then R.menuClick(x, y); return false end
+  if R.quickBarClick(x, y) then return false end
   if R.invOpen then R.uiClick(x, y, button); return false end
   -- Sandbox/TPT-menu mode means the real element menu, the
   -- favorites wheel, and normal click-to-place are wanted -- none of that reaches
@@ -2172,6 +2754,7 @@ local function onMouseDown(x, y, button)
   if button == 2 and R.accOn("hook") then fireHook(x, y); return false end   -- middle click = grapple
   local pal = paletteHit(x, y)
   if pal then local slot = (R.sel and R.sel >= 6) and R.sel or 6; for s6 = 6, 10 do if R.hotbar[s6] == pal then slot = s6 end end; R.hotbar[slot] = pal; R.sel = slot; R.hint = nice(pal) .. " selected"; return false end
+  if button == 1 and zoomFrameHit(x, y) then R._zoomNativeGrab = true; return end  -- native drag/resize
   if R.zoomPending then R.zoomPending = false; R.zoomClick = true; return false end  -- Z pressed: this click locks the TPT zoom window
   if button == 1 then R.mouse.l = true; R._clickArmed = true; return false
   elseif button == 3 then R.mouse.r = true; return false end end
@@ -2181,8 +2764,11 @@ local function onMouseUp(x, y, button)
   if button == 1 then R.mouse.l = false; R._clickArmed = false end; if button == 3 then R.mouse.r = false end
   if R.titleScreen or not R.active then return false end
   if R.placeBox and button == 1 then commitBox(x, y) end
-  R.placeAnchor = nil; R.placeBox = false
+  if R.placeRect and button == 1 then commitRect(x, y) end
+  if R.placeLine and button == 1 then commitLine(x, y) end
+  R.placeAnchor = nil; R.placeBox = false; R.placeRect = false; R.placeLine = false
   runHooks(R.hooks.mouseup, x, y, button); if R.zoomClick then R.zoomClick = false; return end
+  if R._zoomNativeGrab or (button == 1 and zoomFrameHit(x, y)) then R._zoomNativeGrab = false; return end
   if R.tptMenus then return end
   return false end
 R._testOnMouseUp = onMouseUp   -- dev-only verification exposure
@@ -2200,8 +2786,8 @@ function R.releaseMouse(announce)
   R.mouse = R.mouse or {}
   R.mouse.l = false; R.mouse.r = false
   R._clickArmed = false
-  R.placeBox = false; R.placeAnchor = nil
-  R.zoomClick = false; R.zoomPending = false
+  R.placeBox = false; R.placeAnchor = nil; R.placeRect = false; R.placeLine = false
+  R.zoomClick = false; R.zoomPending = false; R._zoomNativeGrab = false
   R.lastPlace = nil; R.lastMine = nil
   if R.lineAnchor ~= nil then R.lineAnchor = nil end
   if announce then say("Mouse released") end
@@ -2222,7 +2808,7 @@ end
 local function onMouseMove(x, y, dx, dy)
   if R.titleScreen then titleMouseX, titleMouseY = x, y end
   if not R.active then return end
-  pcall(R.pullNativeBrush)
+  pcall(R.pullNativeBrush, false)
   if R._brushTest then
     local req = R._brushTest; R._brushTest = nil
     R.brushShape = req.shape or "square"
@@ -2256,6 +2842,7 @@ local function syncBrushFromNative()
   return R.brushShape or "square"
 end
 local function cycleBrushShape()
+  local prev = R.brushShape or "square"
   R.pullNativeBrush()
   local cur = R._nativeBrushId
   if type(cur) ~= "number" then cur = BRUSH_ID[R.brushShape] or 1 end
@@ -2264,7 +2851,7 @@ local function cycleBrushShape()
   R.brushShape = BRUSH_NAME[nxt] or "circle"
   if (R.brush or 0) == 0 then R.brush = 1 end
   R.pushNativeBrush()
-  say("brush shape: " .. (R.brushShape or "?"))
+  if R.brushShape ~= prev then say("brush shape: " .. R.brushShape) end
   return R.brushShape
 end
 -- Real text input (interface.grabTextInput + event.TEXTINPUT), not hand-rolled
@@ -2322,6 +2909,7 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
   if key == 13 or key == 271 or key == 1073741912 then R.chatOpen = true; R.chatText = ""; R.keys = {}; grabText(); return false end
   if SHIFTK[key] then R.shiftHeld = true end
   if shift then R.shiftHeld = true end
+  if R.shiftHeld and isPlaceableBlock(selected()) then pcall(R.pullNativeBrush, true) end
   if CTRLK[key] then R.ctrlHeld = true end
   if ctrl then R.ctrlHeld = true end
   local k = keyName(key)
@@ -2376,6 +2964,11 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
     say("place brush " .. (2 * (R.brush or 0) + 1) .. "px")
     return false
   end
+  if k == "o" and isPlaceableBlock(selected()) then
+    R.brushShell = not R.brushShell
+    say(R.brushShell and "Brush shell ON — lines use hollow ring (thinner walls)" or "Brush shell OFF — full brush fill")
+    return false
+  end
   if k == "tab" or k == "v" then cycleBrushShape(); return false end
   local d = (#k == 1) and tonumber(k) or nil   -- single digits only: modifier keycodes are not slot numbers
   if d then R.sel = (d == 0) and 10 or d; return false end
@@ -2383,16 +2976,21 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
   return  -- anything else goes to TPT
 end
 local function onKeyUp(key, scan, rep, shift, ctrl, alt) if not R.active then return end
-  if SHIFTK[key] then R.shiftHeld = false; R.placeAnchor = nil; R.placeBox = false end
-  if CTRLK[key] then R.ctrlHeld = false; R.placeAnchor = nil; R.placeBox = false end
+  if SHIFTK[key] then R.shiftHeld = false; R.placeAnchor = nil; R.placeBox = false; R.placeRect = false; R.placeLine = false end
+  if CTRLK[key] then R.ctrlHeld = false; R.placeAnchor = nil; R.placeBox = false; R.placeRect = false; R.placeLine = false end
   if ARROWK[key] then R.keys[ARROWK[key]] = false; return false end
   local k = keyName(key); runHooks(R.hooks.keyup, k); if R.keys[k] ~= nil then R.keys[k] = false; return false end end
 
 -- ================================================================ UI
-local PANEL = { x=70, y=44, w=472, h=290 }
+-- Lua 5.1 main-chunk local cap (200): panel/hotbar/menu helpers scoped here.
+local PANEL, invNames, craftRows, onWheel, drawHotbar, drawMinimap, drawPanel, drawMenu, wrap
+do
 local CELL = 30
-local function invNames() local names = {}; for k, v in pairs(R.inventory or {}) do if v > 0 then names[#names+1] = k end end; table.sort(names); return names end
-local function craftRows()
+-- Settings column row height (SET_BTN_H + SET_ROW_GAP); wheel step uses MENU_WHEEL_ROWS.
+-- settings row height 28, wheel step 3 rows (inlined below)
+PANEL = { x=70, y=44, w=472, h=290 }
+invNames = function() local names = {}; for k, v in pairs(R.inventory or {}) do if v > 0 then names[#names+1] = k end end; table.sort(names); return names end
+craftRows = function()
   local rows = {}
   -- Same bug as ui.lua's buildCraftRows (fixed round 6): never included "research"/
   -- "advlab", so recipes gated on either tier were unreachable through this panel too.
@@ -2423,10 +3021,15 @@ function R.uiClick(x, y, button)
     local row = floor((y - cy0) / 14) + 1 + R.craftScroll; local rows = craftRows(); local r = rows[row]; if r and r.fn then r.fn() end
   end
 end
-local function onWheel(x, y, d) if not R.active then return end
+onWheel = function(x, y, d) if not R.active then return end
   if R.changesPromptOpen then R.changesScroll = math.max(0, (R.changesScroll or 0) - d); return false end
   if R.updatePromptOpen then R.updateScroll = math.max(0, (R.updateScroll or 0) - d); return false end
-  if R.menuOpen then R.settingsScroll = math.max(0, (R.settingsScroll or 0) - d); return false end
+  if R.menuOpen then
+    local maxS = R._menuMaxScroll or 0
+    local step = 28 * 3
+    R.settingsScroll = math.max(0, math.min(maxS, (R.settingsScroll or 0) - d * step))
+    return false
+  end
   if runHooks(R.hooks.wheel, x, y, d) then return false end
   -- Same decouple as mouse/keys: sandbox/TPT-menu mode hands the wheel
   -- entirely to native TPT (its own brush-size scroll) instead of it
@@ -2468,7 +3071,7 @@ local function onWheel(x, y, d) if not R.active then return end
   end
   if R.invOpen then R.craftScroll = math.max(0, math.min(math.max(0, #craftRows() - 8), R.craftScroll - d)); return false end
   R.sel = ((R.sel or 1) - 1 - (d > 0 and 1 or -1)) % 10 + 1; return false end
-local function drawHotbar()
+drawHotbar = function()
   R.rebuildHotbar()
   local SLOT, GAP = 30, 3
   local total = 10 * SLOT + 9 * GAP
@@ -2503,24 +3106,63 @@ local function drawHotbar()
   local s = selected(); local label, sub
   if s and s:find("^tool:") then local t = R.TOOLS[s:sub(6)]
     label = (t and t.name or s); sub = ({pick="hold LEFT mouse to dig", axe="hold LEFT mouse to chop", sword="LEFT mouse to swing", torch="LEFT click to light coal or place a light", bucket="LEFT click water to scoop, again to pour"})[s:sub(6)]
-  elseif s then label = nice(s) .. "  x" .. inv(s); sub = "hold LEFT to place    wheel/[ ] size " .. (2*(R.brush or 1)+1) .. "px    Tab/V shape: " .. (R.brushShape or "square")
+  elseif s then label = nice(s) .. "  x" .. inv(s); sub = "Ctrl-drag circle/box   Shift-drag line   O shell   Tab/V shape   wheel size"
   else label = "empty slot"; sub = "put blocks in slots 6-0 from your bag (E)" end
   local w1 = #label * 6; local w2 = #sub * 6
   graphics.fillRect(floor((W - w1) / 2) - 4, y0 - 22, w1 + 8, 11, 0, 0, 0, 170)
   graphics.drawText(floor((W - w1) / 2), y0 - 21, label, 255, 230, 150, 255)
   graphics.drawText(floor((W - w2) / 2), y0 - 33, sub, 190, 200, 215, 200)
 end
-local function drawMinimap()
-  local mx, my = W - 110, 4; local sz = 4
-  graphics.fillRect(mx-2, my-2, 108, 62, 0, 0, 0, 170)
-  local ctx, cty = floor((R.P.x) / TS), floor((R.P.y) / TS)
-  for k, t in pairs(R.tiles) do if t.sx1 then
-    local dx, dy = t.tx - ctx, t.ty - cty; if dx >= -12 and dx <= 12 and dy >= -6 and dy <= 6 then
-      local wy = t.ty * TS; local col = wy < surfaceAt(t.tx * TS) and {90, 140, 220} or (wy > 1450 and {200, 80, 40} or {120, 110, 100})
-      graphics.fillRect(mx + 50 + dx*sz, my + 26 + dy*sz, sz, sz, col[1], col[2], col[3], 255) end end end
-  graphics.fillRect(mx + 50, my + 26, sz, sz, 255, 255, 255, 255)
+drawMinimap = function()
+  local mx, my = W - 110, 4; local sz = 2
+  local halfW, halfH = 25, 15
+  local fw, fh = halfW * sz * 2, halfH * sz * 2
+  graphics.fillRect(mx - 2, my - 2, fw + 4, fh + 18, 0, 0, 0, 170)
+  graphics.drawText(mx + halfW * sz - 4, my - 1, "N", 160, 160, 170, 200)
+  local ctx, cty = floor(R.P.x / TS), floor(R.P.y / TS)
+  local ox, oy = mx + halfW * sz, my + halfH * sz
+  local tileN = 0
+  for _, t in pairs(R.tiles) do
+    if t.sx1 then
+      tileN = tileN + 1
+      local dx, dy = t.tx - ctx, t.ty - cty
+      if dx >= -halfW and dx <= halfW and dy >= -halfH and dy <= halfH then
+        local wx, wy = t.tx * TS, t.ty * TS + TS / 2
+        local surf = surfaceAt(wx)
+        local r, g, b
+        if wy < surf - 8 then r, g, b = 90, 140, 220
+        elseif wy > 1450 then r, g, b = 200, 80, 40
+        else
+          local bname = biomeAt(wx)
+          if bname == "desert" then r, g, b = 210, 180, 120
+          elseif bname == "snow" then r, g, b = 200, 220, 255
+          elseif bname == "swamp" then r, g, b = 80, 120, 70
+          else r, g, b = 100, 150, 90 end
+        end
+        if t.recs then
+          for _, rec in pairs(t.recs) do
+            if rec and rec[1] and rec[1] ~= 0 then
+              local el = nameOf(rec[1])
+              if el == "WOOD" or el == "COAL" then r, g, b = 140, 100, 60
+              elseif el == "WATR" or el == "DSTW" then r, g, b = 60, 120, 220
+              elseif el == "LAVA" or el == "FIRE" then r, g, b = 255, 120, 40 end
+              break
+            end
+          end
+        end
+        graphics.fillRect(mx + (dx + halfW) * sz, my + (dy + halfH) * sz, sz, sz, r, g, b, 255)
+      end
+    end
+  end
+  graphics.fillRect(ox, oy - 4, 2, 2, 255, 255, 255, 255)
+  graphics.fillRect(ox - 1, oy - 2, 4, 2, 255, 255, 255, 255)
+  graphics.fillRect(ox - 2, oy, 6, 2, 255, 255, 255, 255)
+  graphics.drawText(mx, my + fh + 4, string.format("x=%d z=%d  %d tiles", floor(R.P.x / 4), floor(R.P.y / 4), tileN), 160, 170, 190, 180)
+  graphics.fillRect(mx + fw - 28, my + fh + 4, 4, 4, 90, 140, 220, 200)
+  graphics.fillRect(mx + fw - 20, my + fh + 4, 4, 4, 100, 150, 90, 200)
+  graphics.fillRect(mx + fw - 12, my + fh + 4, 4, 4, 200, 80, 40, 200)
 end
-local function drawPanel()
+drawPanel = function()
   graphics.fillRect(PANEL.x, PANEL.y, PANEL.w, PANEL.h, 14, 16, 32, 242); graphics.drawRect(PANEL.x, PANEL.y, PANEL.w, PANEL.h, 255, 220, 80, 255)
   graphics.fillRect(PANEL.x, PANEL.y, PANEL.w, 18, 40, 44, 80, 255)
   graphics.drawText(PANEL.x+8, PANEL.y+5, "BAG", 255, 220, 80, 255); graphics.drawText(PANEL.x+40, PANEL.y+5, "click an item to put it in a block slot  |  E / Esc closes", 190, 190, 200, 255)
@@ -2561,166 +3203,335 @@ local function drawPanel()
   if #rows - maxRows > 0 then graphics.drawText(PANEL.x + PANEL.w - 60, PANEL.y + 26, "wheel: more", 150, 150, 160, 255) end
   if hover then graphics.fillRect(PANEL.x+8, PANEL.y+PANEL.h-30, 180, 24, 0, 0, 0, 230); graphics.drawText(PANEL.x+12, PANEL.y+PANEL.h-26, nice(hover) .. ": " .. string.sub(descOf(hover), 1, 40), 255, 255, 255, 255) end
 end
-R.MENU = {
-  { "Resume", function() R.setMenuOpen(false) end },
-  { "Quit to menu", function() R.setMenuOpen(false); R.active = false; R.titleScreen = true end },
-  { "Save game (K)", function() R.save() end },
-  { "Enemies on/off (N)", function() R.enemies = not R.enemies end },
-  { "Show controls on join: on/off", function() R.tipsOn = not R.tipsOn; say("Controls-on-join " .. (R.tipsOn and "ON" or "OFF")) end },
-  { "Smart cursor on/off (T)", function() R.smart = (R.smart == false) end },
-  { "Snap grid on/off (B)", function() R.grid = not R.grid end },
-  { "Minimap on/off (M)", function() R.minimap = not R.minimap end },
-  { "HUD on/off (H)", function() R.hud = not R.hud end },
-  { "Respawn at surface (R)", function() R.spawnPlayer(); R.setMenuOpen(false) end },
-  { "New world (choose map type)...", function() R.setMenuOpen(false); R.active = false; R.titleScreen = true; R.titleCreateOpen = true; R.titleSettingsOpen = false end },
-  { "Map type: mixed/forest/desert/snow/swamp (cycles, new terrain only)", function() R.cycleMapType() end },
-  { "Fast physics (air off) on/off", function() R.setFast(not R.fast); say(R.fast and "Fast mode: air simulation off" or "Full physics: air/pressure on") end },
-  { "TPT element menu on/off", function() R.setTptMenus(not R.tptMenus); say(R.tptMenus and "TPT menus shown" or "TPT menus hidden") end },
-  { "Visual effects on/off", function() R.setFX(not R.fxOn); say(R.fxOn and "Effects ON" or "Effects OFF") end },
-  -- first real entry in "sliders for the whole world engine" -- cycles through a few day-length presets,
-  -- takes effect immediately (R.dayFrac is read live, not a frozen local). More presets/params to follow;
-  -- this is a genuine start, not the full ask -- see TODO for what's still uncovered.
-  { "Day length: shorter/normal/longer (cycles)", function()
-      local presets = { 0.5, 0.65, 0.8 }; local cur = R.dayFrac or 0.65; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.dayFrac = presets[(idx % #presets) + 1]
-      say(string.format("Day length: %d%% of the cycle", math.floor(R.dayFrac * 100)))
-    end },
-  { "Cave frequency: sparse/normal/dense (cycles, new terrain only)", function()
-      local presets = { 0.5, 1.0, 1.8 }; local cur = R.caveFreqMul or 1.0; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.caveFreqMul = presets[(idx % #presets) + 1]
-      say(string.format("Cave frequency: %.1fx (affects newly generated terrain only)", R.caveFreqMul))
-    end },
-  { "Ore rarity: common/normal/rare (cycles, new terrain only)", function()
-      local presets = { 0.7, 1.0, 1.4 }; local cur = R.oreRarityMul or 1.0; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.oreRarityMul = presets[(idx % #presets) + 1]
-      say(string.format("Ore rarity: %.1fx (affects newly generated terrain only)", R.oreRarityMul))
-    end },
-  { "Gravity: light/normal/heavy (cycles, takes effect immediately)", function()
-      local presets = { 0.7, 1.0, 1.4 }; local cur = R.gravMul or 1.0; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.gravMul = presets[(idx % #presets) + 1]
-      say(string.format("Gravity: %.1fx", R.gravMul))
-    end },
-  { "Jump height: low/normal/high (cycles, takes effect immediately)", function()
-      local presets = { 0.75, 1.0, 1.3 }; local cur = R.jumpMul or 1.0; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.jumpMul = presets[(idx % #presets) + 1]
-      say(string.format("Jump height: %.1fx", R.jumpMul))
-    end },
-  { "Move speed: slow/normal/fast (cycles, takes effect immediately)", function()
-      local presets = { 0.75, 1.0, 1.3 }; local cur = R.runMul or 1.0; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.runMul = presets[(idx % #presets) + 1]
-      say(string.format("Move speed: %.1fx", R.runMul))
-    end },
-  { "Tree spacing: dense/normal/sparse (cycles, new terrain only)", function()
-      local presets = { 0.7, 1.0, 1.4 }; local cur = R.treeSpacingMul or 1.0; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.treeSpacingMul = presets[(idx % #presets) + 1]
-      say(string.format("Tree spacing: %.1fx (affects newly generated terrain only)", R.treeSpacingMul))
-    end },
-  { "Enemy difficulty: easy/normal/hard (cycles, applies to newly spawned enemies)", function()
-      local presets = { 0.7, 1.0, 1.4 }; local cur = R.difficultyMul or 1.0; local idx = 1
-      for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
-      R.difficultyMul = presets[(idx % #presets) + 1]
-      say(string.format("Enemy difficulty: %.1fx (applies to newly spawned enemies)", R.difficultyMul))
-    end },
-  { "Sandbox mode on/off", function() R.sandbox = not R.sandbox; if R.sandbox then R.sandboxFill(); say("SANDBOX: everything unlocked, no damage, infinite materials") else say("Sandbox off") end end },
-  { "Report bug / suggestion (F8)", function() R.setMenuOpen(false); R.feedbackOpen = true; R.feedbackText = ""; grabText() end },
-  { "Check for update now", function() R.setMenuOpen(false); if R.updateInfo then R.startUpdate() else R.checkForUpdate(); say("Checking for an update...") end end },
-  { "View full changelog", function() R.setMenuOpen(false); R.openFullChangelog() end },
-}
-local HELP = {
-  "MOVE     A / D run      W jump (hold = higher)      S fast-fall / sink      Space pauses",
-  "TOOLS    slots 1-5 = pick, axe, sword, torch, bucket -> hold LEFT mouse. Picks: wood (hand) > stone (bench) > iron/steel/diamond (anvil)",
-  "BLOCKS   slots 6-0 = materials you carry -> hold LEFT mouse to place   [ ] or wheel = brush size (same as TPT menu)   Tab/V = shape (circle/square/triangle)   B snap grid",
-  "SELECT   number keys 1-0 or mouse wheel      E = bag + crafting (click items / recipes)",
-  "VIEW     Z = zoom: move, click to lock, Z closes. Inside the zoom box: dig/place 1px precisely, wheel = brush, palette below",
-  "WORLD    walk or dig anywhere - it scrolls. Stone pick digs granite/coal/iron. Gold: iron pick. Deep titanium: steel pick",
-  "CRAFT    hand -> Workbench -> Furnace (light its coal with the torch; smelts ore to bars) -> Anvil (tools)",
-  "ITEMS    chests hold accessories: grapple = MIDDLE CLICK (or G, or double-tap jump in the air), X mirror home, double jump, rocket boots",
-  "OTHER    K save   R respawn   N enemies   F8 report bug/suggestion   U install update (when one's available)   Esc = this menu",
-}
-local MX, MY, MW, MH = 8, 18, 596, 340          -- inside R.SAFE
-local BTN_W, BTN_H, BTN_COLS = 178, 19, 2
-local BTN_X, BTN_Y = MX + 10, MY + 150
--- Drew: "all options all the way down to the bottom" -- confirmed with real math
--- before fixing, not just eyeballed: BTN_COLS=2, row height 22, BTN_Y=168, panel
--- bottom MY+MH=358 -> only 8 rows (16 of 26 entries) actually fit on screen; the
--- rest silently ran off both the drawn panel box and the visible screen. Added
--- wheel-scroll, same shape as every other scrollable list this session.
-local MENU_VISIBLE_ROWS = floor((MY + MH - BTN_Y) / (BTN_H + 3))
-R.settingsScroll = R.settingsScroll or 0
-local function btnRect(i) local idx = i - 1 - R.settingsScroll * BTN_COLS
-  local c, r = idx % BTN_COLS, floor(idx / BTN_COLS)
-  if idx < 0 or r >= MENU_VISIBLE_ROWS then return nil end
-  return BTN_X + c * (BTN_W + 8), BTN_Y + r * (BTN_H + 3), BTN_W, BTN_H end
-local function wrap(text, width)                -- 6px per character
-  local maxc = floor(width / 6); local out, line = {}, ""
+-- Esc menu: grouped settings with inline status (v1.15.31), inside UI do/end scope.
+-- drawMenu forward-declared at top of this do/end (with PANEL, drawHotbar, etc.) — do NOT re-local here.
+wrap = function(text, width)                -- 6px per character (shared with changelog dialogs)
+  local maxc = math.max(1, floor(width / 6)); local out, line = {}, ""
+  local function flush() if line ~= "" then out[#out + 1] = line; line = "" end end
   for word in text:gmatch("%S+") do
-    if #line + #word + 1 > maxc then out[#out + 1] = line; line = word else line = (line == "") and word or (line .. " " .. word) end end
-  if line ~= "" then out[#out + 1] = line end
+    while #word > maxc do flush(); out[#out + 1] = word:sub(1, maxc); word = word:sub(maxc + 1) end
+    if line == "" then line = word
+    elseif #line + 1 + #word > maxc then flush(); line = word
+    else line = line .. " " .. word end
+  end
+  flush()
   return out
 end
-function R.menuClick(x, y)
-  for i, m in ipairs(R.MENU) do local bx, by, bw, bh = btnRect(i)
-    if bx and x >= bx and x <= bx + bw and y >= by and y < by + bh then m[2](); return end end
+-- 8 = conservative drawText width for menu columns. Inlined rather than a top-level
+-- local (see CLAUDE.md's 200-locals limit); R.MENU_CHAR_W below is the shared copy.
+local function menuWrap(text, widthPx)
+  local maxc = math.max(1, floor((widthPx - 4) / 8))
+  local out, line = {}, ""
+  local function flush() if line ~= "" then out[#out + 1] = line; line = "" end end
+  for word in tostring(text):gmatch("%S+") do
+    while #word > maxc do flush(); out[#out + 1] = word:sub(1, maxc); word = word:sub(maxc + 1) end
+    if line == "" then line = word
+    elseif #line + 1 + #word > maxc then flush(); line = word
+    else line = line .. " " .. word end
+  end
+  flush()
+  return out
 end
-local function drawMenu()
+
+-- Reachable from onDraw via the R table. Referencing the bare `menuWrap` local from
+-- inside onDraw resolves as a GLOBAL and is nil at runtime -- the exact failure mode
+-- CLAUDE.md records for `wrap` (v1.15.35) and `drawMenu` (v1.15.33). Because onDraw is
+-- not pcall-wrapped, that error aborts the entire remaining HUD every frame while
+-- lastErr stays nil, so the bridge cannot see it. Draw code must use R.menuWrap.
+R.menuWrap = menuWrap
+R.MENU_CHAR_W = 8
+local MENU_DAY_PRESETS = { 0.5, 0.65, 0.8 }
+local MENU_DAY_LABELS = { "Shorter", "Normal", "Longer" }
+local function menuPresetStatus(val, presets, labels, suffix)
+  for i, v in ipairs(presets) do
+    if math.abs(v - (val or presets[2])) < 0.01 then
+      return labels[i] .. (suffix or "")
+    end
+  end
+  return string.format("%.1fx", val or 1.0) .. (suffix or "")
+end
+local function menuOnOff(v) return v and "ON" or "OFF" end
+local function menuItem(label, fn, status, active)
+  return { label = label, fn = fn, status = status, active = active }
+end
+R.MENU_SECTIONS = {
+  { items = {
+      menuItem("Resume", function() R.setMenuOpen(false) end),
+      menuItem("Quit to menu", function() R.setMenuOpen(false); R.active = false; R.titleScreen = true end),
+      menuItem("Save game (K)", function() R.save() end),
+    } },
+  { header = "Gameplay", items = {
+      menuItem("Enemies (N)", function() R.enemies = not R.enemies end,
+        function() return menuOnOff(R.enemies) end, function() return R.enemies end),
+      menuItem("Controls on join", function() R.tipsOn = not R.tipsOn; say("Controls-on-join " .. menuOnOff(R.tipsOn)) end,
+        function() return menuOnOff(R.tipsOn) end, function() return R.tipsOn end),
+      menuItem("Smart cursor (T)", function() R.smart = (R.smart == false) end,
+        function() return menuOnOff(R.smart ~= false) end, function() return R.smart ~= false end),
+      menuItem("Snap grid (B)", function() R.grid = not R.grid end,
+        function() return menuOnOff(R.grid) end, function() return R.grid end),
+      menuItem("Fast physics", function() R.setFast(not R.fast); say(R.fast and "Fast mode: air simulation off" or "Full physics: air/pressure on") end,
+        function() return menuOnOff(R.fast) end, function() return R.fast end),
+      menuItem("Sandbox mode", function() R.toggleSandbox() end,
+        function() return menuOnOff(R.sandbox) end, function() return R.sandbox end),
+      menuItem("Enemy difficulty", function()
+          local presets = { 0.7, 1.0, 1.4 }; local cur = R.difficultyMul or 1.0; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.difficultyMul = presets[(idx % #presets) + 1]
+          say(string.format("Enemy difficulty: %.1fx (new spawns)", R.difficultyMul))
+        end,
+        function() return menuPresetStatus(R.difficultyMul, { 0.7, 1.0, 1.4 }, { "Easy", "Normal", "Hard" }, " (new spawns)") end),
+      menuItem("Jump height", function()
+          local presets, labels = { 0.75, 1.0, 1.3 }, { "Low", "Normal", "High" }
+          local cur = R.jumpMul or 1.0; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.jumpMul = presets[(idx % #presets) + 1]
+          say(string.format("Jump height: %.1fx", R.jumpMul))
+        end,
+        function() return menuPresetStatus(R.jumpMul, { 0.75, 1.0, 1.3 }, { "Low", "Normal", "High" }) end),
+      menuItem("Move speed", function()
+          local presets = { 0.75, 1.0, 1.3 }; local cur = R.runMul or 1.0; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.runMul = presets[(idx % #presets) + 1]
+          say(string.format("Move speed: %.1fx", R.runMul))
+        end,
+        function() return menuPresetStatus(R.runMul, { 0.75, 1.0, 1.3 }, { "Slow", "Normal", "Fast" }) end),
+      menuItem("Gravity", function()
+          local presets = { 0.7, 1.0, 1.4 }; local cur = R.gravMul or 1.0; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.gravMul = presets[(idx % #presets) + 1]
+          say(string.format("Gravity: %.1fx", R.gravMul))
+        end,
+        function() return menuPresetStatus(R.gravMul, { 0.7, 1.0, 1.4 }, { "Light", "Normal", "Heavy" }) end),
+    } },
+  { header = "Graphics", items = {
+      menuItem("HUD (H)", function() R.hud = not R.hud end,
+        function() return menuOnOff(R.hud) end, function() return R.hud end),
+      menuItem("Minimap (M)", function() R.minimap = not R.minimap end,
+        function() return menuOnOff(R.minimap) end, function() return R.minimap end),
+      menuItem("Visual effects", function() R.setFX(not R.fxOn); say(R.fxOn and "Effects ON" or "Effects OFF") end,
+        function() return menuOnOff(R.fxOn) end, function() return R.fxOn end),
+      menuItem("TPT element menu", function() R.toggleTptMenus() end,
+        function() return menuOnOff(R.tptMenus) end, function() return R.tptMenus end),
+    } },
+  { header = "World", items = {
+      menuItem("Map type", function() R.cycleMapType() end,
+        function() return (MAP_TYPE_LABEL[R.mapType] or R.mapType or "Mixed") .. " (new terrain)" end),
+      menuItem("Day length", function()
+          local presets = MENU_DAY_PRESETS; local cur = R.dayFrac or 0.65; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.dayFrac = presets[(idx % #presets) + 1]
+          say(string.format("Day length: %d%% of the cycle", math.floor(R.dayFrac * 100)))
+        end,
+        function() return menuPresetStatus(R.dayFrac, MENU_DAY_PRESETS, MENU_DAY_LABELS) end),
+      menuItem("Cave frequency", function()
+          local presets = { 0.5, 1.0, 1.8 }; local cur = R.caveFreqMul or 1.0; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.caveFreqMul = presets[(idx % #presets) + 1]
+          say(string.format("Cave frequency: %.1fx (new terrain)", R.caveFreqMul))
+        end,
+        function() return menuPresetStatus(R.caveFreqMul, { 0.5, 1.0, 1.8 }, { "Sparse", "Normal", "Dense" }, " (new terrain)") end),
+      menuItem("Ore rarity", function()
+          local presets = { 0.7, 1.0, 1.4 }; local cur = R.oreRarityMul or 1.0; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.oreRarityMul = presets[(idx % #presets) + 1]
+          say(string.format("Ore rarity: %.1fx (new terrain)", R.oreRarityMul))
+        end,
+        function() return menuPresetStatus(R.oreRarityMul, { 0.7, 1.0, 1.4 }, { "Common", "Normal", "Rare" }, " (new terrain)") end),
+      menuItem("Tree spacing", function()
+          local presets = { 0.7, 1.0, 1.4 }; local cur = R.treeSpacingMul or 1.0; local idx = 1
+          for i, v in ipairs(presets) do if math.abs(v - cur) < 0.01 then idx = i end end
+          R.treeSpacingMul = presets[(idx % #presets) + 1]
+          say(string.format("Tree spacing: %.1fx (new terrain)", R.treeSpacingMul))
+        end,
+        function() return menuPresetStatus(R.treeSpacingMul, { 0.7, 1.0, 1.4 }, { "Dense", "Normal", "Sparse" }, " (new terrain)") end),
+    } },
+  { header = "Tools", items = {
+      menuItem("Respawn at surface (R)", function() R.spawnPlayer(); R.setMenuOpen(false) end,
+        function() return string.format("Day %d", R.day or 1) end),
+      menuItem("New world...", function() R.setMenuOpen(false); R.active = false; R.titleScreen = true; R.titleCreateOpen = true; R.titleSettingsOpen = false end,
+        function() return MAP_TYPE_LABEL[R.mapType or "mixed"] or "Mixed" end),
+    } },
+  { header = "Meta", items = {
+      menuItem("Report bug / suggestion (F8)", function() R.setMenuOpen(false); R.feedbackOpen = true; R.feedbackText = ""; grabText() end),
+      menuItem("Check for update now", function() R.setMenuOpen(false); if R.updateInfo then R.startUpdate() else R.checkForUpdate(); say("Checking for an update...") end end),
+      menuItem("View full changelog", function() R.setMenuOpen(false); R.openFullChangelog() end),
+    } },
+}
+R.MENU = {}
+for _, sec in ipairs(R.MENU_SECTIONS) do
+  for _, it in ipairs(sec.items) do
+    R.MENU[#R.MENU + 1] = { it.label, it.fn, it.status, it.active }
+  end
+end
+-- (a dead `local HELP` controls table lived here; nothing referenced it -- the Esc
+-- menu builds its own CONTROLS column. Removed to reclaim a top-level local slot,
+-- see CLAUDE.md's 200-locals limit note.)
+local MX, MY, MW, MH = 8, 18, 596, 340          -- inside R.SAFE
+local MENU_DIV_X = MX + floor(MW * 0.50)        -- 50/50 split; controls use one full-width column
+local CTRL_X, CTRL_W = MX + 10, MENU_DIV_X - MX - 18
+local SET_X, SET_W = MENU_DIV_X + 8, MX + MW - (MENU_DIV_X + 8) - 10
+local CTRL_TOP, SET_TOP = MY + 22, MY + 22
+local SET_BOTTOM = MY + MH - 10
+-- STATUS footer height 54 = STATUS box (42) + GOAL line above (inlined below)
+local SET_BTN_H, SET_ROW_GAP = 26, 2
+-- section header height 13, section gap 5 (inlined below)
+R.settingsScroll = R.settingsScroll or 0
+local function layoutMenuSettings()
+  local rows, y = {}, SET_TOP + 14
+  for _, sec in ipairs(R.MENU_SECTIONS) do
+    if sec.header then rows[#rows + 1] = { kind = "header", y = y, h = 13, text = sec.header }; y = y + 13 end
+    for _, item in ipairs(sec.items) do
+      rows[#rows + 1] = { kind = "btn", y = y, h = SET_BTN_H, item = item }
+      y = y + SET_BTN_H + SET_ROW_GAP
+    end
+    y = y + 5
+  end
+  local totalH = y - (SET_TOP + 14)
+  local visibleH = SET_BOTTOM - (SET_TOP + 14) - 54
+  local maxScroll = math.max(0, totalH - visibleH)
+  R._menuMaxScroll = maxScroll
+  R.settingsScroll = math.max(0, math.min(maxScroll, R.settingsScroll or 0))
+  return rows, maxScroll, visibleH
+end
+local function menuBtnAt(x, y)
+  local rows, _, visibleH = layoutMenuSettings()
+  local scroll = R.settingsScroll or 0
+  for _, row in ipairs(rows) do
+    if row.kind == "btn" then
+      local by = row.y - scroll
+      -- fully-inside test, matching drawMenu's clip: a partially-clipped row is not
+      -- drawn, so it must not be clickable either (else you hit an invisible button).
+      if by >= SET_TOP + 14 and by + row.h <= SET_TOP + 14 + visibleH then
+        if x >= SET_X and x <= SET_X + SET_W and y >= by and y < by + row.h then return row.item end
+      end
+    end
+  end
+end
+function R.menuClick(x, y)
+  local item = menuBtnAt(x, y)
+  if item then item.fn(); return end
+end
+drawMenu = function()
   graphics.fillRect(0, 0, W, H, 0, 0, 0, 130)
   graphics.fillRect(MX, MY, MW, MH, 12, 14, 30, 246); graphics.drawRect(MX, MY, MW, MH, 255, 220, 80, 255)
   graphics.fillRect(MX, MY, MW, 16, 40, 44, 80, 255)
   graphics.drawText(MX + 8, MY + 4, "POWDER RPG - MENU & CONTROLS", 255, 220, 80, 255)
   graphics.drawText(MX + MW - 96, MY + 4, "Esc closes", 190, 190, 200, 255)
-  -- controls: two columns of wrapped lines so nothing runs off the edge
-  local colW = floor((MW - 30) / 2)
-  local lx, rx, ty = MX + 10, MX + 20 + colW, MY + 22
-  local left = { {"MOVE", "A / D run,  W jump,  S fast-fall or drop through a wood platform.  Space pauses"},
-                 {"TOOLS", "slots 1-5: pick, axe, sword, torch, bucket - hold RIGHT mouse"},
-                 {"BLOCKS", "Q picks the material under the cursor into your hotbar.  LEFT mouse places.  SHIFT+wheel = block size.  CTRL = snap + straight line, CTRL+wheel = cell size.  B locks the grid on"},
-                 {"SELECT", "number keys 1-0 or the mouse wheel"} }
-  local right = { {"TALK", "ENTER opens chat with your colonists (Esc cancels)"},
-                  {"BAG", "E - items, crafting, equipment.  L or the GUIDE button - database"},
-                  {"VIEW", "Z zoom (click to lock; inside it you build 1px precise),  M map"},
-                  {"ITEMS", "grapple: MIDDLE CLICK,  X mirror home,  double-tap jump in air"},
-                  {"WORLD", "dig anywhere - it scrolls.  Chop half a trunk to fell a tree"} }
-  local function block(entries, x)
-    local y = ty
-    for _, e in ipairs(entries) do
-      graphics.drawText(x, y, e[1], 255, 220, 80, 255)
-      for _, ln in ipairs(wrap(e[2], colW - 54)) do graphics.drawText(x + 54, y, ln, 215, 215, 225, 255); y = y + 11 end
-      y = y + 4
+  graphics.fillRect(MENU_DIV_X, MY + 18, 1, MH - 18, 70, 74, 100, 255)
+  -- left column: one wide label | description table (two skinny sub-columns wrapped every ~9 chars)
+  local CTRL_LABEL_W = 52
+  local CTRL_DESC_W = CTRL_W - CTRL_LABEL_W - 4
+  local CTRL_BOTTOM = MY + MH - 4
+  local CTRL_ROWS = {
+    {"MOVE", "A/D run · W jump · S fall/drop · Space pause"},
+    {"TOOLS", "1-5 pick/axe/sword/torch/bucket · hold LMB"},
+    {"BLOCKS", "6-0 place mats · Q pick under cursor · Shift = native brush · Ctrl-drag size · O shell"},
+    {"HOTBAR", "1-0 or mouse wheel"},
+    {"BAG", "E inventory & craft · L or GUIDE = database"},
+    {"VIEW", "Z zoom (click lock) · M minimap · build precise inside zoom"},
+    {"TALK", "Enter colonist chat · Esc cancel"},
+    {"ITEMS", "Middle-click grapple · X mirror home · chest accessories"},
+    {"WORLD", "Dig anywhere (scrolls) · half-chop trunk to fell tree"},
+  }
+  graphics.drawText(CTRL_X, MY + 22, "CONTROLS", 255, 220, 80, 255)
+  local cy = CTRL_TOP + 12
+  for _, e in ipairs(CTRL_ROWS) do
+    if cy > CTRL_BOTTOM then break end
+    graphics.drawText(CTRL_X, cy, e[1], 255, 220, 80, 255)
+    local ly = cy
+    for _, ln in ipairs(menuWrap(e[2], CTRL_DESC_W)) do
+      if ly + 10 > CTRL_BOTTOM then break end
+      graphics.drawText(CTRL_X + CTRL_LABEL_W, ly, ln, 215, 215, 225, 255)
+      ly = ly + 10
+    end
+    cy = math.max(cy + 10, ly) + 3
+  end
+  -- right column: grouped settings with status sublabels
+  local rows, maxScroll, visibleH = layoutMenuSettings()
+  local scroll = R.settingsScroll or 0
+  graphics.drawText(SET_X, SET_TOP, "SETTINGS" .. (maxScroll > 0 and ("   wheel (" .. scroll .. "/" .. maxScroll .. ")") or ""), 255, 220, 80, 255)
+  graphics.fillRect(SET_X, SET_TOP + 12, SET_W, 1, 70, 74, 100, 255)
+  local clipTop, clipBot = SET_TOP + 14, SET_TOP + 14 + visibleH
+  for _, row in ipairs(rows) do
+    local ry = row.y - scroll
+    -- v1.15.40 moved STATUS/GOAL into this column but left the old partial-overlap
+    -- clip test, so a row straddling clipBot still drew its full 26px height -- up to
+    -- 18px past the clip, straight through the GOAL line and into the STATUS box.
+    -- Draw only rows entirely inside the clip; no row becomes unreachable because the
+    -- 84px wheel step still lands every row fully in view at some scroll offset.
+    if ry >= clipTop and ry + row.h <= clipBot then
+      if row.kind == "header" then
+        graphics.fillRect(SET_X, ry, SET_W, row.h, 34, 38, 62, 255)
+        graphics.drawText(SET_X + 6, ry + 2, menuWrap(row.text, SET_W - 12)[1] or row.text, 255, 220, 80, 255)
+      elseif row.kind == "btn" then
+        local it = row.item
+        local hov = R.mouse.x >= SET_X and R.mouse.x <= SET_X + SET_W and R.mouse.y >= ry and R.mouse.y < ry + row.h
+        local on = false
+        if it.active then local okA, v = pcall(it.active); on = okA and v end
+        local sandboxOn = it.label == "Sandbox mode" and R.sandbox
+        local br, bg, bb = 38, 42, 78
+        if hov then br, bg, bb = 80, 84, 130
+        elseif sandboxOn then br, bg, bb = 92, 58, 28
+        elseif on then br, bg, bb = 34, 72, 48 end
+        graphics.fillRect(SET_X, ry, SET_W, row.h, br, bg, bb, 255)
+        local borderR, borderG, borderB = 120, 124, 170
+        if sandboxOn then borderR, borderG, borderB = 255, 170, 60
+        elseif on then borderR, borderG, borderB = 120, 220, 120 end
+        graphics.drawRect(SET_X, ry, SET_W, row.h, hov and 255 or borderR, hov and 220 or borderG, hov and 80 or borderB, 255)
+        graphics.drawText(SET_X + 8, ry + 4, menuWrap(it.label, SET_W - 16)[1] or it.label, 255, 255, 255, 255)
+        if it.status then
+          local okS, st = pcall(it.status)
+          if okS and st and st ~= "" then
+            local sr, sg, sb = 165, 170, 185
+            if st == "ON" then sr, sg, sb = 140, 230, 140
+            elseif st == "OFF" then sr, sg, sb = 150, 150, 160
+            elseif sandboxOn then sr, sg, sb = 255, 200, 120 end
+            graphics.drawText(SET_X + 8, ry + 15, menuWrap(st, SET_W - 16)[1] or st, sr, sg, sb, 255)
+          end
+        end
+      end
     end
   end
-  block(left, lx); block(right, rx)
-  local maxSettingsScroll = math.max(0, math.ceil(#R.MENU / BTN_COLS) - MENU_VISIBLE_ROWS)
-  R.settingsScroll = math.max(0, math.min(maxSettingsScroll, R.settingsScroll))
-  graphics.drawText(MX + 10, MY + 138, "SETTINGS" .. (maxSettingsScroll > 0 and ("   wheel to scroll (" .. R.settingsScroll .. "/" .. maxSettingsScroll .. ")") or ""), 255, 220, 80, 255)
-  for i, m in ipairs(R.MENU) do local bx, by, bw, bh = btnRect(i)
-    if bx then
-      local hov = R.mouse.x >= bx and R.mouse.x <= bx + bw and R.mouse.y >= by and R.mouse.y < by + bh
-      graphics.fillRect(bx, by, bw, bh, hov and 80 or 38, hov and 84 or 42, hov and 130 or 78, 255)
-      graphics.drawRect(bx, by, bw, bh, hov and 255 or 120, hov and 220 or 124, hov and 80 or 170, 255)
-      graphics.drawText(bx + 7, by + 5, string.sub(m[1], 1, floor((bw - 12) / 6)), 255, 255, 255, 255)
-    end end
-  -- status column on the right of the buttons
-  local sx = BTN_X + BTN_COLS * (BTN_W + 8) + 8
+  if maxScroll > 0 and scroll < maxScroll then
+    graphics.drawText(SET_X + SET_W - 42, SET_TOP + 14 + visibleH - 12, "more v", 150, 150, 160, 255)
+  end
+  -- compact status footer (right column — keeps CONTROLS column clear)
   local na = 0; for _ in pairs(R.acc) do na = na + 1 end
-  graphics.drawText(sx, MY + 138, "STATUS", 255, 220, 80, 255)
-  local st = { string.format("World %d   Day %d", R.seed or 0, R.day or 1),
-               string.format("Deaths %d%s", R.deaths or 0, R.sandbox and "   SANDBOX" or ""),
-               "Pick: " .. R.TOOLS.pick.name, "Sword: " .. R.TOOLS.sword.name,
-               string.format("Accessories %d   Enemies %s", na, R.enemies and "ON" or "off"),
-               string.format("Effects %s   Grid %s", R.fxOn and "on" or "off", R.grid and "on" or "off") }
-  for i, line in ipairs(st) do graphics.drawText(sx, MY + 152 + (i - 1) * 12, line, 205, 205, 215, 255) end
+  local stY = MY + MH - 52
+  graphics.fillRect(SET_X, stY, SET_W, 42, 20, 22, 36, 220)
+  graphics.drawText(SET_X + 6, stY + 4, "STATUS", 255, 220, 80, 255)
+  local st = { string.format("World %d  Day %d", R.seed or 0, R.day or 1),
+               string.format("Deaths %d%s", R.deaths or 0, R.sandbox and "  SANDBOX" or ""),
+               string.format("Pick: %s  Foes: %s", R.TOOLS.pick.name, R.enemies and "ON" or "off"),
+               string.format("Acc %d  FX %s  Grid %s", na, R.fxOn and "on" or "off", R.grid and "on" or "off") }
+  local stMaxY = MY + MH - 2
+  for i, line in ipairs(st) do
+    local ly = stY + 16 + (i - 1) * 10
+    if ly + 10 > stMaxY then break end
+    for _, ln in ipairs(menuWrap(line, SET_W - 12)) do
+      if ly + 10 > stMaxY then break end
+      graphics.drawText(SET_X + 6, ly, ln, 205, 205, 215, 255); ly = ly + 10
+    end
+  end
   local q = R.QUESTS[R.quest]
-  if q then graphics.drawText(sx, MY + 232, "GOAL " .. R.quest .. "/" .. #R.QUESTS, 255, 220, 80, 255)
-    local yy = MY + 246
-    for _, ln in ipairs(wrap(q.txt, MW - (sx - MX) - 12)) do graphics.drawText(sx, yy, ln, 200, 230, 200, 255); yy = yy + 11 end end
+  if q then
+    graphics.drawText(SET_X + 6, stY - 12, menuWrap("GOAL " .. R.quest .. "/" .. #R.QUESTS .. ": " .. q.txt, SET_W - 12)[1] or "", 200, 230, 200, 255)
+  end
 end
+-- goal_verify draw-path probe (bridge-only; pcalls wrap/drawMenu directly)
+function R._goalVerifyDrawProbe()
+  local r = { version = tostring(R.VERSION or ""), gauge_labels = "TEMP,PRESS" }
+  local okW, resW = pcall(function() return wrap("goal verify: wrap probe line", 24) end)
+  r.wrap_ok = okW and type(resW) == "table" and #resW >= 1
+  if not okW then r.wrap_err = tostring(resW) end
+  r.drawMenu_is_function = type(drawMenu) == "function"
+  local env = R.env or {}
+  r.env_keys = 0
+  for _ in pairs(env) do r.env_keys = r.env_keys + 1 end
+  r.hud_day = string.format("Day %d", R.day or 1)
+  return r
+end
+end -- UI/menu scope (hot-reload local cap)
 local function onDraw()
   if R.titleScreen then drawTitleScreen(); return end
   if not R.active then return end
@@ -2773,13 +3584,15 @@ local function onDraw()
     graphics.drawText(R.timber.x - R.cam.x - 18, R.timber.y - R.cam.y - 20, "TIMBER!", 255, 230, 120, a) end
   if R.swingAt and R.frame - R.swingAt[3] < 6 then graphics.drawCircle(R.swingAt[1], R.swingAt[2], 3, 3, 255, 255, 255, 160) end
   runHooks(R.hooks.draw)
+  pcall(drawO2BreathField)
   local ok, err = pcall(drawPlayer); if not ok then R.lastErr = tostring(err) end
   if not R.hud then return end
-  runHooks(R.hooks.drawHUD)
   local s = selected(); local reach = 30; if s and s:find("^tool:") and R.TOOLS[s:sub(6)] then reach = R.TOOLS[s:sub(6)].reach or 30 end
   local px, py = pcanvas()
-  local mx, my = R.mouse.x, R.mouse.y; local okr = dist2(mx, my, px, py) <= reach*reach
-  -- F15b: when Drew uses TPT's native element menu (R.tptMenus), the RPG's brush preview
+  local mx, my = R.mouse.x, R.mouse.y
+  local shiftBuild = shiftBuildMode()
+  local okr = shiftBuild or dist2(mx, my, px, py) <= reach*reach
+  -- F15b: when the owner uses TPT's native element menu (R.tptMenus), the RPG's brush preview
   -- square draws on top of it and gets in the way. Suppress the preview entirely in
   -- tptMenus mode -- the TPT menu itself shows what block is selected. The preview
   -- still draws when the RPG owns the selection flow (default mode).
@@ -2793,11 +3606,31 @@ local function onDraw()
       local rx = R.brushRx or R.brush or 1; local ry = R.brushRy or R.brush or 1
       local shape = R.brushShape or "square"; local cr, cg, cb = colourOf(s)
       local g = R.gridSize or 4
-      if R.ctrlHeld and R.placeAnchor then local ax, ay = R.placeAnchor[1], R.placeAnchor[2]
-        if math.abs(mx - ax) >= math.abs(my - ay) then my = ay else mx = ax end
-        graphics.drawLine(ax, ay, mx, my, 255, 220, 90, 90) end
+      if R.placeAnchor then
+        local ax, ay = R.placeAnchor[1], R.placeAnchor[2]
+        if R.placeLine then
+          local lx, ly = snapLineEnd(ax, ay, mx, my)
+          graphics.drawLine(ax, ay, lx, ly, 255, 220, 90, 120)
+        end
+        if R.placeRect then
+          local x1, y1 = math.min(ax, mx), math.min(ay, my)
+          local x2, y2 = math.max(ax, mx), math.max(ay, my)
+          if shape == "circle" then
+            pcall(graphics.drawCircle, (x1 + x2) / 2, (y1 + y2) / 2, math.max(1, (x2 - x1) / 2), math.max(1, (y2 - y1) / 2), 255, 220, 90, 180)
+          else
+            graphics.drawRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1, 255, 220, 90, 180)
+          end
+        end
+      end
+      if R.placeBox and R.placeAnchor then
+        local ax, ay = R.placeAnchor[1], R.placeAnchor[2]
+        local bx1, by1 = math.min(ax, mx), math.min(ay, my)
+        local bw, bh = math.abs(mx - ax) + 1, math.abs(my - ay) + 1
+        graphics.fillRect(bx1, by1, bw, bh, cr, cg, cb, 50)
+        graphics.drawRect(bx1, by1, bw, bh, 255, 220, 90, 180)
+      end
       local x1, y1, x2, y2 = mx - rx, my - ry, mx + rx, my + ry
-      if R.grid or R.ctrlHeld then local gx = floor((mx + R.cam.x) / g) * g - R.cam.x; local gy = floor((my + R.cam.y) / g) * g - R.cam.y
+      if R.grid or R.ctrlHeld or R.shiftHeld then local gx = floor((mx + R.cam.x) / g) * g - R.cam.x; local gy = floor((my + R.cam.y) / g) * g - R.cam.y
         x1, y1, x2, y2 = gx - g*rx, gy - g*ry, gx + g*rx + g - 1, gy + g*ry + g - 1 end
       local ww, hh = x2 - x1 + 1, y2 - y1 + 1
       local fr, fg, fb, fa = okr and cr or 255, okr and cg or 60, okr and cb or 60, okr and 90 or 50
@@ -2822,126 +3655,219 @@ local function onDraw()
       graphics.fillRect(x2 - 1, y1 - 1, 3, 1, tc, tc, tc, 230); graphics.fillRect(x2 + 1, y1 - 1, 1, 3, tc, tc, tc, 230)
       graphics.fillRect(x1 - 1, y2 + 1, 3, 1, tc, tc, tc, 230); graphics.fillRect(x1 - 1, y2 - 1, 1, 3, tc, tc, tc, 230)
       graphics.fillRect(x2 - 1, y2 + 1, 3, 1, tc, tc, tc, 230); graphics.fillRect(x2 + 1, y2 - 1, 1, 3, tc, tc, tc, 230)
-      local lbl = (R.grid or R.ctrlHeld) and ((rx + 1) .. "x" .. (ry + 1) .. " cells @" .. g .. "px") or (ww .. "px")
+      local lbl = (R.grid or R.ctrlHeld or R.shiftHeld) and ((rx + 1) .. "x" .. (ry + 1) .. " cells @" .. g .. "px") or (ww .. "px")
       graphics.drawText(x1, y2 + 4, lbl, 235, 235, 245, 190)
       end
     elseif s and R.ITEMS[s] then graphics.drawRect(mx - 7, my - 12, 15, 13, 255, 220, 120, okr and 160 or 70) end end
-  graphics.fillRect(4, 4, 250, 30, 0, 0, 0, 170)
+  -- HUD layout: left column (HP/day/gauges), right alert column (x=310..498), minimap column (x>=502).
+  local MAP_X = W - 110
+  local RC_X, RC_W = 310, MAP_X - 310 - 4
+  R._rcY = 4
+  R.rcLine = function(advance)
+    local x, y = RC_X, R._rcY
+    if advance then R._rcY = R._rcY + advance end
+    return x, y, RC_W
+  end
+  -- Top-left HUD: fixed rows (HP / day / optional air+food / T / P) — no overlapping bands
+  local HUD_X, HUD_W = 4, 248
+  graphics.fillRect(HUD_X, 4, HUD_W, 14, 0, 0, 0, 170)
   local n = math.max(0, math.min(10, floor((R.hp or 0) / 10 + 0.5)))
   for i = 1, 10 do local x = 8 + (i-1)*12; if i <= n then graphics.fillRect(x, 8, 9, 8, 230, 50, 60, 255); graphics.fillRect(x+1, 7, 3, 2, 230, 50, 60, 255); graphics.fillRect(x+5, 7, 3, 2, 230, 50, 60, 255) else graphics.drawRect(x, 8, 9, 8, 120, 60, 60, 255) end end
   graphics.drawText(130, 8, tostring(floor(R.hp or 0)), 255, 120, 120, 255)
-  do local o2 = R.o2 or 100
-    if o2 < 100 or (R.o2conc or 0) > 25 then
+  local where = depth > 20 and string.format("%dm underground", floor(depth / 4)) or (depth < -20 and string.format("%dm up", floor(-depth / 4)) or "surface")
+  graphics.fillRect(HUD_X, 20, HUD_W, 12, 0, 0, 0, 140)
+  graphics.drawText(8, 22, string.format("Day %d%s   x %d   %s   %s", R.day or 1, night > 0.2 and " (night)" or "", floor(R.P.x / 4), where, biomeAt(floor(R.P.x))), 220, 220, 220, 255)
+  if (R.deaths or 0) > 0 then
+    -- was "D:2" -- an abbreviation nothing on screen explains, and the changelog for
+    -- this very readout promised "Deaths: N". Spell it out; it still fits the band
+    -- (x=168 + ~48px vs the band ending at HUD_X+HUD_W=252).
+    graphics.drawText(168, 8, string.format("Deaths %d", R.deaths), 255, 150, 80, 255)
+  end
+  local N = R.need
+  local needAir = (R.o2 or 100) < 100 or (R.o2conc or 0) > 25
+  local needFood = (N.food or 100) < 100 or (N.water or 100) < 100
+  local vitalsY = 34
+  if needAir or needFood then
+    graphics.fillRect(HUD_X, vitalsY, HUD_W, 10, 0, 0, 0, 130)
+    if needAir then
+      local o2 = R.o2 or 100
       local w = floor(o2 / 100 * 116); local r, g, b = 90, 170, 255
       if o2 < 35 then r, g, b = 255, 160, 60 end; if o2 < 15 then r, g, b = 255, 70, 70 end
-      graphics.fillRect(8, 18, 116, 3, 40, 40, 60, 255); graphics.fillRect(8, 18, w, 3, r, g, b, 255)
-      graphics.drawText(128, 15, "AIR " .. floor(o2) .. "%", r, g, b, 255)
-      if (R.o2 or 100) < 70 and (R.o2conc or 0) <= 25 then graphics.drawText(178, 15, ((R.P.y - surfaceAt(floor(R.P.x))) > 140) and "thin air" or "stale air", 160, 170, 190, 255) end
-      if (R.o2conc or 0) > 25 then graphics.drawText(178, 15, "O2 " .. floor(R.o2conc) .. "%", 140, 220, 255, 255) end
+      graphics.fillRect(8, vitalsY + 4, 116, 3, 40, 40, 60, 255); graphics.fillRect(8, vitalsY + 4, w, 3, r, g, b, 255)
+      graphics.drawText(128, vitalsY + 1, "AIR " .. floor(o2) .. "%", r, g, b, 255)
       if (R.inventory.FLASK or 0) > 0 then local cap = 100 * math.min(3, R.inventory.FLASK)
-        graphics.fillRect(8, 22, 60, 3, 40, 40, 60, 255); graphics.fillRect(8, 22, floor((R.flask or 0) / cap * 60), 3, 150, 220, 235, 255)
-        graphics.drawText(72, 20, "flask", 150, 220, 235, 200) end
-      local G = R.gas or {}
-      if (G.co or 0) > 20 then graphics.drawText(240, 15, string.format("CO %d%%%s", floor(G.co), G.co > 35 and " - POISONING" or ""), 255, 120, 60, 255)
-      elseif (G.ch4 or 0) > 25 then graphics.drawText(240, 15, string.format("EXPLOSIVE GAS %d%%", floor(G.ch4)), 255, 200, 60, 255)
-      elseif (G.rad or 0) > 25 then graphics.drawText(240, 15, string.format("RADIATION %d%%", floor(G.rad)), 140, 255, 120, 255)
-      elseif (G.heat or 0) > 35 then graphics.drawText(240, 15, string.format("HEAT %d%%", floor(G.heat)), 255, 150, 90, 255)
-      elseif (R.o2conc or 0) > 60 and (R.frame % 26) < 13 then graphics.drawText(240, 15, "OXYGEN RICH - FIRE HAZARD", 255, 140, 60, 255)
-      elseif o2 < 35 and (R.frame % 30) < 15 then graphics.drawText(240, 15, o2 < 15 and "SUFFOCATING" or "AIR RUNNING OUT", 255, 90, 90, 255) end
-      -- Accumulated dose shown on its own, persistent line -- unlike the
-      -- live hazard line above (only one at a time, only while it's bad
-      -- right now), this is a lasting condition and stays visible as long
-      -- as it's non-trivial, in or out of a hot zone.
-      if (R.radAccum or 0) > 10 then
-        local rc = (R.radAccum > 40) and { 255, 120, 90 } or { 200, 230, 140 }
-        graphics.drawText(240, 27, string.format("Radiation dose: %d%%", floor(R.radAccum)), rc[1], rc[2], rc[3], 255)
-      end
-      if (R.uvAccum or 0) > 20 then
-        local uc = (R.uvAccum > 70) and { 255, 150, 90 } or { 255, 220, 140 }
-        graphics.drawText(240, 39, string.format("UV exposure: %d%%", floor(R.uvAccum)), uc[1], uc[2], uc[3], 255)
-      end
-    end end
-  local where = depth > 20 and string.format("%dm underground", floor(depth / 4)) or (depth < -20 and string.format("%dm up", floor(-depth / 4)) or "surface")
-  do local N = R.need
-    if (N.food or 100) < 100 or (N.water or 100) < 100 then
-      graphics.fillRect(8, 26, 56, 3, 40, 40, 60, 255); graphics.fillRect(8, 26, floor(N.food / 100 * 56), 3, 210, 160, 70, 255)
-      if N.food < 25 or N.water < 25 then graphics.drawText(128, 24, N.water < N.food and "THIRSTY" or "HUNGRY", 255, 150, 80, 255) end
-    end end
-  -- R.VERSION in the always-on in-game HUD -- was only visible on the title
-  -- screen and during the What's-New popup, even though the section comment
-  -- above (line ~171) explicitly says "shown on screen always (bottom-left
-  -- corner) so anyone watching knows exactly what build is running." Sits
-  -- top-right, just above the Deaths counter, dim grey so it doesn't compete
-  -- with the brighter HUD readouts.
-  graphics.drawText(W - 80, 8, "v" .. R.VERSION, 160, 160, 170, 255)
-  -- Round-25 fix: format was "Day %d %s" where %s was always "day" or "night",
-  -- so during daytime the HUD read "Day 2 day" -- a clear copy-paste-style
-  -- duplication. Drop the redundant day/night word entirely (the day number
-  -- is enough info; the sun/moon in the sky already shows night visually).
-  graphics.drawText(8, 22, string.format("Day %d%s   x %d   %s   %s%s", R.day or 1, night > 0.2 and " (night)" or "", floor(R.P.x / 4), where, biomeAt(floor(R.P.x)), R.enemies and "   enemies ON" or ""), 220, 220, 220, 255)
-  -- Death counter: only renders when >0 so a fresh run is uncluttered, and only after a real
-  -- respawn so the inventory-loss "you died" moment is reflected back at the player. Bright
-  -- orange makes it pop against the grey status line above; lives just below the always-on
-  -- felt-temperature readout so it sits inside the existing HUD band (lines 22-34).
-  if (R.deaths or 0) > 0 then
-    graphics.drawText(W - 80, 22, string.format("Deaths: %d", R.deaths), 255, 150, 80, 255)
+        graphics.fillRect(8, vitalsY + 7, 60, 2, 40, 40, 60, 255); graphics.fillRect(8, vitalsY + 7, floor((R.flask or 0) / cap * 60), 2, 150, 220, 235, 255)
+        graphics.drawText(72, vitalsY + 4, "flask", 150, 220, 235, 200) end
+    end
+    if needFood then
+      graphics.fillRect(8, vitalsY + 2, 56, 3, 40, 40, 60, 255); graphics.fillRect(8, vitalsY + 2, floor(N.food / 100 * 56), 3, 210, 160, 70, 255)
+      if N.food < 25 or N.water < 25 then graphics.drawText(68, vitalsY, N.water < N.food and "THIRSTY" or "HUNGRY", 255, 150, 80, 255) end
+    end
+    vitalsY = vitalsY + 12
   end
-  -- Visual gauges for felt-temp and ambient pressure, top-left HUD band.
-  -- Replaces the prior "Feels like X F" text-only line: same numeric info is still
-  -- shown, but a colored horizontal bar fills proportionally to the value, so a
-  -- glance at the colors answers "am I hot/cold / in pressure danger?" without
-  -- having to read and compare a number. Bar at x=24..124 (100px wide), label at
-  -- x=128. y=34 = temperature, y=46 = pressure; log tail nudged to y=58 below.
-  do local GAUGE_X, GAUGE_W = 24, 100
-    -- Temperature gauge: 0..1000 F mapped to a cold->warm->hot color gradient.
-    do local tF = ((R.feltTempK or 295) - 273.15) * 9 / 5 + 32
-      local frac = math.max(0, math.min(1, tF / 1000))
-      local r, g, b
-      if tF < 70 then        -- freezing -> neutral white, blue dominant
+  local G = R.gas or {}
+  local gasLine, gasR, gasG, gasB = nil, 255, 120, 60
+  if (G.co or 0) > 20 then gasLine = string.format("CO %d%%%s", floor(G.co), G.co > 35 and " - POISONING" or ""); gasR, gasG, gasB = 255, 120, 60
+  elseif (G.ch4 or 0) > 25 then gasLine = string.format("EXPLOSIVE GAS %d%%", floor(G.ch4)); gasR, gasG, gasB = 255, 200, 60
+  elseif (G.rad or 0) > 25 then gasLine = string.format("RADIATION %d%%", floor(G.rad)); gasR, gasG, gasB = 140, 255, 120
+  elseif (G.heat or 0) > 35 then gasLine = string.format("HEAT %d%%", floor(G.heat)); gasR, gasG, gasB = 255, 150, 90
+  elseif (R.o2conc or 0) > 60 and (R.frame % 26) < 13 then gasLine = "OXYGEN RICH - FIRE HAZARD"; gasR, gasG, gasB = 255, 140, 60
+  elseif (R.o2 or 100) < 35 and (R.frame % 30) < 15 then gasLine = ((R.o2 or 100) < 15 and "SUFFOCATING" or "AIR RUNNING OUT"); gasR, gasG, gasB = 255, 90, 90
+  elseif (R.o2 or 100) < 70 and (R.o2conc or 0) <= 25 then gasLine = ((R.P.y - surfaceAt(floor(R.P.x))) > 140) and "thin air" or "stale air"; gasR, gasG, gasB = 160, 170, 190
+  elseif (R.o2conc or 0) > 25 then gasLine = "O2 " .. floor(R.o2conc) .. "%"; gasR, gasG, gasB = 140, 220, 255 end
+  do local q = R.QUESTS[R.quest]
+    if q then
+      -- Was string.sub(q.txt, 1, 24): a hardcoded char cut with no relation to the
+      -- actual column width, so it sliced mid-word -- "Craft a wood pick by hand"
+      -- (25 chars) rendered as "...by han", captured live. Derive the budget from
+      -- the real RC_W instead, via the same menuWrap already used by the Esc menu,
+      -- and allow up to three rows so goals read in full; only genuinely long ones
+      -- ellipsize, and then on a word boundary rather than mid-word.
+      local lines = R.menuWrap("GOAL " .. R.quest .. "/" .. #R.QUESTS .. ": " .. q.txt, RC_W)
+      -- The GOAL line is the game's primary "what do I do next" prompt, so it earns
+      -- the extra row: 3 fits the current quest set's typical length in full.
+      local shown = math.min(#lines, 3)
+      local h = 2 + shown * 12
+      local x, y = R.rcLine(h + 2)
+      graphics.fillRect(x, y, RC_W, h, 0, 0, 0, 150)
+      local maxc = math.max(1, floor((RC_W - 4) / R.MENU_CHAR_W))
+      for i = 1, shown do
+        local t = lines[i]
+        -- trim before appending the ellipsis, so the marker cannot push the row
+        -- back past the width budget it was just wrapped to
+        if i == shown and #lines > shown then t = t:sub(1, math.max(1, maxc - 3)) .. "..." end
+        graphics.drawText(x + 2, y + 2 + (i - 1) * 12, t, 255, 220, 120, 255)
+      end
+    end
+  end
+  if gasLine then
+    local x, y = R.rcLine(12)
+    graphics.drawText(x, y, gasLine, gasR, gasG, gasB, 255)
+  end
+  if (R.radAccum or 0) > 10 then
+    local rc = (R.radAccum > 40) and { 255, 120, 90 } or { 200, 230, 140 }
+    local x, y = R.rcLine(12)
+    graphics.drawText(x, y, string.format("RAD dose %d%%", floor(R.radAccum)), rc[1], rc[2], rc[3], 255)
+  end
+  if (R.uvAccum or 0) > 20 then
+    local uc = (R.uvAccum > 70) and { 255, 150, 90 } or { 255, 220, 140 }
+    local x, y = R.rcLine(14)
+    graphics.drawText(x, y, string.format("UV burn %d%%", floor(R.uvAccum)), uc[1], uc[2], uc[3], 255)
+    graphics.fillRect(x, y + 9, 56, 3, 40, 40, 60, 255)
+    graphics.fillRect(x, y + 9, floor(R.uvAccum / 100 * 56), 3, uc[1], uc[2], uc[3], 255)
+  end
+  do
+    local env = R.env or {}
+    local BAR_X, BAR_W, ROW_H = 52, 128, 13
+    local function kToF(k) return (k - 273.15) * 9 / 5 + 32 end
+    local function tempGaugeColor(tF)
+      if tF < 70 then
         local k = math.max(0, math.min(1, (tF + 20) / 90))
-        r, g, b = math.floor(80 + 175 * k), math.floor(150 + 105 * k), 255
-      elseif tF < 200 then   -- neutral -> warm orange
+        return math.floor(80 + 175 * k), math.floor(150 + 105 * k), 255
+      elseif tF < 200 then
         local k = (tF - 70) / 130
-        r, g, b = 255, math.floor(255 - 75 * k), math.floor(255 - 195 * k)
-      else                   -- warm -> hot red
+        return 255, math.floor(255 - 75 * k), math.floor(255 - 195 * k)
+      else
         local k = math.max(0, math.min(1, (tF - 200) / 300))
-        r, g, b = 255, math.floor(180 - 130 * k), math.floor(60 - 40 * k)
+        return 255, math.floor(180 - 130 * k), math.floor(60 - 40 * k)
       end
-      -- background track + colored fill
-      graphics.fillRect(GAUGE_X, 34, GAUGE_W, 4, 40, 40, 60, 200)
-      graphics.fillRect(GAUGE_X, 34, floor(frac * GAUGE_W), 4, r, g, b, 255)
-      graphics.drawRect(GAUGE_X, 34, GAUGE_W, 4, 180, 180, 200, 200)
-      graphics.drawText(8, 33, "T", 200, 200, 220, 255)
-      graphics.drawText(GAUGE_X + GAUGE_W + 6, 33, string.format("%.0fF", tF), r, g, b, 255)
     end
-    -- Pressure gauge: sim.pressure returns a cell value (4px cells; pcall because
-    -- coordinates can be out of grid range near edges). 0 is the neutral baseline;
-    -- negative = vacuum (deep caves, sealed rooms dug open), positive = overpressure
-    -- (sealed rooms with fire/lots-of-O2). Color-coded: green safe, yellow caution, red danger.
-    do local cx, cy = floor(R.P.x / 4), floor(R.P.y / 4)
-      local ok, p = pcall(sim.pressure, cx, cy)
-      p = (ok and type(p) == "number") and p or 0
-      -- Map -8..+8 to 0..1 fraction; extreme dig creates -8 vacuum, sealed+fire can hit +5..+6.
-      local frac = math.max(0, math.min(1, (p + 8) / 16))
+    local T_LO, T_HI = -40, 950
+    local function tFrac(tF) return math.max(0, math.min(1, (tF - T_LO) / (T_HI - T_LO))) end
+    local bandY = vitalsY + 2
+    graphics.fillRect(HUD_X, bandY, HUD_W, ROW_H * 2 + 2, 0, 0, 0, 130)
+    local tY = bandY + 2
+    local tMinK = math.min(env.tempMin or 295, env.geoMin or env.tempMin or 295)
+    local tMaxK = math.max(env.tempMax or 295, env.geoMax or env.tempMax or 295)
+    if tMaxK - tMinK < 10 then
+      local spread = 8 + math.min(60, (env.depth or 0) * 0.12)
+      tMinK = tMinK - spread * 0.45
+      tMaxK = tMaxK + spread * 0.55
+    end
+    local tMinF = kToF(tMinK)
+    local tMaxF = kToF(tMaxK)
+    local tAvgF = kToF(env.tempAvg or (tMinK + tMaxK) / 2)
+    graphics.drawText(8, tY + 1, "TEMP", 180, 200, 220, 255)
+    graphics.fillRect(BAR_X, tY + 2, BAR_W, 6, 40, 40, 60, 200)
+    for i = 0, BAR_W - 1 do
+      local r, g, b = tempGaugeColor(T_LO + (i / math.max(1, BAR_W - 1)) * (T_HI - T_LO))
+      graphics.fillRect(BAR_X + i, tY + 2, 1, 6, r, g, b, 255)
+    end
+    do
+      local x1 = BAR_X + floor(tFrac(tMinF) * (BAR_W - 1))
+      local x2 = BAR_X + floor(tFrac(tMaxF) * (BAR_W - 1))
+      if x2 < x1 then x1, x2 = x2, x1 end
+      if x2 > x1 then
+        graphics.fillRect(x1, tY + 1, x2 - x1 + 1, 8, 255, 255, 255, 55)
+        graphics.drawRect(x1, tY + 1, x2 - x1 + 1, 8, 255, 255, 255, 180)
+      end
+      local ax = BAR_X + floor(tFrac(tAvgF) * (BAR_W - 1))
+      graphics.fillRect(ax, tY + 1, 2, 8, 255, 255, 255, 220)
+    end
+    graphics.drawRect(BAR_X, tY + 2, BAR_W, 6, 180, 180, 200, 200)
+    local ar, ag, ab = tempGaugeColor(tAvgF)
+    graphics.drawText(BAR_X + BAR_W + 4, tY + 1, string.format("%.0f-%.0fF", tMinF, tMaxF), ar, ag, ab, 255)
+    local pY = bandY + ROW_H + 1
+    local P_LO, P_HI = -12, 24
+    local function pFrac(p) return math.max(0, math.min(1, (p - P_LO) / (P_HI - P_LO))) end
+    local pMin = env.pressMin or 0
+    local pMax = env.pressMax or 0
+    local pAvg = env.pressAvg or 0
+    graphics.drawText(8, pY + 1, "PRESS", 180, 200, 220, 255)
+    graphics.fillRect(BAR_X, pY + 2, BAR_W, 6, 40, 40, 60, 200)
+    for i = 0, BAR_W - 1 do
+      local pv = P_LO + (i / math.max(1, BAR_W - 1)) * (P_HI - P_LO)
+      local apv = math.abs(pv)
       local r, g, b
-      local ap = math.abs(p)
-      if ap <= 1.5 then       r, g, b = 90, 200, 110       -- green safe
-      elseif ap <= 3.5 then   r, g, b = 230, 200, 90       -- yellow caution
-      else                    r, g, b = 230, 90, 90        -- red danger
-      end
-      graphics.fillRect(GAUGE_X, 46, GAUGE_W, 4, 40, 40, 60, 200)
-      graphics.fillRect(GAUGE_X, 46, floor(frac * GAUGE_W), 4, r, g, b, 255)
-      graphics.drawRect(GAUGE_X, 46, GAUGE_W, 4, 180, 180, 200, 200)
-      -- center marker at frac=0.5 (baseline pressure 0) so the player sees deviation
-      graphics.fillRect(GAUGE_X + floor(GAUGE_W / 2) - 1, 45, 1, 6, 220, 220, 230, 180)
-      graphics.drawText(8, 45, "P", 200, 200, 220, 255)
-      graphics.drawText(GAUGE_X + GAUGE_W + 6, 45, string.format("%+d", p), r, g, b, 255)
+      if apv <= 1.5 then r, g, b = 90, 200, 110
+      elseif apv <= 3.5 then r, g, b = 230, 200, 90
+      else r, g, b = 230, 90, 90 end
+      graphics.fillRect(BAR_X + i, pY + 2, 1, 6, r, g, b, 255)
     end
+    do
+      local x1 = BAR_X + floor(pFrac(pMin) * (BAR_W - 1))
+      local x2 = BAR_X + floor(pFrac(pMax) * (BAR_W - 1))
+      if x2 < x1 then x1, x2 = x2, x1 end
+      if x2 > x1 then
+        graphics.fillRect(x1, pY + 1, x2 - x1 + 1, 8, 255, 255, 255, 55)
+        graphics.drawRect(x1, pY + 1, x2 - x1 + 1, 8, 255, 255, 255, 180)
+      end
+      local apx = BAR_X + floor(pFrac(pAvg) * (BAR_W - 1))
+      graphics.fillRect(apx, pY + 1, 2, 8, 255, 255, 255, 220)
+    end
+    graphics.fillRect(BAR_X + floor(BAR_W / 2) - 1, pY + 1, 1, 8, 220, 220, 230, 180)
+    graphics.drawRect(BAR_X, pY + 2, BAR_W, 6, 180, 180, 200, 200)
+    local ap = math.abs(pAvg)
+    local pr, pg, pb
+    if ap <= 1.5 then pr, pg, pb = 90, 200, 110
+    elseif ap <= 3.5 then pr, pg, pb = 230, 200, 90
+    else pr, pg, pb = 230, 90, 90 end
+    graphics.drawText(BAR_X + BAR_W + 4, pY + 1, string.format("%+d..%+d", math.floor(pMin + 0.5), math.floor(pMax + 0.5)), pr, pg, pb, 255)
+    vitalsY = bandY + ROW_H * 2 + 4
+    R._hudLeftEndY = vitalsY
   end
-  for k, m in ipairs(R.log or {}) do local age = (R.frame or 0) - m[2]; local a = math.max(0, math.min(255, 255 - floor(age / 2))); if a > 0 then graphics.drawText(8, 58 + 12*(k-1), m[1], 255, 230, 140, a) end end
-  if R.hint then graphics.drawText(260, 8, R.hint, 200, 230, 255, 255) end
-  if R.sandbox then graphics.drawText(W - 200, 40, "SANDBOX MODE (Esc menu to turn off)", 255, 200, 80, 255) end
-  do local q = R.QUESTS[R.quest]; if q then graphics.fillRect(258, 20, 240, 12, 0, 0, 0, 150); graphics.drawText(262, 22, "GOAL " .. R.quest .. "/" .. #R.QUESTS .. ": " .. q.txt, 255, 220, 120, 255) end end
+  local logY = vitalsY + 6
+  local logN = #(R.log or {})
+  -- R.hint is assigned in 25 places across core+plugins and cleared in none, and this
+  -- draw site had no expiry -- so the last action's text ("+1 Dirt  +7 Wood") sat on the
+  -- HUD at full brightness indefinitely, long after the action, reading as a stuck UI
+  -- element. Stamp it here instead: this draw is the single choke point every one of
+  -- those assignments flows through, so one comparison replaces touching 25 call sites.
+  -- Then fade it the same way the R.log entries below already fade by age.
+  if R.hint ~= R._hintPrev then R._hintPrev, R._hintAt = R.hint, R.frame or 0 end
+  local hintA = 0
+  if R.hint then
+    -- hold fully legible ~6s, then fade over ~2s (tick rate measured ~36fps under load)
+    hintA = math.max(0, math.min(255, 255 - floor(((R.frame or 0) - (R._hintAt or 0) - 220) * 3.5)))
+  end
+  local showHint = R.hint and hintA > 0
+  if logN > 0 or showHint then
+    graphics.fillRect(HUD_X, logY, HUD_W, 10 + 11 * math.max(logN, showHint and 1 or 0), 0, 0, 0, 100)
+  end
+  for k, m in ipairs(R.log or {}) do local age = (R.frame or 0) - m[2]; local a = math.max(0, math.min(255, 255 - floor(age / 2))); if a > 0 then graphics.drawText(8, logY + 11 * (k - 1), m[1], 255, 230, 140, a) end end
+  if showHint then graphics.drawText(8, logY + 11 * logN, R.hint, 200, 230, 255, hintA) end
+  if R.drawQuickBar then pcall(R.drawQuickBar) end
+  runHooks(R.hooks.drawHUD)
   if R.debug then
     graphics.drawText(260, 20, string.format("wx=%.1f wy=%.1f cam=%d,%d parts=%d shift=%.1fms err=%s", R.P.x, R.P.y, R.cam.x, R.cam.y, sim.partCount(), R.shiftMs or 0, tostring(R.lastErr)), 180, 255, 180, 255)
     graphics.drawText(260, 32, R.perfReport(), 180, 230, 255, 255)
@@ -3026,7 +3952,9 @@ local function onDraw()
     graphics.drawText(b.x + 10, b.y + 3, "Got it", 255, 240, 200, 255)
   end
   drawHotbar(); if R.minimap then drawMinimap() end; if R.invOpen then drawPanel() end
-  graphics.drawText(W - 110, 68, "Esc = menu / controls", 160, 160, 170, 255)
+  if R.minimap then
+    graphics.drawText(MAP_X, 136, "Esc | L | C", 150, 155, 170, 200)
+  end
   -- Always visible, never hover-gated -- so anyone watching (including
   -- mid-stream) can immediately tell what build is running.
   -- Bottom-left corner, below where the chat box/hotbar sit.
@@ -3046,7 +3974,7 @@ local function onDraw()
       local x1, y1, x2, y2 = cx - r, cy - r, cx + r, cy + r
       if R.grid then local g2 = R.gridSize or 4; local gx = floor((cx + R.cam.x) / g2) * g2 - R.cam.x; local gy = floor((cy + R.cam.y) / g2) * g2 - R.cam.y; x1, y1, x2, y2 = gx - g2*r, gy - g2*r, gx + g2*r + g2 - 1, gy + g2*r + g2 - 1 end
       graphics.drawRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1, 255, 255, 120, 220) end end end
-  if R.menuOpen then drawMenu() end
+  if R.menuOpen and drawMenu then local okM, errM = pcall(drawMenu); if not okM then R.lastErr = tostring(errM) end end
 end
 
 -- ================================================================ tick
@@ -3062,10 +3990,10 @@ local function updateTorches()
       else sim.partProperty(stick, "temp", 295)
         if not sim.partID(x, y) then local f = sim.partCreate(-1, x, y, fire); if f and f >= 0 then sim.partProperty(f, "life", 30); sim.partProperty(f, "temp", 900) end end end end end
 end
-local SLOW_BURN = 20   -- coal inside a furnace chamber burns this many times slower than in the open
+-- coal in a furnace chamber burns 20x slower than in the open (inlined below)
 local function updateFurnaces()
   if sim.paused() then return end
-  if R.frame % SLOW_BURN == 0 then return end   -- on 1 frame in SLOW_BURN we let the countdown proceed
+  if R.frame % 20 == 0 then return end   -- on 1 frame in 20 we let the countdown proceed
   for _, st in ipairs(R.stations) do if st.kind == "furnace" then
     local x1, y1 = st.x + 2 - R.cam.x, st.y - 10 - R.cam.y
     if x1 > -20 and x1 < W + 20 and y1 > -20 and y1 < H + 20 then
@@ -3081,7 +4009,24 @@ local function updateWeather()
     Wt.left = Wt.left - 1; if Wt.left <= 0 then Wt.rain = false; Wt.next = 6000 + floor(math.random() * 9000); say("The rain stops") return end
     local wt = eid("WATR"); if not wt then return end
     for i = 1, 1 do local x = 4 + floor(math.random() * (W - 8)); local y = 6 + floor(math.random() * 24); local wy = y + R.cam.y; if wy > surfaceAt(x + R.cam.x) - 30 then y = -1 end
-      if y > 4 and y < H - 4 and not sim.partID(x, y) then local p = sim.partCreate(-1, x, y, wt); if p and p >= 0 then sim.partProperty(p, "vy", 2) end end end
+      if y > 4 and y < H - 4 and not sim.partID(x, y) then
+        local wx = x + R.cam.x
+        if R.treeVegQuery or R.nearestTreeDrain or R.treeShadeDrain then
+          local q = (R.treeShadeDrain and R.treeShadeDrain(wx, wy))
+            or (R.treeVegQuery and (R.treeVegQuery(wx, wy + 1) or R.treeVegQuery(wx, wy + 2)))
+            or (R.nearestTreeDrain and R.nearestTreeDrain(wx, wy))
+          if q and q.hollowCol and (q.canopy or q.poolOnCanopy or q.gapFloor) then
+            local hx, hy = q.hollowCol - R.cam.x, y
+            for dy = 0, 18 do
+              local ty = hy + dy
+              if ty >= H - 4 then break end
+              if not sim.partID(hx, ty) then hy = ty; break end
+            end
+            x, y = hx, hy
+          end
+        end
+        if not sim.partID(x, y) then local p = sim.partCreate(-1, x, y, wt); if p and p >= 0 then sim.partProperty(p, "vy", 2) end end
+      end end
   else Wt.next = Wt.next - 1; if Wt.next <= 0 then Wt.rain = true; Wt.left = 900 + floor(math.random() * 900); say("Rain clouds roll in") end end
 end
 -- Nothing in this game ever removes standing water, so rain just piles up forever --
@@ -3089,24 +4034,754 @@ end
 -- WOOD/GRSS block it like solid ground would. Real soil/wood don't hold a puddle
 -- indefinitely either, so soak resting water into whatever it's sitting on, at a rate
 -- that comfortably loses to a real rainstorm but wins once the rain stops.
+-- Lua 5.1 main-chunk local cap (200): tree/liquid/env helpers scoped here so hot reload still compiles.
+local treeWaterVeinsTick, treeHollowDripTick, gapPoolDrainTick, canopyPoolDrainTick, treeGapGasVentTick, settleLiquidsTick, sampleEnvGradient, geoAmbienceTick, depthPressureTick, absorbStandingWater, pendingAirTick
+do
+local min, max, abs = math.min, math.max, math.abs
 local ABSORBENT = { GOO=1, GRSS=1, WOOD=1, SAND=1, CLST=1, ICE=1, SNOW=1 }
-local function absorbStandingWater()
-  if sim.paused() or R.frame % 6 ~= 0 then return end
-  local wt = eid("WATR"); if not wt then return end
-  for i = 1, 14 do
-    local sx, sy = math.random(2, W - 3), math.random(2, H - 3)
+local TREE_LIQ = { WATR=1, GOO=1, BLD=1 }
+local function treeVegAt(wx, wy)
+  if R.treeVegQuery then return R.treeVegQuery(wx, wy) end
+  return nil
+end
+local function treeOnSurface(wx, wy)
+  -- Gap floor between trunks must win over treeShadeDrain (shade matches gap pixels too).
+  if R.nearestTreeDrain then
+    local gq = R.nearestTreeDrain(wx, wy)
+    if gq and gq.gapFloor then return gq end
+  end
+  local q = treeVegAt(wx, wy)
+  if q and (q.poolOnCanopy or q.poolOnTrunk or q.trunkWood or q.inHollow) then return q end
+  q = treeVegAt(wx, wy + 1)
+  if q and (q.poolOnCanopy or q.poolOnTrunk) then return q end
+  if R.treeShadeDrain then
+    q = R.treeShadeDrain(wx, wy)
+    if q then return q end
+  end
+  return nil
+end
+local function screenOK(sx, sy)
+  return sx >= R.M and sx < W - R.M and sy >= R.M and sy < H - R.M
+end
+local function drainColumn(q)
+  return q.hollowCol or (q.x0 + floor((q.tw or 2) / 2))
+end
+local function routeTreeLiquid(p, sx, sy, wx, wy, q, nm)
+  local drain = drainColumn(q)
+  local tsx = drain - R.cam.x
+  local function fallInHollow(maxDy, sameRow)
+    if sameRow and screenOK(tsx, sy) and not sim.partID(tsx, sy) then
+      sim.partProperty(p, "x", tsx); sim.partProperty(p, "y", sy)
+      sim.partProperty(p, "vy", 2.5 + math.random())
+      sim.partProperty(p, "vx", 0)
+      return true
+    end
+    for dy = 1, maxDy or 12 do
+      local ty = sy + dy
+      if screenOK(tsx, ty) and not sim.partID(tsx, ty) then
+        sim.partProperty(p, "x", tsx); sim.partProperty(p, "y", ty)
+        sim.partProperty(p, "vy", 2.8 + math.random())
+        sim.partProperty(p, "vx", 0)
+        return true
+      end
+    end
+    return false
+  end
+  local function seekHollow(maxDy)
+    local dist = sx - tsx
+    if dist == 0 then return fallInHollow(maxDy) end
+    local step = dist > 0 and 1 or -1
+    for dy = 0, maxDy or 14 do
+      for _, dx in ipairs({step, step * 2, 0}) do
+        local tx, ty = sx + dx, sy + dy
+        if screenOK(tx, ty) and not sim.partID(tx, ty) then
+          sim.partProperty(p, "x", tx)
+          if dy > 0 then sim.partProperty(p, "y", ty) end
+          sim.partProperty(p, "vx", step * (2.2 + math.random()))
+          sim.partProperty(p, "vy", 2.5 + dy * 0.35 + math.random())
+          return true
+        end
+      end
+    end
+    return false
+  end
+  local function slideTowardHollow(vyBoost)
+    if sx ~= tsx then sim.partProperty(p, "vx", (tsx - sx) * 1.15) end
+    if screenOK(sx, sy + 1) and not sim.partID(sx, sy + 1) then
+      sim.partProperty(p, "y", sy + 1); sim.partProperty(p, "vy", vyBoost or 3)
+      return true
+    end
+    if sx ~= tsx and screenOK(tsx, sy + 1) and not sim.partID(tsx, sy + 1) then
+      sim.partProperty(p, "x", tsx); sim.partProperty(p, "y", sy + 1)
+      sim.partProperty(p, "vy", vyBoost or 3.2)
+      sim.partProperty(p, "vx", 0)
+      return true
+    end
+    return false
+  end
+  local function soakRootMoisture(amount)
+    if nm ~= "WATR" and nm ~= "GOO" then return false end
+    if wy < q.s - 1 then return false end
+    for dy = 0, 10 do
+      local rx, ry = tsx, sy + dy
+      if screenOK(rx, ry) then
+        local bp = sim.partID(rx, ry)
+        local bnm = bp and nameOf(sim.partProperty(bp, "type"))
+        if bnm == "GOO" and math.random() < 0.55 then
+          sim.partKill(p)
+          R.treeMoisture = R.treeMoisture or {}
+          local key = drain .. "," .. q.s
+          R.treeMoisture[key] = min(100, (R.treeMoisture[key] or 0) + amount)
+          return true
+        end
+      end
+    end
+    return false
+  end
+  local function addTreeMoisture(amount)
+    R.treeMoisture = R.treeMoisture or {}
+    local key = drain .. "," .. q.s
+    R.treeMoisture[key] = min(100, (R.treeMoisture[key] or 0) + amount)
+  end
+  if q.gapFloor then
+    local dist = math.abs(sx - tsx)
+    if dist > 0 and dist <= 14 then
+      sim.partProperty(p, "vx", (tsx - sx) * 2.0)
+      if dist <= 3 and screenOK(tsx, sy) and not sim.partID(tsx, sy) then
+        sim.partProperty(p, "x", tsx); sim.partProperty(p, "y", sy)
+        sim.partProperty(p, "vy", 2.8 + math.random()); sim.partProperty(p, "vx", 0)
+        return
+      end
+    end
+    if seekHollow(18) then return end
+    if fallInHollow(20, true) then return end
+    if slideTowardHollow(3.8) then return end
+    if soakRootMoisture(5) then return end
+    if nm == "WATR" and math.random() < 0.42 then
+      addTreeMoisture(4)
+      sim.partKill(p)
+    end
+    return
+  end
+  if q.canopy or q.poolOnCanopy or q.poolOnTrunk or q.trunkWood then
+    if seekHollow(24) then return end
+    if fallInHollow(32) then return end
+    if slideTowardHollow(4.0) then return end
+    if nm == "BLD" and math.random() < 0.55 then
+      local side = sx + (math.random(0, 1) == 0 and -1 or 1)
+      if screenOK(side, sy + 1) and not sim.partID(side, sy + 1) then
+        sim.partProperty(p, "x", side); sim.partProperty(p, "y", sy + 1)
+        sim.partProperty(p, "vy", 3 + math.random())
+        return
+      end
+    end
+    if screenOK(sx, sy + 1) and not sim.partID(sx, sy + 1) then
+      sim.partProperty(p, "y", sy + 1); sim.partProperty(p, "vy", 3 + math.random())
+    elseif (nm == "WATR" or nm == "GOO") and math.random() < 0.52 then
+      addTreeMoisture(3)
+      sim.partKill(p)
+    end
+    return
+  end
+  if q.inHollow or (q.hollowCol and wx == q.hollowCol) then
+    if fallInHollow(14) then return end
+    if wy >= q.s - 2 and (nm == "WATR" or nm == "GOO") then
+      for dy = 0, 10 do
+        local rx, ry = tsx, sy + dy
+        if screenOK(rx, ry) then
+          local bp = sim.partID(rx, ry)
+          local bnm = bp and nameOf(sim.partProperty(bp, "type"))
+          if bnm == "GOO" then
+            sim.partKill(p)
+            addTreeMoisture(6)
+            return
+          end
+          if not bp and dy <= 3 then
+            sim.partProperty(p, "x", rx); sim.partProperty(p, "y", ry); return
+          end
+        end
+      end
+      if math.random() < 0.38 then
+        addTreeMoisture(2)
+        sim.partKill(p)
+      end
+    end
+  end
+  if wy >= q.s - 1 then
+    for dy = 1, 10 do for dx = -8, 8 do
+      local rx, ry = wx + dx - R.cam.x, sy + dy
+      if screenOK(rx, ry) then
+        local bp = sim.partID(rx, ry)
+        local bnm = bp and nameOf(sim.partProperty(bp, "type"))
+        if not bp and dy <= 4 then
+          sim.partProperty(p, "x", rx); sim.partProperty(p, "y", ry)
+          sim.partProperty(p, "vy", 2); return
+        end
+        if bnm == "GOO" and (nm == "WATR" or nm == "GOO") and math.random() < 0.62 then
+          sim.partKill(p)
+          addTreeMoisture(6)
+          return
+        end
+        local wwx, wwy = wx + dx, wy + dy
+        if nm == "WATR" and (R.treeRootSoakAt and R.treeRootSoakAt(wwx, wwy) or R.treeAquiferAt and R.treeAquiferAt(wwx, wwy))
+            and bnm == "GOO" and math.random() < 0.58 then
+          sim.partKill(p)
+          addTreeMoisture(5)
+          return
+        end
+      end
+    end end
+  end
+end
+treeAquiferSpreadTick = function()
+  if sim.paused() or R.frame % 8 ~= 0 then return end
+  local wt = eid("WATR")
+  R.treeMoisture = R.treeMoisture or {}
+  for key, m in pairs(R.treeMoisture) do
+    if m > 0 then
+      local hx, s = key:match("^(-?%d+),(-?%d+)$")
+      if hx then
+        hx, s = tonumber(hx), tonumber(s)
+        local chance = 0.22 * (m / 100)
+        for dx = -8, 8 do
+          for d = 1, 20 do
+            local wwx, wwy = hx + dx, s + d
+            local aquifer = R.treeAquiferAt and R.treeAquiferAt(wwx, wwy)
+            local soak = (R.treeRootSoakAt and R.treeRootSoakAt(wwx, wwy)) or aquifer
+            if soak and math.random() < chance then
+              local sx, sy = wwx - R.cam.x, wwy - R.cam.y
+              if screenOK(sx, sy) then
+                local bp = sim.partID(sx, sy)
+                local bnm = bp and nameOf(sim.partProperty(bp, "type"))
+                if bnm == "GOO" and wt then
+                  for _, off in ipairs({{0,1},{1,0},{-1,0},{1,1},{-1,1},{0,-1}}) do
+                    local nx, ny = sx + off[1], sy + off[2]
+                    if screenOK(nx, ny) and not sim.partID(nx, ny) then
+                      local np = sim.partCreate(-1, nx, ny, wt)
+                      if np and np >= 0 then
+                        sim.partProperty(np, "vy", 0.15)
+                        sim.partProperty(np, "life", 90)
+                      end
+                      break
+                    end
+                  end
+                elseif not bp and aquifer and wt and m > 18 and math.random() < 0.35 then
+                  local rq = R.treeRootVeinQuery and R.treeRootVeinQuery(wwx, wwy)
+                  if rq and rq.inHollow then
+                    local np = sim.partCreate(-1, sx, sy, wt)
+                    if np and np >= 0 then
+                      sim.partProperty(np, "vy", 0.1)
+                      sim.partProperty(np, "life", 70)
+                    end
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+      R.treeMoisture[key] = max(0, m - 0.15)
+    end
+  end
+end
+treeHollowDripTick = function()
+  if sim.paused() then return end
+  local raining = R.weather and R.weather.rain
+  local wt = eid("WATR")
+  if not wt then return end
+  if raining then
+    for i = 1, 36 do
+      local sx = math.random(M + 2, W - M - 3)
+      local sy = math.random(M + 2, H - M - 3)
+      local wx, wy = sx + R.cam.x, sy + R.cam.y
+      local q = R.treeVegQuery and R.treeVegQuery(wx, wy)
+      if not q or not q.inHollow then goto thd_next end
+      if sim.partID(sx, sy) then goto thd_next end
+      local p = sim.partCreate(-1, sx, sy, wt)
+      if p and p >= 0 then
+        sim.partProperty(p, "vy", 1.0 + math.random() * 1.2)
+        sim.partProperty(p, "vx", (math.random() - 0.5) * 0.2)
+        R.treeMoisture = R.treeMoisture or {}
+        local drain = q.hollowCol or wx
+        local key = drain .. "," .. q.s
+        R.treeMoisture[key] = min(100, (R.treeMoisture[key] or 0) + 2.5)
+      end
+      ::thd_next::
+    end
+    for i = 1, 14 do
+      local sx = math.random(M + 2, W - M - 3)
+      local wx = sx + R.cam.x
+      local surf = surfaceAt(wx)
+      local q = R.treeShadeDrain and R.treeShadeDrain(wx, surf - 1)
+      if not q or not q.hollowCol then goto thd_top_next end
+      local hx = q.hollowCol - R.cam.x
+      local topWy = q.top or (q.s - 6)
+      local hy = topWy - R.cam.y
+      if not screenOK(hx, hy) or sim.partID(hx, hy) then goto thd_top_next end
+      local p = sim.partCreate(-1, hx, hy, wt)
+      if p and p >= 0 then
+        sim.partProperty(p, "vy", 2.2 + math.random())
+        R.treeMoisture = R.treeMoisture or {}
+        local key = q.hollowCol .. "," .. q.s
+        R.treeMoisture[key] = min(100, (R.treeMoisture[key] or 0) + 3)
+      end
+      ::thd_top_next::
+    end
+  end
+  -- Moisture-driven aquifer seep: retain subsurface WATR when treeMoisture is high (no rain needed).
+  if R.frame % 16 == 0 then
+    R.treeMoisture = R.treeMoisture or {}
+    for key, m in pairs(R.treeMoisture) do
+      if m < 22 then goto tas_next end
+      local hx, s = key:match("^(-?%d+),(-?%d+)$")
+      if not hx then goto tas_next end
+      hx, s = tonumber(hx), tonumber(s)
+      for t = 1, 3 do
+        local dx = math.random(-6, 6)
+        local d = 4 + math.random(0, 14)
+        local wwx, wwy = hx + dx, s + d
+        if not (R.treeAquiferAt and R.treeAquiferAt(wwx, wwy)) then goto tas_try_next end
+        local sx, sy = wwx - R.cam.x, wwy - R.cam.y
+        if not screenOK(sx, sy) then goto tas_try_next end
+        local bp = sim.partID(sx, sy)
+        if bp then goto tas_try_next end
+        local np = sim.partCreate(-1, sx, sy, wt)
+        if np and np >= 0 then
+          sim.partProperty(np, "vy", 0.08)
+          sim.partProperty(np, "life", 85)
+        end
+        ::tas_try_next::
+      end
+      ::tas_next::
+    end
+  end
+end
+canopyPoolDrainTick = function()
+  if sim.paused() then return end
+  local raining = R.weather and R.weather.rain
+  local bandWx = floor(R.P.x)
+  for i = 1, raining and 220 or 90 do
+    local wx = bandWx - 140 + math.random(0, 280)
+    local surf = R.surfaceAt and R.surfaceAt(wx) or (R.P and R.P.y)
+    local wy = surf - math.random(2, 22)
+    local q = R.treeShadeDrain and R.treeShadeDrain(wx, wy)
+    if not q then
+      q = R.treeVegQuery and R.treeVegQuery(wx, wy)
+      if not q or not q.poolOnCanopy then goto cpd_next end
+    elseif not q.poolOnCanopy then goto cpd_next end
+    local sx, sy = wx - R.cam.x, wy - R.cam.y
+    if sx < 2 or sx >= W - 3 or sy < 2 or sy >= H - 3 then goto cpd_next end
     local p = sim.partID(sx, sy)
-    if p and sim.partProperty(p, "type") == wt then
+    if not p then goto cpd_next end
+    local nm = nameOf(sim.partProperty(p, "type"))
+    if nm ~= "WATR" and nm ~= "GOO" then goto cpd_next end
+    local vx, vy = sim.partProperty(p, "vx") or 0, sim.partProperty(p, "vy") or 0
+    if math.abs(vx) > 1.8 or math.abs(vy) > 2.2 then goto cpd_next end
+    routeTreeLiquid(p, sx, sy, wx, wy, q, nm)
+    ::cpd_next::
+  end
+end
+treeGapGasVentTick = function()
+  if sim.paused() then return end
+  local GAS = { OXYG=1, CO2=1, SMKE=1 }
+  local n = 48
+  for i = 1, n do
+    local sx, sy
+  if i <= n * 0.7 then
+      local wx = floor(R.P.x) - 100 + math.random(0, 200)
+      local surf = R.surfaceAt and R.surfaceAt(wx) or (R.P and R.P.y)
+      sx = wx - R.cam.x
+      sy = surf - R.cam.y + math.random(-2, 4)
+    else
+      sx, sy = math.random(2, W - 3), math.random(2, H - 3)
+    end
+    if sx < 2 or sx >= W - 3 or sy < 2 or sy >= H - 3 then goto tgv_next end
+    local p = sim.partID(sx, sy)
+    if not p then goto tgv_next end
+    local nm = nameOf(sim.partProperty(p, "type"))
+    if not GAS[nm] then goto tgv_next end
+    local wx, wy = sx + R.cam.x, sy + R.cam.y
+    local q = R.nearestTreeDrain and R.nearestTreeDrain(wx, wy)
+    if not q or not q.gapFloor then
+      q = R.treeShadeDrain and R.treeShadeDrain(wx, wy)
+      if not q or not q.poolOnCanopy then goto tgv_next end
+    end
+    local vy = sim.partProperty(p, "vy") or 0
+    if vy > -0.5 then
+      sim.partProperty(p, "vy", -2.2 - math.random() * 1.5)
+    end
+    local drain = q.hollowCol or (q.x0 + floor((q.tw or 2) / 2))
+    local tsx = drain - R.cam.x
+  sim.partProperty(p, "vx", (tsx - sx) * 0.35 + (sim.partProperty(p, "vx") or 0) * 0.5)
+    ::tgv_next::
+  end
+end
+gapPoolDrainTick = function()
+  if sim.paused() then return end
+  local raining = R.weather and R.weather.rain
+  local n = raining and 260 or 70
+  -- Bias samples toward surface band under the camera (gap pools are tiny vs whole screen).
+  local bandWx = floor(R.P.x)
+  for i = 1, n do
+    local sx, sy
+    if i <= n * 0.65 then
+      local wx = bandWx - 100 + math.random(0, 200)
+      local surf = R.surfaceAt and R.surfaceAt(wx) or (R.P and R.P.y)
+      sx = wx - R.cam.x
+      sy = surf - R.cam.y + math.random(-1, 2)
+    else
+      sx, sy = math.random(2, W - 3), math.random(2, H - 3)
+    end
+    if sx < 2 or sx >= W - 3 or sy < 2 or sy >= H - 3 then goto gpd_next end
+    local p = sim.partID(sx, sy)
+    if not p then goto gpd_next end
+    local nm = nameOf(sim.partProperty(p, "type"))
+    if nm ~= "WATR" then goto gpd_next end
+    local vx, vy = sim.partProperty(p, "vx") or 0, sim.partProperty(p, "vy") or 0
+    if math.abs(vx) > 0.55 or math.abs(vy) > 0.55 then goto gpd_next end
+    local wx, wy = sx + R.cam.x, sy + R.cam.y
+    local q = R.nearestTreeDrain and R.nearestTreeDrain(wx, wy)
+    if not q or not q.gapFloor then goto gpd_next end
+    routeTreeLiquid(p, sx, sy, wx, wy, q, nm)
+    ::gpd_next::
+  end
+end
+treeWaterVeinsTick = function()
+  if sim.paused() then return end
+  local raining = R.weather and R.weather.rain
+  local n = raining and 300 or 100
+  local bandWx = floor(R.P.x)
+  for i = 1, n do
+    local sx, sy = math.random(2, W - 3), math.random(2, H - 3)
+    if raining and i <= 60 then
+      for _ = 1, 8 do
+        local wx = sx + R.cam.x
+        local wy = sy + R.cam.y
+        local gq = R.nearestTreeDrain and R.nearestTreeDrain(wx, wy)
+        if gq and gq.gapFloor then break end
+        local surf = R.surfaceAt and R.surfaceAt(bandWx) or (R.P and R.P.y)
+        sx = bandWx - 100 + math.random(0, 200) - R.cam.x
+        sy = surf - R.cam.y + math.random(-2, 18)
+      end
+    end
+    local p = sim.partID(sx, sy)
+    if not p then goto twv_next end
+    local nm = nameOf(sim.partProperty(p, "type"))
+    if not TREE_LIQ[nm] then goto twv_next end
+    local vx, vy = sim.partProperty(p, "vx") or 0, sim.partProperty(p, "vy") or 0
+    if math.abs(vx) > 2.2 or math.abs(vy) > 2.8 then goto twv_next end
+    local wx, wy = sx + R.cam.x, sy + R.cam.y
+    local q = treeOnSurface(wx, wy)
+    if not q then goto twv_next end
+    routeTreeLiquid(p, sx, sy, wx, wy, q, nm)
+    ::twv_next::
+  end
+end
+-- Cave/mining liquid settle: fast mode disables native water equalisation, so water
+-- mined out of saturated rock can hang in midair. Nudge resting liquids down (or
+-- give them downward velocity) when the cell below is open or pass-through.
+local LIQUID_SET = { WATR=1, DSTW=1, SLTW=1, OIL=1, BLD=1 }
+local function isLiquidPart(p)
+  return p and LIQUID_SET[nameOf(sim.partProperty(p, "type"))] == 1
+end
+local function liquidCanFall(sx, sy)
+  if sy >= H - M - 1 then return false end
+  local below = sim.partID(sx, sy + 1)
+  if not below then return true end
+  return PASS[nameOf(sim.partProperty(below, "type"))] ~= nil
+end
+local function nudgeLiquidParticle(p, sx, sy)
+  if not liquidCanFall(sx, sy) then return end
+  if not sim.partID(sx, sy + 1) then
+    sim.partProperty(p, "x", sx); sim.partProperty(p, "y", sy + 1)
+    sim.partProperty(p, "vy", 2 + math.random() * 2)
+    sim.partProperty(p, "vx", (sim.partProperty(p, "vx") or 0) * 0.5)
+  else
+    local vy = sim.partProperty(p, "vy") or 0
+    sim.partProperty(p, "vy", math.max(vy, 2 + math.random() * 2))
+  end
+end
+nudgeLiquidsNear = function(wx, wy, radius)
+  if sim.paused() then return end
+  local rad = radius or 8
+  for y = wy - rad, wy + rad do for x = wx - rad, wx + rad do
+    local sx, sy = x - R.cam.x, y - R.cam.y
+    if sx >= M and sx < W - M and sy >= M and sy < H - M then
+      local p = sim.partID(sx, sy)
+      if isLiquidPart(p) then nudgeLiquidParticle(p, sx, sy) end
+    end
+  end end
+end
+R.nudgeLiquidsNear = nudgeLiquidsNear
+settleLiquidsTick = function()
+  if sim.paused() or R.frame % 3 == 0 then return end
+  for i = 1, 30 do
+    local sx, sy = math.random(M + 1, W - M - 2), math.random(M + 1, H - M - 2)
+    local p = sim.partID(sx, sy)
+    if isLiquidPart(p) then
       local vx, vy = sim.partProperty(p, "vx") or 0, sim.partProperty(p, "vy") or 0
-      if math.abs(vx) < 0.5 and math.abs(vy) < 0.5 then
-        local below = sim.partID(sx, sy + 1)
-        local nm = below and nameOf(sim.partProperty(below, "type"))
-        if nm and ABSORBENT[nm] and math.random() < 0.2 then sim.partKill(p) end
+      if math.abs(vx) < 2.5 and math.abs(vy) < 3.5 then
+        local wx, wy = sx + R.cam.x, sy + R.cam.y
+        local q = treeOnSurface(wx, wy)
+        if q then
+          routeTreeLiquid(p, sx, sy, wx, wy, q, nameOf(sim.partProperty(p, "type")))
+        else
+          nudgeLiquidParticle(p, sx, sy)
+        end
       end
     end
   end
 end
+-- ONI-like environmental baseline: biome surface temp + geothermal gradient + pocket noise.
+-- Returns Kelvin baseline and pressure offset at world coords (per-column depth).
+local BIOME_SURF_K = { snow = 268, desert = 308, swamp = 298, forest = 294 }
+local function envBaseAt(wx, wy)
+  wx, wy = floor(wx), floor(wy)
+  local surf = surfaceAt(wx)
+  local depth = wy - surf
+  local biome = biomeAt(wx)
+  local surfK = BIOME_SURF_K[biome] or 294
+  local geoK, geoP
+  if depth < 0 then
+    geoK = surfK - depth * 0.22
+    geoP = 2.2 - depth * 0.1
+  else
+    local gradMul = biome == "snow" and 0.72 or biome == "desert" and 1.16 or biome == "swamp" and 1.06 or 1.0
+    geoK = surfK + depth * 0.034 * gradMul
+    if depth > 850 then geoK = geoK + (depth - 850) * 0.05 end
+    if depth > 1200 then geoK = geoK + (depth - 1200) * 0.11 end
+    geoK = geoK + (vnoise(wx / 38, wy / 38, 1842) - 0.5) * 24
+    if R.pocketEnvBias then
+      local tOff, pOff = R.pocketEnvBias(wx, wy, depth)
+      geoK = geoK + (tOff or 0)
+      geoP = (pOff or 0)
+    else
+      geoP = 0
+    end
+    geoP = 2.0 + depth * 0.015 + (geoP or 0)
+  end
+  return geoK, geoP, depth, biome
+end
+R.envBaseAt = envBaseAt
+sampleEnvGradient = function()
+  local px, py = floor(R.P.x), floor(R.P.y)
+  local surfY = surfaceAt(px)
+  local playerDepth = py - surfY
+  local tMin, tMax, tSum, tN = 1e9, -1e9, 0, 0
+  local pMin, pMax, pSum, pN = 1e9, -1e9, 0, 0
+  local gMin, gMax, gSum, gN = 1e9, -1e9, 0, 0
+  local function sampleAt(wx, wy)
+    local geoK, geoP = envBaseAt(wx, wy)
+    gMin = math.min(gMin, geoK); gMax = math.max(gMax, geoK); gSum = gSum + geoK; gN = gN + 1
+    local sx, sy = wx - R.cam.x, wy - R.cam.y
+    local t = geoK
+    if sx >= M and sx < W - M and sy >= M and sy < H - M then
+      local p = sim.partID(sx, sy)
+      if p then t = sim.partProperty(p, "temp") or t end
+    end
+    tMin = math.min(tMin, t); tMax = math.max(tMax, t); tSum = tSum + t; tN = tN + 1
+    local pcx, pcy = floor(wx / sim.CELL), floor(wy / sim.CELL)
+    local pr = geoP
+    local ok, cur = pcall(sim.pressure, pcx, pcy)
+    if ok and type(cur) == "number" then pr = cur end
+    pMin = math.min(pMin, pr); pMax = math.max(pMax, pr); pSum = pSum + pr; pN = pN + 1
+  end
+  for oy = -28, 28, 4 do for ox = -32, 32, 4 do
+    sampleAt(px + ox, py + oy)
+  end end
+  -- ONI-like depth column: surface air through geothermal deep (not just a flat local bubble).
+  local colDepth = math.max(100, math.min(560, playerDepth + 360))
+  for _, ox in ipairs({0, -64, 64, -128, 128}) do
+    for dy = -28, colDepth, 16 do
+      sampleAt(px + ox, surfY + dy)
+    end
+  end
+  R.env = {
+    tempMin = tMin, tempMax = tMax, tempAvg = tSum / math.max(1, tN),
+    pressMin = pMin, pressMax = pMax, pressAvg = pSum / math.max(1, pN),
+    geoMin = gMin, geoMax = gMax, geoAvg = gSum / math.max(1, gN),
+    depth = playerDepth,
+  }
+  R.feltTempK = R.env.tempAvg
+end
+geoAmbienceTick = function()
+  if sim.paused() or R.frame % 18 ~= 0 then return end
+  for _ = 1, 14 do
+    local sx, sy = math.random(M + 2, W - M - 3), math.random(M + 2, H - M - 3)
+    local wx, wy = sx + R.cam.x, sy + R.cam.y
+    local geoK, geoP, depth = envBaseAt(wx, wy)
+    if depth < 22 then goto geo_next end
+    local pcx, pcy = floor(wx / sim.CELL), floor(wy / sim.CELL)
+    if not sim.partID(sx, sy) then
+      local ok, curP = pcall(sim.pressure, pcx, pcy)
+      if ok and type(curP) == "number" and math.abs(curP - geoP) > 0.35 then
+        pcall(sim.pressure, pcx, pcy, curP + (geoP - curP) * 0.14)
+      end
+    end
+    for _, d in ipairs({{0,0},{1,0},{-1,0},{0,1},{0,-1}}) do
+      local p = sim.partID(sx + d[1], sy + d[2])
+      if p then
+        local n = nameOf(sim.partProperty(p, "type"))
+        if n == "OXYG" or n == "CO2" or n == "GAS" or n == "SMKE" or n == "WTRV" or n == "H2" then
+          local t = sim.partProperty(p, "temp") or geoK
+          if math.abs(t - geoK) > 2.5 then
+            sim.partProperty(p, "temp", t + (geoK - t) * 0.11)
+          end
+        end
+      end
+    end
+    ::geo_next::
+  end
+end
+depthPressureTick = function()
+  if sim.paused() or R.frame % 50 ~= 0 then return end
+  local px = floor(R.P.x)
+  for _ = 1, 7 do
+    local wx = px + math.random(-100, 100)
+    local surf = surfaceAt(wx)
+    local wy = surf + math.random(80, math.min(1500, DEPTH - 120))
+    local _, geoP = envBaseAt(wx, wy)
+    local sx, sy = wx - R.cam.x, wy - R.cam.y
+    if sx >= M and sx < W - M and sy >= M and sy < H - M and not sim.partID(sx, sy) then
+      local pcx, pcy = floor(wx / sim.CELL), floor(wy / sim.CELL)
+      local ok, cur = pcall(sim.pressure, pcx, pcy)
+      if ok and type(cur) == "number" and cur < geoP - 0.8 then
+        pcall(sim.pressure, pcx, pcy, math.min(geoP, cur + 1.4))
+      end
+    end
+  end
+end
+absorbStandingWater = function()
+  if sim.paused() or R.frame % 4 ~= 0 then return end
+  local bandWx = floor(R.P.x)
+  for i = 1, 32 do
+    local sx, sy
+    if i <= 20 then
+      local wx = bandWx - 120 + math.random(0, 240)
+      local surf = R.surfaceAt and R.surfaceAt(wx) or (R.P and R.P.y)
+      sx = wx - R.cam.x
+      sy = surf - R.cam.y + math.random(-2, 16)
+    else
+      sx, sy = math.random(2, W - 3), math.random(2, H - 3)
+    end
+    local p = sim.partID(sx, sy)
+    if not p then goto abs_next end
+    local pnm = nameOf(sim.partProperty(p, "type"))
+    if pnm ~= "WATR" and pnm ~= "BLD" then goto abs_next end
+    local vx, vy = sim.partProperty(p, "vx") or 0, sim.partProperty(p, "vy") or 0
+    if math.abs(vx) >= 0.65 or math.abs(vy) >= 0.65 then goto abs_next end
+    local wx, wy = sx + R.cam.x, sy + R.cam.y
+    local tq = treeOnSurface(wx, wy)
+    if not tq and R.treeShadeDrain then
+      tq = R.treeShadeDrain(wx, wy)
+    end
+    if tq then
+      if tq.gapFloor or tq.canopy or tq.poolOnCanopy or tq.poolOnTrunk or tq.inHollow then
+        routeTreeLiquid(p, sx, sy, wx, wy, tq, pnm)
+      end
+      goto abs_next
+    end
+    local below = sim.partID(sx, sy + 1)
+    local nm = below and nameOf(sim.partProperty(below, "type"))
+    if nm == "WOOD" and treeVegAt(wx, wy + 1) then goto abs_next end
+    if nm == "GRSS" and treeVegAt(wx, wy + 1) and treeVegAt(wx, wy + 1).canopy then goto abs_next end
+    if nm and ABSORBENT[nm] and math.random() < 0.2 then sim.partKill(p) end
+    ::abs_next::
+  end
+end
 R.absorbStandingWater = absorbStandingWater
+R.treeHollowDripTick = treeHollowDripTick
+R.canopyPoolDrainTick = canopyPoolDrainTick
+R.treeGapGasVentTick = treeGapGasVentTick
+R.gapPoolDrainTick = gapPoolDrainTick
+R.treeWaterVeinsTick = treeWaterVeinsTick
+R.treeAquiferSpreadTick = treeAquiferSpreadTick
+-- ---- delayed cavity air-fill (v1.15.41/43) -----------------------------
+local function columnOpenToSky(wx, wy)
+  local surf = surfaceAt(wx)
+  -- Only skip the upward scan when surface is farther than we can reach (k up to 90).
+  -- v1.15.58 fast-reject at surf+10 broke shallow dug shafts: vent never reached 1,
+  -- OXYG spawned at vent>0.45, but stale-air math still suffocated the player.
+  if wy > surf + 88 then return false end
+  local blocked, seen = 0, 0
+  for k = 4, 90, 3 do
+    local sx, sy = wx - R.cam.x, wy - k - R.cam.y
+    if sx >= M and sx < W - M and sy >= M and sy < H - M then
+      seen = seen + 1
+      local p = sim.partID(sx, sy)
+      if p then local n = nameOf(sim.partProperty(p, "type")); if not PASS[n] then blocked = blocked + 1 end end
+    end
+  end
+  if seen < 3 then return false end   -- off-screen / too few samples: don't assume open sky
+  return blocked <= 1
+end
+function R.ventilationAt(wx, wy)
+  wx, wy = floor(wx), floor(wy)
+  local e = R.pendingAir[wx .. "," .. wy]
+  if e then return e.vent end
+  local sx, sy = wx - R.cam.x, wy - R.cam.y
+  if sx >= M and sx < W - M and sy >= M and sy < H - M then
+    if not sim.partID(sx, sy) then return 1 end
+    return 0
+  end
+  return columnOpenToSky(wx, wy) and 1 or 0
+end
+local function digPressMul(wx)
+  if R.treeCoversColumn and R.treeCoversColumn(wx) then return 0.12 end
+  return 1
+end
+function R.queuePendingAir(wx, wy, nearLiquid)
+  wx, wy = floor(wx), floor(wy)
+  local k = wx .. "," .. wy
+  if R.pendingAir[k] then return end
+  local n = 0; for _ in pairs(R.pendingAir) do n = n + 1; if n >= R.AIR_PENDING_MAX then return end end
+  local startVent = columnOpenToSky(wx, wy) and 1 or 0
+  if startVent < 1 then
+    for _, d in ipairs({{0, 1}, {0, -1}, {1, 0}, {-1, 0}}) do
+      startVent = math.max(startVent, R.ventilationAt(wx + d[1], wy + d[2]) * 0.4)
+    end
+  end
+  R.pendingAir[k] = { x = wx, y = wy, vent = startVent, born = R.frame or 0, liq = nearLiquid and true or false }
+  local pcx, pcy = floor(wx / sim.CELL), floor(wy / sim.CELL)
+  local press = (nearLiquid and R.AIR_DIG_PRESS_LIQ or (R.AIR_DIG_PRESS_MAX * (1 - startVent))) * digPressMul(wx)
+  pcall(sim.pressure, pcx, pcy, press)
+end
+pendingAirTick = function()
+  if R.frame % R.AIR_VENT_TICK ~= 0 then return end
+  local rate = R.AIR_VENT_RATE * R.AIR_VENT_TICK
+  local remove = {}
+  for key, e in pairs(R.pendingAir) do
+    local sx, sy = e.x - R.cam.x, e.y - R.cam.y
+    if sx >= M and sx < W - M and sy >= M and sy < H - M and sim.partID(sx, sy) then
+      remove[#remove + 1] = key
+    else
+      local best = columnOpenToSky(e.x, e.y) and 1 or 0
+      for _, d in ipairs({{0, 1}, {0, -1}, {1, 0}, {-1, 0}}) do
+        best = math.max(best, R.ventilationAt(e.x + d[1], e.y + d[2]))
+      end
+      if best > e.vent then e.vent = math.min(1, e.vent + (best - e.vent) * rate) end
+      -- Ventilated shaft: spawn visible OXYG so meter + HUD circle match what you see.
+      if e.vent > 0.45 and R.frame % 25 == 0 and o2OnScreenCount() < 220 then
+        local oxid = eid("OXYG")
+        if oxid and math.random() < e.vent * 0.4 then
+          local asx, asy = e.x - R.cam.x, e.y - R.cam.y
+          if asx >= M and asx < W - M and asy >= M and asy < H - M and not sim.partID(asx, asy) then
+            sim.partCreate(-1, asx, asy, oxid)
+          end
+        end
+      end
+      if e.vent >= 0.995 then remove[#remove + 1] = key
+      else
+        local pcx, pcy = floor(e.x / sim.CELL), floor(e.y / sim.CELL)
+        local press = (e.liq and R.AIR_DIG_PRESS_LIQ or R.AIR_DIG_PRESS_MAX) * (1 - e.vent) * digPressMul(e.x)
+        pcall(sim.pressure, pcx, pcy, press)
+      end
+    end
+  end
+  for i = 1, #remove do R.pendingAir[remove[i]] = nil end
+end
+R.pendingAirTick = pendingAirTick
+end -- tree/liquid/env local-scope chunk (hot-reload local cap)
 -- Hot-reload rpg.lua from disk with zero process restart. event.register/
 -- unregister (needed to rebind onTick/onKeyDown/etc to the freshly-loaded
 -- closures -- without this, the engine keeps calling the OLD, stale
@@ -3168,26 +4843,43 @@ local function onTick()
     -- menu still works on demand either way.
     return end
   if not R.active then return end
+  if R._hotbarDirty then R._hotbarDirty = false; pcall(R.rebuildHotbarNow) end
   R.frame = (R.frame or 0) + 1
   if R.lastHitAt and R.frame - R.lastHitAt > 90 then R.blockHits = {}; R.lastHitAt = nil end
   local ok, err = pcall(flushFill); if not ok then R.lastErr = tostring(err) end
   if R.menuOpen then R.keys = {} end
   ok, err = pcall(movePlayer); if not ok then R.lastErr = tostring(err) end
-  -- Bleed on damage: every real damage source sets R.hurt = R.frame already
-  -- (fall damage, burns, radiation, hunger/thirst, suffocation) -- one check
-  -- here catches all of them instead of hand-editing each call site.
-  if R.hurt == R.frame and R.bloodLast ~= R.frame then
-    R.bloodLast = R.frame
+  -- Bleed on real HP loss — not every R.hurt tick (suffocation/poison set hurt every
+  -- 5 frames and were restarting a 6-frame burst of 4–7 BLD particles each frame).
+  local hpDrop = (R._hpTickStart or R.hp or 100) - (R.hp or 0)
+  local sharp = R._bloodEligible or hpDrop >= 8
+  if hpDrop >= 3 and sharp and (R.lastBloodBurst or -999) + 90 <= R.frame then
+    R.bloodSprayLeft = math.min(3, 1 + math.floor(hpDrop / 5))
+    R.lastBloodBurst = R.frame
+  end
+  if (R.bloodSprayLeft or 0) > 0 then
+    R.bloodSprayLeft = R.bloodSprayLeft - 1
     local bld = eid("BLD")
-    if bld then local px, py = R.P.x - R.cam.x, R.P.y - 6 - R.cam.y
-      for i = 1, 4 do local ox, oy = math.random(-2, 2), math.random(-3, 1)
-        local p = sim.partID(px + ox, py + oy)
-        if not p then local q = sim.partCreate(-1, px + ox, py + oy, bld); if q and q >= 0 then sim.partProperty(q, "vy", -0.5 - math.random()) end end
+    if bld then
+      local face = R.P.face or 1
+      local px, py = floor(R.P.x - R.cam.x), floor(R.P.y - 6 - R.cam.y)
+      for i = 1, 1 + math.random(2) do
+        local ox, oy = math.random(-2, 2), math.random(-2, 1)
+        local sx, sy = px + ox, py + oy
+        if sx >= R.M and sx < W - R.M and sy >= R.M and sy < H - R.M and not sim.partID(sx, sy) then
+          local q = sim.partCreate(-1, sx, sy, bld)
+          if q and q >= 0 then
+            sim.partProperty(q, "vx", face * (1.5 + math.random() * 2) + (math.random() - 0.5) * 1)
+            sim.partProperty(q, "vy", -1.5 - math.random() * 1.5)
+            sim.partProperty(q, "temp", 310 + math.random() * 8)
+          end
+        end
       end
     end
   end
   if R.wouldPlace() then
-    if inZoom(R.mouse.x, R.mouse.y) then local cx, cy = zoomToCanvas(R.mouse.x, R.mouse.y)
+    local shiftBuild = shiftBuildMode()
+    if inZoom(R.mouse.x, R.mouse.y) and not shiftBuild then local cx, cy = zoomToCanvas(R.mouse.x, R.mouse.y)
       -- One button (LEFT) does whatever the selected slot does -- a tool
       -- uses itself, a block places itself -- instead of a fixed
       -- LMB=use/RMB=place split. Matches native TPT's own single-button
@@ -3195,7 +4887,7 @@ local function onTick()
       -- click and use all my normal build controls."
       local s = selected(); if s and s:find("^tool:") then useTool(cx, cy, true) else placeAt(cx, cy, true) end
     else
-      local s = selected(); if s and s:find("^tool:") then useTool(R.mouse.x, R.mouse.y) else placeAt(R.mouse.x, R.mouse.y) end
+      local s = selected(); if s and s:find("^tool:") then useTool(R.mouse.x, R.mouse.y) else placeAt(R.mouse.x, R.mouse.y, false) end
     end
   end
   local t0 = os.clock(); ok, err = pcall(updateCamera); if not ok then R.lastErr = tostring(err) end; R.shiftMs = (os.clock() - t0) * 1000
@@ -3204,8 +4896,32 @@ local function onTick()
   pcall(R.pumpFeedbackHttp)
   pcall(R.pumpUpdateCheck)
   pcall(R.pumpUpdateDownload)
-  local okw, errw = pcall(updateWeather); if not okw then R.lastErr = tostring(errw) end
-  okw, errw = pcall(absorbStandingWater); if not okw then R.lastErr = tostring(errw) end
+  local   okw, errw = pcall(updateWeather); if not okw then R.lastErr = tostring(errw) end
+  local digDepth = R.P.y - surfaceAt(floor(R.P.x))
+  local raining = R.weather and R.weather.rain
+  local nearSurface = digDepth < 72
+  if raining or nearSurface then
+    okw, errw = pcall(absorbStandingWater); if not okw then R.lastErr = tostring(errw) end
+    okw, errw = pcall(canopyPoolDrainTick); if not okw then R.lastErr = tostring(errw) end
+    okw, errw = pcall(gapPoolDrainTick); if not okw then R.lastErr = tostring(errw) end
+    okw, errw = pcall(treeWaterVeinsTick); if not okw then R.lastErr = tostring(errw) end
+    okw, errw = pcall(treeGapGasVentTick); if not okw then R.lastErr = tostring(errw) end
+    if raining then
+      okw, errw = pcall(treeHollowDripTick); if not okw then R.lastErr = tostring(errw) end
+      okw, errw = pcall(treeAquiferSpreadTick); if not okw then R.lastErr = tostring(errw) end
+    end
+  end
+  okw, errw = pcall(settleLiquidsTick); if not okw then R.lastErr = tostring(errw) end
+  okw, errw = pcall(pendingAirTick); if not okw then R.lastErr = tostring(errw) end
+  if R.frame % 15 == 0 then okw, errw = pcall(sampleEnvGradient); if not okw then R.lastErr = tostring(errw) end end
+  do
+    local dep = digDepth
+    if dep > 40 and R.frame % 4 ~= 0 then
+      -- skip most frames underground — waterEqualisation is heavy
+    elseif dep > 40 then pcall(sim.waterEqualisation, 1)
+    elseif R.fast then pcall(sim.waterEqualisation, 0)
+    else pcall(sim.waterEqualisation, 1) end
+  end
   okw, errw = pcall(updateTorches); if not okw then R.lastErr = tostring(errw) end
   okw, errw = pcall(updateFurnaces); if not okw then R.lastErr = tostring(errw) end
   if R.frame % 15 == 0 then local okq, errq = pcall(updateQuests); if not okq then R.lastErr = tostring(errq) end; local dep = floor((R.P.y - surfaceAt(floor(R.P.x))) / 4); if dep > R.stats.maxDepth then R.stats.maxDepth = dep end end
@@ -3279,6 +4995,7 @@ function R.start(seed)
   R.titleSeed = seed or 7; R.titleScreen = true
   return "rpg v4 start queued seed=" .. tostring(R.titleSeed) .. " (title screen)"
 end
+do -- title screen (hot-reload local cap)
 local TITLE_BTN = {
   play = { x = 0, y = 0, w = 150, h = 26 },
   newworld = { x = 0, y = 0, w = 150, h = 26 },
@@ -3305,7 +5022,7 @@ local function confirmCreateWorld()
   if R.releaseMouse then R.releaseMouse() end
   R._placeGraceUntil = (R.frame or 0) + 48
 end
--- Round 8 visual pass, per Drew's direct feedback that the functional-but-bare V1
+-- Round 8 visual pass, per the owner's direct feedback that the functional-but-bare V1
 -- ("plain dark background, 3 bordered buttons") needed real Minecraft/Terraria-style
 -- presentation, not a flat box. Three real changes instead of a bigger flat box:
 -- (1) a semi-transparent overlay instead of an opaque fillRect -- on "quit to menu"
@@ -3318,7 +5035,7 @@ end
 -- decorative HUD-space dots, not real sim particles -- doesn't touch physics at all;
 -- (3) a real logo treatment (drop shadow + underline rule) and heavier button
 -- styling (double-border bevel) instead of one flat-colour box per button.
--- Round 9: Drew wants Settings reachable straight from the title screen with real
+-- Round 9: the owner wants Settings reachable straight from the title screen with real
 -- presentation, not a jump out to the plain Esc/Options list ("we have our settings
 -- here too but it's got to be nice nice shit"). Reuses the exact same R.MENU entries
 -- (label substring match) instead of a second parallel slider list -- one source of
@@ -3483,6 +5200,7 @@ titleMouseDown = function(x, y)
   if hitRect(x, y, TITLE_BTN.quit) then say("Close the window or Alt+F4 to quit"); return true end
   return true   -- swallow clicks anywhere else on the title screen
 end
+end -- title screen
 function R.stop() R.active = false; pcall(tpt.hud, 1); pcall(R.setFX, false); pcall(R.setTptMenus, true); pcall(R.setFast, false)
   for name, col in pairs(R.origColours or {}) do local id = elem["DEFAULT_PT_" .. name]; if id then pcall(elem.property, id, "Colour", col) end end
   return "rpg stopped" end
@@ -3639,7 +5357,8 @@ function R.actorMine(a, wx, wy, opts)
   R.blockHits[p] = nil; sim.partKill(p)
   local item = (nm == "BCOL") and "COAL" or nm
   if a.isPlayer then give(item, 1) else a.inv[item] = (a.inv[item] or 0) + 1 end
-  pcall(R.crumble, x, y, 5)
+  if R.queuePendingAir then R.queuePendingAir(wx, wy, false) end
+  if RUBBLE[nm] or WOODY[nm] then pcall(R.crumble, x, y, 5) end
   if nm == "WOOD" then pcall(checkFell, x, y, 1.4) end
   return true, item
 end

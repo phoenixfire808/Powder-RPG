@@ -136,10 +136,12 @@ def module_files():
     return names
 
 
-LUA_COMPILER_LIBS = [
-    "C:/Users/Drew/AppData/Local/Temp/claude/C--Users-Drew/"
-    "5166393c-2a70-4568-b3a2-18134dc82ade/scratchpad/pylibs",
-]
+# Optional extra sys.path entries holding a `lupa` build, for machines where it
+# is not installed into site-packages. Separated like PATH. Empty by default:
+# lua51_compile() already treats "no compiler available" as a first-class
+# outcome (verified=False), so leaving this unset is not an error. Previously a
+# hardcoded absolute scratchpad path, which had gone stale and never resolved.
+LUA_COMPILER_LIBS = [p for p in os.environ.get("POWDER_LUA_LIBS", "").split(os.pathsep) if p]
 
 
 def lua51_compile(name, src):

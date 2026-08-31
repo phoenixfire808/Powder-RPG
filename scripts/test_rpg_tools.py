@@ -221,7 +221,7 @@ class RpgStatusTests(unittest.TestCase):
 class RpgHubTests(unittest.TestCase):
     HUB_TEXT = (
         "# RPG team hub\n\n"
-        "## Drew says (live comments, newest last)\n"
+        "## Owner says (live comments, newest last)\n"
         "- 12:00 \"first drew comment\"\n\n"
         "## Ownership\n"
         "- stuff\n\n"
@@ -284,10 +284,10 @@ class RpgHubTests(unittest.TestCase):
         ownership_idx = next(i for i, line in enumerate(lines) if line.startswith("## Ownership"))
         # exactly one blank line separates the new bullet from "## Ownership",
         # matching the hub's existing convention (see the real file's last
-        # Drew bullet -> blank line -> "## Ownership").
+        # Owner bullet -> blank line -> "## Ownership").
         self.assertEqual(lines[ownership_idx - 1], "")
         self.assertRegex(lines[ownership_idx - 2], r'^- \d\d:\d\d "a new drew comment"$')
-        # the pre-existing Drew comment must still be present, untouched
+        # the pre-existing the owner comment must still be present, untouched
         self.assertIn('- 12:00 "first drew comment"', content)
 
     def test_drew_errors_when_ownership_marker_missing(self) -> None:

@@ -6,7 +6,7 @@ OPTIONAL layer on top: it polls the game over the bridge, asks a local OpenAI-co
 one decision at a time as STRICT JSON, validates it, and calls back into the exact same action surface a
 person typing in chat would use (R.companionCmd / R.companionEnqueue / R.colonistSay). If no local model
 server is reachable, or the JSON is bad, or the call is slow, this script simply does nothing that tick -
-companion.lua's own scripted brain and chat templates keep the colonist useful and (per Drew's explicit
+companion.lua's own scripted brain and chat templates keep the colonist useful and (per the owner's explicit
 "no unsolicited gifts / only do what he asked" rule) quiet.
 
 Model contract (see knowledge/design-companion-protocol.md for the full schema):
@@ -19,7 +19,7 @@ Usage
 -----
     python scripts/companion_driver.py                  # auto-detect LM Studio (1234) or Ollama (11434)
     python scripts/companion_driver.py --lab             # target the lab instance (port 9877) instead of
-                                                          # Drew's live game - use this while developing
+                                                          # The owner's live game - use this while developing
     python scripts/companion_driver.py --url http://localhost:1234/v1 --model qwen2.5-3b-instruct
     python scripts/companion_driver.py --once            # single decision cycle, for testing/CI
 
@@ -276,7 +276,7 @@ def set_mode(c: PowderClient, mode: str) -> None:
 # --------------------------------------------------------------------------- main loop
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--lab", action="store_true", help="target the lab instance (port 9877) instead of Drew's live game")
+    ap.add_argument("--lab", action="store_true", help="target the lab instance (port 9877) instead of the owner's live game")
     ap.add_argument("--url", default=None, help="OpenAI-compatible base URL, e.g. http://localhost:1234/v1")
     ap.add_argument("--model", default=None, help="model name/id (auto-detected if omitted)")
     ap.add_argument("--chat-interval", type=float, default=0.4, help="how often to poll for chat messages (seconds)")

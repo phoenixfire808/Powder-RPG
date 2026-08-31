@@ -1,4 +1,4 @@
-"""Functional test of Drew's DEUT reactor upgrade (2026-08-25). Runs the sim in
+"""Functional test of the owner's DEUT reactor upgrade (2026-08-25). Runs the sim in
 short unpause windows (bridge step(n) is broken until restart) and measures."""
 import sys, time, json
 sys.path.insert(0, "D:/powder-toy")

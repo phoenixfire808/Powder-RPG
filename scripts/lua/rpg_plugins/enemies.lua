@@ -203,7 +203,7 @@ local function checkPlayerContact(e)
   local dx, dy = e.x - px, e.y - py
   local rx, ry = (e.w or 4) + 3, (e.h or 8) + 5
   if math.abs(dx) <= rx and math.abs(dy) <= ry then
-    R.hp = math.max(0, R.hp - e.dmg); R.hurt = R.frame
+    R.hp = math.max(0, R.hp - e.dmg); R.hurt = R.frame; R._bloodEligible = true
     local sign = (px >= e.x) and 1 or -1
     R.P.vx = sign * 1.6; R.P.vy = -1.8
     e.touchCd = R.frame + 30

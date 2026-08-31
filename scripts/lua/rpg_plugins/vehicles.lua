@@ -592,24 +592,31 @@ end)
 
 local NAMEOF = { minecart = "Minecart", handcar = "Handcar", loco = "Locomotive", wagon = "Cargo wagon", lift = "Mine lift", drill = "Drill train" }
 hook(R.hooks.drawHUD, function()
+  local nearBoard
   for _, v in ipairs(R.vehicles) do
     if not v.dead and onScreen(v.x, v.y, 24) then
       local dx, dy = v.x - R.P.x, v.y - R.P.y
-      if dx * dx + dy * dy < 160 * 160 then
+      local d2 = dx * dx + dy * dy
+      if d2 < 160 * 160 then
         local x, y = floor(v.x - R.cam.x), floor(v.y - R.cam.y) - 18
         if y > 4 then graphics.drawText(x - 2, y, NAMEOF[v.kind] or v.kind, 255, 230, 150, 220) end
         if v.kind == "loco" and v.autoRoute then graphics.drawText(x - 2, y - 10, "AUTO", 140, 220, 255, 220) end
       end
+      if v.rideable and not v.dead and not R.ride and d2 < 26 * 26 then nearBoard = v end
     end
+  end
+  if nearBoard then
+    R.hint = "[V] board " .. (nearBoard.label or NAMEOF[nearBoard.kind] or "vehicle") .. "   (S to climb off)"
   end
 end)
 
 hook(R.hooks.key, function(k)
+  -- Only eat V when actually boarding/dismounting; otherwise core uses V for brush shape (Tab/V).
   if k == "v" then
     if R.ride and R.ride._vehTag then R.dismount(); return true end
     local v = nearestVehicle(R.P.x, R.P.y, 26)
-    if v then v._vehTag = true; R.mount(v) else R.say("No vehicle nearby to board (V)") end
-    return true
+    if v then v._vehTag = true; R.mount(v); return true end
+    return false
   end
   if k == "p" and R.ride and R.ride.kind == "loco" then toggleAutoRoute(R.ride); return true end
   if k == "d" and R.ride and R.ride.kind == "handcar" then R.ride.speed = (R.ride.speed or 0) + 0.85; return true end
@@ -645,7 +652,7 @@ end)
 hook(R.hooks.mouseup, function(x, y, button) if button == 3 then R.railAnchor = nil; R.railSegRef = nil; R.railBuilt = nil end end)
 
 -- ================================================================ items + recipes + place dispatch
-R.ITEMS.RAILKIT = { col = { 255, 240, 96 }, desc = "Rail kit: hold RIGHT mouse and drag along flat ground, a slope, or straight up to lay real track (METL sleepers + a bright rail line). Snaps to horizontal, 45-degree slopes and vertical shafts. Every vehicle below rides this." }
+R.ITEMS.RAILKIT = { col = { 255, 240, 96 }, desc = "Rail kit: select it, hold LEFT mouse and drag along flat ground, a slope, or straight up to lay real track (METL sleepers + a bright rail line). Snaps to horizontal, 45-degree slopes and vertical shafts. Craft at a workbench; every vehicle below rides this." }
 R.ITEMS.MINECARTKIT = { col = { 120, 70, 40 }, desc = "Minecart: place it directly on laid track. Press V to climb aboard - D accelerates, A slows/reverses, S brakes (holding S also climbs you back out). Gravity does the rest on slopes; run off the end of the track and it derails." }
 R.ITEMS.HANDCARKIT = { col = { 130, 100, 60 }, desc = "Handcar: no power needed. Place on track, press V to board, then tap D to pump the lever - each fresh tap gives it a push. Coasts and obeys gravity like any other cart." }
 R.ITEMS.LOCOKIT = { col = { 40, 40, 45 }, desc = "Steam locomotive: place on track. Needs a lit coal firebox (torch it, same trick as the furnace) or a live grid connection at the roof stud to move under power. Board with V - D/A drive it, P toggles a two-stop auto-route." }
@@ -693,4 +700,9 @@ end)
 
 -- ================================================================ lifecycle
 hook(R.hooks.newworld, function() R.vehicles = {}; R.railSegs = {}; R.trainStops = {}; R.railAnchor = nil; R.railSegRef = nil end)
-hook(R.hooks.sandbox, function() R.inventory.RAILKIT = math.max(R.inventory.RAILKIT or 0, 999); R.vehiclesTechOK = true; R.vehiclesInstallGated(); R.rebuildHotbar() end)
+hook(R.hooks.sandbox, function()
+  R.inventory.RAILKIT = math.max(R.inventory.RAILKIT or 0, 999)
+  R.inventory.MINECARTKIT = math.max(R.inventory.MINECARTKIT or 0, 5)
+  R.inventory.LIFTKIT = math.max(R.inventory.LIFTKIT or 0, 2)
+  R.vehiclesTechOK = true; R.vehiclesInstallGated(); R.rebuildHotbar()
+end)

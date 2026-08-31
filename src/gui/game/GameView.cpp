@@ -717,7 +717,7 @@ void GameView::RebuildStateLadder()
 		return;
 	}
 
-	// Reverted back to a stacked list -- Drew tried the radial "command
+	// Reverted back to a stacked list -- the owner tried the radial "command
 	// wheel" layout and preferred the original list ("I liked how the
 	// menus were for the elements before"). The actual command-wheel ask
 	// turned out to be a bigger, separate feature (a customizable
@@ -1163,7 +1163,7 @@ void GameView::NotifyActiveMenuToolListChanged(GameModel * sender)
 					c->SetActiveTool(tempButton->GetSelectionState(), tool);
 				// Opening the state-picker ladder is a click now, not a
 				// hover -- see UpdateStateLadderHover, which only keeps an
-				// already-open ladder alive, never opens one. Drew wants it
+				// already-open ladder alive, never opens one. the owner wants it
 				// on every plain element selection regardless of which
 				// button did the selecting (left/right/middle all funnel
 				// through this `else` branch when no modifier is held), so
@@ -3039,42 +3039,6 @@ void GameView::OnDraw()
 	}
 
 	g->RenderZoom();
-
-	// Diagnostic overlay for the zoom-window feature, which has repeatedly
-	// been reported broken without anyone (including several fix attempts)
-	// being able to see WHY -- shows the live state driving both rendering
-	// and hit-testing so a report can come back with actual numbers instead
-	// of "it doesn't work". Deliberately left in the shipped build; remove
-	// once zoom has been solid for a while and this stops earning its keep.
-	if (zoomEnabled)
-	{
-		auto hit = HitTestZoomWindowFrame(currentMouse);
-		String hitName = "None";
-		switch (hit)
-		{
-		case ZoomFrameHit::Move: hitName = "Move"; break;
-		case ZoomFrameHit::ResizeTL: hitName = "ResizeTL"; break;
-		case ZoomFrameHit::ResizeTR: hitName = "ResizeTR"; break;
-		case ZoomFrameHit::ResizeBL: hitName = "ResizeBL"; break;
-		case ZoomFrameHit::ResizeBR: hitName = "ResizeBR"; break;
-		default: break;
-		}
-		auto winPos = c->GetZoomWindowPosition();
-		auto winSize = c->GetZoomWindowSize();
-		StringBuilder zoomDebug;
-		zoomDebug << "ZOOM enabled=" << (zoomEnabled ? "1" : "0")
-			<< " placed=" << (zoomCursorFixed ? "1" : "0")
-			<< " visible=" << (g->zoomWindowVisible ? "1" : "0")
-			<< " dragging=" << (zoomWindowDragging ? "1" : "0")
-			<< " resizing=" << (zoomWindowResizing ? "1" : "0");
-		g->BlendText({ 4, 100 }, zoomDebug.Build(), 0x00FF00_rgb .WithAlpha(255));
-		StringBuilder zoomDebug2;
-		zoomDebug2 << "mouse=(" << currentMouse.X << "," << currentMouse.Y << ")"
-			<< " hit=" << hitName
-			<< " winPos=(" << winPos.X << "," << winPos.Y << ")"
-			<< " winSize=(" << winSize.X << "," << winSize.Y << ")";
-		g->BlendText({ 4, 112 }, zoomDebug2.Build(), 0x00FF00_rgb .WithAlpha(255));
-	}
 
 	if (doScreenshot)
 	{

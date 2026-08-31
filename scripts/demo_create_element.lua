@@ -6420,7 +6420,7 @@ end
 do
     local __src = [[
 -- ===========================================================================
--- Antimatter physics showcase, built from the Veritasium video Drew asked to
+-- Antimatter physics showcase, built from the Veritasium video the owner asked to
 -- have translated into the game ("What happens if you drop 0.125 grams of
 -- antimatter?"). Four bays laid out in a 2x2 grid, each one a real, running
 -- demonstration of a chapter from that video using the actual sim mechanics
@@ -6429,8 +6429,8 @@ do
 --
 -- Not an MCP tool: the MCP bridge is currently broken end to end (every
 -- dispatch branch missing, confirmed via mcp__powder-toy__powder_status), and
--- Drew's standing rule is no synthetic mouse/keyboard input into his game
--- session regardless. This is a plain Lua function Drew runs himself from
+-- The owner's standing rule is no synthetic mouse/keyboard input into his game
+-- session regardless. This is a plain Lua function the owner runs himself from
 -- TPT's in-game console (F2), same as any other bridge-exposed command.
 -- ===========================================================================
 do
@@ -6566,11 +6566,11 @@ end
 do
     local __src = [[
 -- Loads the standalone RPG demo (scripts/lua/rpg.lua, not part of this
--- bridge bundle) into the running game and starts it, so Drew can hand
+-- bridge bundle) into the running game and starts it, so the owner can hand
 -- control straight to a friend without typing anything in the console
 -- himself. Load-only, no auto-start -- see the bottom of this file for why
 -- start is a separate, explicit step.
--- Drew asked to go back to plain sandbox and not work on the RPG right now
+-- The owner asked to go back to plain sandbox and not work on the RPG right now
 -- -- flip this to true (and rebuild) to bring the loader back; false means
 -- this whole module does nothing, since even just loading rpg.lua has
 -- side effects on the plain sandbox (hides the HUD/menus, registers event
@@ -6584,13 +6584,13 @@ if not PBX then error("86_rpg_loader.lua: PBX foundation missing") end
 -- io.open + loadstring, not dofile -- dofile is untested in this fork's
 -- sandbox, whereas this exact pattern is already proven working (see
 -- bridge_base.lua's executeLua action).
--- Absolute dev path first: something on Drew's machine keeps recreating a
+-- Absolute dev path first: something on the owner's machine keeps recreating a
 -- stale scripts/lua/rpg.lua next to build/PowderToyRPG.exe (same old file,
 -- same old timestamp -- not a fresh write from anything in this session's
 -- own workflow, cause not identified), and a relative-path-first order let
 -- that stale copy silently shadow every real edit to the dev source for an
 -- entire evening even after being deleted once. Checking the absolute path
--- first makes that shadow file inert on Drew's machine regardless of
+-- first makes that shadow file inert on the owner's machine regardless of
 -- whether it comes back. Relative path second, for a portable copy handed
 -- to someone else -- their machine has no D:/powder-toy at all, so this
 -- lookup just fails over to their bundled copy exactly as before.

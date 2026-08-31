@@ -80,7 +80,7 @@ static int update(UPDATE_FUNC_ARGS)
 					parts[i].ctype = rt;
 					if (rt==PT_LIFE || CarriesSubMaterial(rt))
 						parts[i].tmp = parts[ID(r)].ctype;
-					// Drew asked for this specifically: a clone that
+					// The owner asked for this specifically: a clone that
 					// touched something molten/liquefied should reproduce
 					// it at the same heat, not room temperature -- which
 					// for a state carrier especially matters since cold

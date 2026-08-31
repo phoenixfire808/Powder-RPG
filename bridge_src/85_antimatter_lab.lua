@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Antimatter physics showcase, built from the Veritasium video Drew asked to
+-- Antimatter physics showcase, built from the Veritasium video the owner asked to
 -- have translated into the game ("What happens if you drop 0.125 grams of
 -- antimatter?"). Four bays laid out in a 2x2 grid, each one a real, running
 -- demonstration of a chapter from that video using the actual sim mechanics
@@ -8,8 +8,8 @@
 --
 -- Not an MCP tool: the MCP bridge is currently broken end to end (every
 -- dispatch branch missing, confirmed via mcp__powder-toy__powder_status), and
--- Drew's standing rule is no synthetic mouse/keyboard input into his game
--- session regardless. This is a plain Lua function Drew runs himself from
+-- The owner's standing rule is no synthetic mouse/keyboard input into his game
+-- session regardless. This is a plain Lua function the owner runs himself from
 -- TPT's in-game console (F2), same as any other bridge-exposed command.
 -- ===========================================================================
 do

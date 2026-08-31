@@ -177,18 +177,14 @@ local function drawVignette()
   graphics.fillRect(0, 0, t, H, 255, 0, 0, a); graphics.fillRect(W - t, 0, t, H, 255, 0, 0, a)
 end
 local function drawCompass()
-  local x, y, w, h = 502, 82, 104, 46
+  local x, y, w, h = W - 110, 100, 104, 34
   graphics.fillRect(x, y, w, h, 0, 0, 0, 170); graphics.drawRect(x, y, w, h, 120, 124, 150, 200)
   local depth = floor((R.P.y - R.surfaceAt(floor(R.P.x))) / 4)
-  local biome = R.biomeAt(floor(R.P.x))
-  local phase = ((R.frame or 0) % 14000) / 14000
-  local night = math.sin((phase - 0.5) * math.pi * 2) > 0
-  graphics.drawText(x + 4, y + 2, "Day " .. (R.day or 1) .. (night and " (night)" or " (day)"), 220, 220, 230, 255)
-  graphics.drawText(x + 4, y + 14, "Biome: " .. biome, 190, 220, 180, 255)
   local dtxt = depth > 0 and (depth .. "m deep") or (depth < 0 and ((-depth) .. "m up") or "surface")
-  graphics.drawText(x + 4, y + 26, dtxt, 190, 200, 255, 255)
+  graphics.drawText(x + 4, y + 2, dtxt, 190, 200, 255, 255)
   local maxd = math.max(1, floor((R.DEPTH or 1900) / 4)); local frac = math.max(0, math.min(1, depth / maxd))
-  graphics.fillRect(x + 4, y + 38, 96, 4, 40, 40, 50, 255); graphics.fillRect(x + 4, y + 38, floor(96 * frac), 4, 220, 160, 60, 255)
+  graphics.fillRect(x + 4, y + 16, 96, 4, 40, 40, 50, 255); graphics.fillRect(x + 4, y + 16, floor(96 * frac), 4, 220, 160, 60, 255)
+  graphics.drawText(x + 4, y + 24, "depth", 140, 150, 165, 200)
 end
 local function furnaceLit(st)
   for yy = st.y - 10, st.y - 2 do for xx = st.x + 2, st.x + 11 do
@@ -297,30 +293,85 @@ local function assignHotbar(el, forceSlot)
   R.hotbar[slot] = el; R.sel = slot
   R.say(niceName(el) .. " -> slot " .. (slot % 10))
 end
+-- The owner, four separate times, on this one panel: "the filter by materials thing takes up
+-- half the space", "trying to figure out how to make the next item and it's all confusing",
+-- and finally "I would prefer in the crafting menu to be actually broken down into their
+-- useful categories". It was grouped by crafting STATION -- which answers "where do I make
+-- this", an implementation detail -- instead of "what am I trying to make". Grouped by
+-- purpose now; the station still gates crafting and is still shown per row, it is just no
+-- longer the organising axis. Categories derived from the real 121-entry recipe list.
+local RECIPE_CAT = {
+  WORKBENCH="Stations", FURNACE="Stations", ANVIL="Stations", RESEARCH="Stations", ADVLAB="Stations",
+  FLASK="Survival Gear", OXYTANK="Survival Gear", DIVEHELMET="Survival Gear", GASMASK="Survival Gear",
+  CLIMBGLOVES="Survival Gear", BALLOON="Survival Gear", WARMCOAT="Survival Gear", COOLSUIT="Survival Gear",
+  CANTEEN="Survival Gear", JETPACK="Survival Gear", BED="Survival Gear",
+  SOIL="Food & Farming", ALGAETANK="Food & Farming", CFISH="Food & Farming", CMSHRM="Food & Farming",
+  STEW="Food & Farming", BREAD="Food & Farming", BOILEDWATER="Food & Farming",
+  METL="Materials", STEL="Materials", BRCK="Materials", GLAS="Materials", GOLD="Materials", CU="Materials",
+  INSL="Materials", TTAN="Materials", PSCN="Materials", ZIRC="Materials", GRPH="Materials", NAK="Materials",
+  LEAD="Materials", CNCR="Materials", UO2="Materials", B4C="Materials", TRBN="Materials", TEG="Materials",
+  LEDL="Materials", WIFI="Materials", ACID="Materials",
+  BOILER="Power", TURBINE="Power", CRANKKIT="Power", WHEELKIT="Power", SOLARKIT="Power", TEGKIT="Power",
+  WINDKIT="Power", SOLARFURNACEKIT="Power", WIRECOIL="Power",
+  BELLOWSKIT="Life Support", AIRLINEKIT="Life Support", FLAREKIT="Life Support", CRYOKIT="Life Support",
+  GASDETECTORKIT="Life Support", ELECTROLYSISKIT="Life Support", LEADSHIELDKIT="Life Support",
+  PUMPKIT="Fluids & Processing", CHECKVALVEKIT="Fluids & Processing", PRESSVESSELKIT="Fluids & Processing",
+  RESERVOIRKIT="Fluids & Processing", CONDENSERKIT="Fluids & Processing", SUMPKIT="Fluids & Processing",
+  EVAPORATORKIT="Fluids & Processing", ACIDSYNTHKIT="Fluids & Processing", FERTMIXERKIT="Fluids & Processing",
+  POWDERMILLKIT="Fluids & Processing",
+  CONVEYOR="Logistics & Storage", CRATE="Logistics & Storage", SORTERKIT="Logistics & Storage",
+  SPLITTERKIT="Logistics & Storage", VACUUMKIT="Logistics & Storage", SILOKIT="Logistics & Storage",
+  RAILKIT="Logistics & Storage", MINECARTKIT="Logistics & Storage", HANDCARKIT="Logistics & Storage",
+  TRAINSTOPKIT="Logistics & Storage", WAGONKIT="Logistics & Storage", QUARRYKIT="Logistics & Storage",
+  LAMPKIT="Building & Utility", DOORKIT="Building & Utility", LIGHTRAILKIT="Building & Utility",
+  CAMERAKIT="Building & Utility", SIGNPOSTKIT="Building & Utility", GATEKIT="Building & Utility",
+  DECOPANELKIT="Building & Utility",
+  GRAVMANIPKIT="Exotic", PORTALKIT="Exotic", MAGACCELKIT="Exotic", WEATHERKIT="Exotic", TPWAND="Exotic",
+  DRILL="Tools", MAGNET="Tools",
+  MUSKET="Weapons", SHOTGUN="Weapons", GRENADE="Weapons", LIGHTGUN="Weapons", FLAMETH="Weapons",
+  WATERGUN="Weapons", ACIDGUN="Weapons", FREEZERAY="Weapons", LASERGUN="Weapons", RAILGUN="Weapons",
+  PLASMATORCH="Weapons", NAILGUN="Weapons", BOW="Weapons", BOOMERANG="Weapons", HARPOON="Weapons",
+  ARROW="Weapons", C4CHARGE="Weapons", STICKYBOMB="Weapons", CRYOGRENADE="Weapons", DYNAMITE="Weapons",
+  SMOKEBOMB="Weapons", LAVABUCKET="Weapons", ["C-4"]="Weapons",
+}
+local CAT_ORDER = { "Tools", "Weapons", "Survival Gear", "Food & Farming", "Stations", "Materials",
+  "Power", "Life Support", "Fluids & Processing", "Logistics & Storage", "Building & Utility",
+  "Exotic", "Other" }
 local function buildCraftRows(filter)
+  local byCat, stOk = {}, {}
+  for _, stk in ipairs({ "hand", "workbench", "furnace", "anvil", "research", "advlab" }) do
+    stOk[stk] = R.nearStation(stk)
+  end
+  local function mk(kind, label, need, stk, desc, have, fn, outid)
+    if filter and not need[filter] then return end
+    local okst = stOk[stk]
+    local ok = okst and canAfford(need)
+    -- "what can I make next" is his most repeated version of the complaint, so this
+    -- toggle hides everything you cannot craft right now rather than making him scan.
+    if U.onlyCraftable and not ok then return end
+    local cat = RECIPE_CAT[outid or ""] or (kind == "pick" and "Tools") or (kind == "sword" and "Weapons") or "Other"
+    byCat[cat] = byCat[cat] or {}
+    local t = byCat[cat]
+    t[#t + 1] = { kind = kind, label = label, need = need, ok = ok, dim = not okst, desc = desc,
+      st = stk, have = have, fn = fn, gate = (not okst) and (R.STATIONS[stk] or stk) or nil }
+  end
+  for k, rc in ipairs(R.RECIPES) do
+    mk("recipe", rc.n .. " " .. rc.txt, rc.need, rc.st or "hand", rc.desc, nil, function() R.craft(k) end, rc.out)
+  end
+  for k, t in ipairs(R.PICKS) do
+    mk("pick", t.name, t.need, t.st or "hand", t.desc, (R.TOOLS.pick.name == t.name), function() R.craftPick(k) end, nil)
+  end
+  for k, t in ipairs(R.SWORDS) do
+    mk("sword", t.name, t.need, t.st or "hand", t.desc, (R.TOOLS.sword.name == t.name), function() R.craftSword(k) end, nil)
+  end
   local rows = {}
-  -- Bug found 2026-08-29: this list never included "research"/"advlab" (both real
-  -- tiers past the workbench, shipped this session), so any recipe gated on either
-  -- station was structurally unreachable in the crafting UI -- R.craft()/canAfford()
-  -- worked fine, the row just never got drawn for the player to click.
-  local order = { "hand", "workbench", "furnace", "anvil", "research", "advlab" }
-  for _, stk in ipairs(order) do
-    local okst, why = R.nearStation(stk)
-    local group = {}
-    for k, rc in ipairs(R.RECIPES) do if (rc.st or "hand") == stk and (not filter or rc.need[filter]) then
-      group[#group + 1] = { kind = "recipe", label = rc.n .. " " .. rc.txt, need = rc.need, ok = okst and canAfford(rc.need), dim = not okst, desc = rc.desc, st = stk, fn = function() R.craft(k) end } end end
-    for k, t in ipairs(R.PICKS) do if (t.st or "hand") == stk and (not filter or t.need[filter]) then
-      group[#group + 1] = { kind = "pick", label = t.name, need = t.need, ok = okst and canAfford(t.need), dim = not okst, desc = t.desc, st = stk, have = (R.TOOLS.pick.name == t.name), fn = function() R.craftPick(k) end } end end
-    for k, t in ipairs(R.SWORDS) do if (t.st or "hand") == stk and (not filter or t.need[filter]) then
-      group[#group + 1] = { kind = "sword", label = t.name, need = t.need, ok = okst and canAfford(t.need), dim = not okst, desc = t.desc, st = stk, have = (R.TOOLS.sword.name == t.name), fn = function() R.craftSword(k) end } end end
-    if #group > 0 then
-      -- "trying to figure out how to make the next item, it's all confusing" -- the
-      -- round-6/7 fixes solved recipes being unreachable, not this: within a station,
-      -- craftable-right-now recipes were interleaved randomly with ones you can't
-      -- afford yet. Sort craftable-now first so "what can I make" is the first thing
-      -- you see, not something you have to scan for.
+  for _, cat in ipairs(CAT_ORDER) do
+    local group = byCat[cat]
+    if group and #group > 0 then
       table.sort(group, function(a, b) return (a.ok and 1 or 0) > (b.ok and 1 or 0) end)
-      rows[#rows + 1] = { header = (R.STATIONS[stk] or stk):upper() .. (okst and "" or (" (" .. (why or "not here") .. ")")), okst = okst }
+      local n = 0
+      for _, g in ipairs(group) do if g.ok then n = n + 1 end end
+      rows[#rows + 1] = { header = cat:upper() .. "   " .. n .. " of " .. #group .. " craftable now", okst = n > 0 }
       for _, r in ipairs(group) do rows[#rows + 1] = r end
     end
   end
@@ -404,8 +455,12 @@ local function visibleCarriedSlots()
   return out
 end
 local function sortInventory()
+  local merged = {}
+  for _, s in ipairs(R.invSlots) do
+    if s.el and s.n > 0 then merged[s.el] = (merged[s.el] or 0) + s.n end
+  end
   local items = {}
-  for _, s in ipairs(R.invSlots) do if s.el and s.n > 0 then items[#items + 1] = { el = s.el, n = s.n } end end
+  for el, n in pairs(merged) do items[#items + 1] = { el = el, n = n } end
   table.sort(items, function(a, b) return niceName(a.el) < niceName(b.el) end)
   for _, s in ipairs(R.invSlots) do s.el = false; s.n = 0 end
   for i, it in ipairs(items) do
@@ -479,6 +534,52 @@ end
 -- ================================================================ bag: ITEMS tab (slot inventory, never truncates names)
 local ITEMS_X0, ITEMS_Y0, ITEMS_W, ITEMS_ROWH = BPX + 10, BPY + 58, BPW - 20, 14
 local ITEMS_BOTTOM_RESERVE = 78   -- equip row + bag tray row + tools/deaths line
+local GRID_COLS, CELL, GAP = 10, 28, 2
+local function invGridRowH() return CELL + GAP end
+local function invGridTotalRows() return math.ceil(N_SLOTS / GRID_COLS) end
+local function invGridVisibleRows() return math.max(1, floor((BPY + BPH - ITEMS_BOTTOM_RESERVE - ITEMS_Y0) / invGridRowH())) end
+local function invCellOrigin(col, visRow)
+  return ITEMS_X0 + col * (CELL + GAP), ITEMS_Y0 + visRow * invGridRowH()
+end
+local function invSlotAtGridPos(gridRow, col)
+  local slot = gridRow * GRID_COLS + col + 1
+  if slot < 1 or slot > N_SLOTS then return nil end
+  return slot
+end
+local function invCellAt(mx, my)
+  local rowH = invGridRowH()
+  local visRows = invGridVisibleRows()
+  if mx < ITEMS_X0 or my < ITEMS_Y0 or my >= ITEMS_Y0 + visRows * rowH then return nil end
+  local visRow = floor((my - ITEMS_Y0) / rowH)
+  local gridRow = (U.itemsScroll or 0) + visRow
+  if gridRow >= invGridTotalRows() then return nil end
+  local col = floor((mx - ITEMS_X0) / (CELL + GAP))
+  if col < 0 or col >= GRID_COLS then return nil end
+  local cx, cy = invCellOrigin(col, visRow)
+  if mx < cx or mx >= cx + CELL or my < cy or my >= cy + CELL then return nil end
+  return invSlotAtGridPos(gridRow, col)
+end
+local function drawInvCell(x, y, el, n, hover)
+  local fr, fg, fb = hover and 55 or 22, hover and 60 or 24, hover and 90 or 32
+  graphics.fillRect(x, y, CELL, CELL, fr, fg, fb, 255)
+  graphics.drawRect(x, y, CELL, CELL, hover and 255 or 90, hover and 220 or 90, hover and 80 or 100, 255)
+  if el and n and n > 0 then
+    local r, g, b = R.colourOf(el)
+    graphics.fillRect(x + 4, y + 4, CELL - 8, CELL - 8, r, g, b, 255)
+    if n > 1 then
+      local txt = tostring(n)
+      local tw = textW(txt)
+      local bw, bh = tw + 4, 11
+      local bx, by = x + CELL - bw - 1, y + CELL - bh - 1
+      graphics.fillRect(bx, by, bw, bh, 18, 18, 28, 230)
+      graphics.drawRect(bx, by, bw, bh, 100, 100, 120, 255)
+      graphics.drawText(bx + 2, by + 1, txt, 255, 255, 255, 255)
+    end
+    local inbar
+    for s = 6, 10 do if R.hotbar[s] == el then inbar = s end end
+    if inbar then graphics.drawText(x + 2, y + 1, "[" .. (inbar % 10) .. "]", 255, 220, 80, 255) end
+  end
+end
 local CTRL_Y = BPY + 40
 local SEARCH_X, SEARCH_W = ITEMS_X0, 170
 local SORT_X, SORT_W = ITEMS_X0 + SEARCH_W + 6, 40
@@ -614,22 +715,36 @@ local function drawBagItemsTab()
   else
     syncInvSlots()
     drawSearchSortTrash()
-    graphics.drawText(BPX + 160, BPY + 27, "click = send to hotbar   R-click/drag = pick up to rearrange", 170, 185, 210, 255)
-    local vis = visibleCarriedSlots()
-    local rows = itemsVisibleRows()
-    U.itemsScroll = math.max(0, math.min(math.max(0, #vis - rows), U.itemsScroll or 0))
-    for i = 1, rows do
-      local idx = vis[i + U.itemsScroll]; if not idx then break end
-      local s = R.invSlots[idx]
-      local y = ITEMS_Y0 + (i - 1) * ITEMS_ROWH
-      if drawSlotRow(ITEMS_X0, y, ITEMS_W, s.el, s.n) then hoverEl = s.el; U.hoverAssignEl = s.el end
+    graphics.drawText(BPX + 160, BPY + 27, "L-click pick/place   shift+L = hotbar   R-click split   drag to move", 170, 185, 210, 255)
+    local totalRows = invGridTotalRows()
+    local visRows = invGridVisibleRows()
+    U.itemsScroll = math.max(0, math.min(math.max(0, totalRows - visRows), U.itemsScroll or 0))
+    local hoverSlot = invCellAt(R.mouse.x, R.mouse.y)
+    for vr = 0, visRows - 1 do
+      local gridRow = (U.itemsScroll or 0) + vr
+      if gridRow >= totalRows then break end
+      for col = 0, GRID_COLS - 1 do
+        local slot = invSlotAtGridPos(gridRow, col)
+        if slot then
+          local cx, cy = invCellOrigin(col, vr)
+          local s = R.invSlots[slot]
+          local showEl, showN = false, 0
+          if s.el and s.n > 0 and matchesSearch(s.el) then showEl, showN = s.el, s.n end
+          -- Empty cells must highlight too: while holding an item you need to see WHERE it can
+          -- drop. The old `and showEl` meant only occupied cells ever lit up, so the advertised
+          -- "drag to move" had no target feedback at all on the empty slots you actually aim for.
+          local hov = hoverSlot == slot
+          drawInvCell(cx, cy, showEl, showN, hov)
+          if hov then hoverEl = showEl; U.hoverAssignEl = showEl end
+        end
+      end
     end
-    if #vis > rows then
+    if totalRows > visRows then
       local upX, upY = BPX + BPW - 42, ITEMS_Y0 - 16
       local dnX, dnY = BPX + BPW - 22, ITEMS_Y0 - 16
       graphics.fillRect(upX, upY, 16, 13, 40, 44, 80, 255); graphics.drawText(upX + 5, upY + 1, "^", 220, 220, 230, 255)
       graphics.fillRect(dnX, dnY, 16, 13, 40, 44, 80, 255); graphics.drawText(dnX + 5, dnY + 1, "v", 220, 220, 230, 255)
-      graphics.drawText(BPX + BPW - 150, ITEMS_Y0 - 14, string.format("%d/%d", math.min(#vis, U.itemsScroll + rows), #vis), 160, 160, 170, 255)
+      graphics.drawText(BPX + BPW - 150, ITEMS_Y0 - 14, string.format("%d/%d", math.min(totalRows, (U.itemsScroll or 0) + visRows), totalRows), 160, 160, 170, 255)
     end
   end
   local accY = BPY + BPH - ITEMS_BOTTOM_RESERVE + 16
@@ -678,27 +793,21 @@ local function handleBagClickItems(x, y, button)
   if x >= SORT_X and x < SORT_X + SORT_W and y >= CTRL_Y and y < CTRL_Y + 13 then sortInventory(); U.searchFocused = false; return end
   if x >= TRASH_X and x < TRASH_X + TRASH_W and y >= CTRL_Y and y < CTRL_Y + 13 then if U.hand then trashHand(button) end; U.searchFocused = false; return end
   U.searchFocused = false
-  local vis = visibleCarriedSlots(); local rows = itemsVisibleRows()
-  if #vis > rows then
+  local totalRows = invGridTotalRows()
+  local visRows = invGridVisibleRows()
+  if totalRows > visRows then
     local upX, upY = BPX + BPW - 42, ITEMS_Y0 - 16
     local dnX, dnY = BPX + BPW - 22, ITEMS_Y0 - 16
     if x >= upX and x < upX + 16 and y >= upY and y < upY + 13 then U.itemsScroll = math.max(0, (U.itemsScroll or 0) - 1); return end
-    if x >= dnX and x < dnX + 16 and y >= dnY and y < dnY + 13 then U.itemsScroll = math.min(math.max(0, #vis - rows), (U.itemsScroll or 0) + 1); return end
+    if x >= dnX and x < dnX + 16 and y >= dnY and y < dnY + 13 then U.itemsScroll = math.min(math.max(0, totalRows - visRows), (U.itemsScroll or 0) + 1); return end
   end
-  for i = 1, rows do
-    local idx = vis[i + (U.itemsScroll or 0)]; if not idx then break end
-    local ry = ITEMS_Y0 + (i - 1) * ITEMS_ROWH
-    if x >= ITEMS_X0 and x < ITEMS_X0 + ITEMS_W and y >= ry and y < ry + ITEMS_ROWH then
-      local s = R.invSlots[idx]
-      if U.shiftHeld and not U.hand and s.el then quickMoveToHotbar(s.el)
-      elseif not U.hand then
-        -- left-click with an empty hand is the reliable, no-drag path: send it straight to the
-        -- selected hotbar slot (or slot 6) - matches the CATALOG tab and req (3). Right-click still
-        -- picks up (half-stack) for the advanced drag/split/rearrange system.
-        if button == 3 then pickupFrom(idx, button) elseif s.el then assignHotbar(s.el) end
-      else dropHandInto(idx, button) end
-      return
-    end
+  local idx = invCellAt(x, y)
+  if idx then
+    local s = R.invSlots[idx]
+    if U.shiftHeld and not U.hand and s and s.el and matchesSearch(s.el) then quickMoveToHotbar(s.el)
+    elseif U.hand and not U.hand.isAcc then dropHandInto(idx, button)
+    elseif not U.hand and s and s.el and matchesSearch(s.el) then pickupFrom(idx, button) end
+    return
   end
 end
 
@@ -726,6 +835,13 @@ local function drawBagRecipesTab()
   end)
   local x0b, rowsTop, maxRows, rows = recipeLayoutMetrics()
   graphics.drawText(x0, rowsTop - 14, U.filterMat and ("Recipes needing " .. niceName(U.filterMat) .. " - click the chip again to clear") or "All recipes - click a row to craft x1, or the x5 button", 200, 220, 255, 255)
+  do
+    local bx, bw = BPX + BPW - 132, 122
+    graphics.fillRect(bx, rowsTop - 16, bw, 13, U.onlyCraftable and 40 or 26, U.onlyCraftable and 70 or 30, U.onlyCraftable and 44 or 46, 255)
+    graphics.drawRect(bx, rowsTop - 16, bw, 13, U.onlyCraftable and 140 or 90, U.onlyCraftable and 255 or 90, U.onlyCraftable and 140 or 100, 255)
+    graphics.drawText(bx + 5, rowsTop - 14, U.onlyCraftable and "showing: CRAFTABLE NOW" or "show: craftable now",
+      U.onlyCraftable and 200 or 180, U.onlyCraftable and 255 or 190, U.onlyCraftable and 200 or 200, 255)
+  end
   U.craftScroll = math.max(0, math.min(math.max(0, #rows - maxRows), U.craftScroll))
   local hoverRow
   for i = 1, maxRows do
@@ -748,13 +864,21 @@ local function drawBagRecipesTab()
       for _, p in ipairs(needList) do
         local el, n = p[1], p[2]; local rr, gg, bb = R.colourOf(el); local have = R.inv(el) >= n
         graphics.fillRect(ix, y + 1, 8, 8, rr, gg, bb, have and 255 or 120)
-        local label = n .. " " .. niceName(el)
+        -- Missing ingredients showed only the amount required, so "what do I still need
+        -- for this" meant leaving the panel to go count your inventory. Show the shortfall
+        -- inline as have/need ("2/6 Wood") when short, and just the requirement ("6 Wood")
+        -- once satisfied -- so scanning the list answers "what can I make next" on its own.
+        local label = have and (n .. " " .. niceName(el)) or (R.inv(el) .. "/" .. n .. " " .. niceName(el))
         graphics.drawText(ix + 10, y, label, have and 200 or 255, have and 200 or 120, have and 210 or 120, 255)
         local codeX = ix + 10 + textW(label) + 4
         graphics.drawText(codeX, y, "(" .. el .. ")", have and 130 or 170, have and 130 or 120, have and 140 or 130, 255)
         ix = codeX + textW("(" .. el .. ")") + 8
       end
-      if r.desc then graphics.drawText(x0, y + 13, string.sub(r.desc, 1, 72), 170, 180, 200, 255) end
+      -- Station moved off the header when grouping went category-first, so it has to be
+      -- visible per row -- a recipe you cannot make until you build an Advanced Lab must say so.
+      local sub = r.desc
+      if r.gate then sub = "needs " .. r.gate .. (sub and (" - " .. sub) or "") end
+      if sub then graphics.drawText(x0, y + 13, string.sub(sub, 1, 72), r.gate and 215 or 170, r.gate and 165 or 180, r.gate and 90 or 200, 255) end
       if r.kind == "recipe" then
         local bx, by = BPX + BPW - 10 - X5_W, y + 5
         graphics.fillRect(bx, by, X5_W, 14, r.ok and 50 or 34, r.ok and 60 or 34, r.ok and 40 or 40, 255)
@@ -780,6 +904,9 @@ local function handleBagClickRecipes(x, y)
   end)
   if clickedMat then return end
   local x0b, rowsTop, maxRows, rows = recipeLayoutMetrics()
+  if x >= BPX + BPW - 132 and x < BPX + BPW - 10 and y >= rowsTop - 16 and y < rowsTop - 3 then
+    U.onlyCraftable = not U.onlyCraftable; U.craftScroll = 0; return
+  end
   local upX, upY = BPX + BPW - 42, BPY + BPH - 24
   local dnX, dnY = BPX + BPW - 22, BPY + BPH - 24
   if x >= upX and x < upX + 16 and y >= upY and y < upY + 16 then U.craftScroll = math.max(0, U.craftScroll - 1); return end
@@ -888,8 +1015,8 @@ local CONTROLS = {
   "BLOCKS     6-0 = carried materials - hold LEFT mouse to place    [ ] brush size    B snap grid",
   "SELECT     number keys 1-0, or mouse wheel to switch hotbar slot",
   "MENUS      E bag + recipe book     J quest log     C this card     Esc pause menu",
-  "BAG        click a slot to send it straight to the selected hotbar slot; R-click/drag to pick up",
-  "BAG        SHIFT+click or hover + 6-0 sends an item straight to that hotbar slot; SORT/search/DEL in the bag",
+  "BAG        L-click a slot to pick up; L-click again to place/merge; R-click splits one at a time",
+  "BAG        SHIFT+click moves stack to hotbar; hover + 6-0 assigns; SORT/search/DEL trash slot",
   "VIEW       Z zoom (move, click to lock, Z to close) - inside: 1px precision, wheel = brush size",
   "WORLD      M minimap    N enemies on/off    H toggle HUD    K save    R respawn",
   "ITEMS      chests in caves hold accessories - X mirror-home, G grapple, double jump, rocket boots...",
@@ -994,16 +1121,18 @@ hook(R.hooks.mouseup, function(x, y, button)
     return true
   end
   if U.bagOpen and U.hand and U.pickedThisPress then
-    local rows = itemsVisibleRows()
-    if U.itemsSub ~= "catalog" and x >= ITEMS_X0 and x < ITEMS_X0 + ITEMS_W and y >= ITEMS_Y0 and y < ITEMS_Y0 + rows * ITEMS_ROWH then
-      local row = floor((y - ITEMS_Y0) / ITEMS_ROWH) + 1
-      local vis = visibleCarriedSlots(); local idx = vis[row + (U.itemsScroll or 0)]
-      if idx and idx ~= U.hand.originIdx then dropHandInto(idx, button) end
-    elseif x >= TRASH_X and x < TRASH_X + TRASH_W and y >= CTRL_Y and y < CTRL_Y + 13 then
-      trashHand(button)
-    else
-      local hs = hotbarSlotAt(x, y)
-      if hs and hs >= 6 then assignHotbar(U.hand.el, hs); U.hand = false end
+    local dropped = false
+    if U.itemsSub ~= "catalog" then
+      local idx = invCellAt(x, y)
+      if idx and idx ~= U.hand.originIdx then dropHandInto(idx, button); dropped = true end
+    end
+    if not dropped then
+      if x >= TRASH_X and x < TRASH_X + TRASH_W and y >= CTRL_Y and y < CTRL_Y + 13 then
+        trashHand(button)
+      else
+        local hs = hotbarSlotAt(x, y)
+        if hs and hs >= 6 then assignHotbar(U.hand.el, hs); U.hand = false end
+      end
     end
   end
   U.pickedThisPress = false
@@ -1047,16 +1176,58 @@ hook(R.hooks.drawHUD, function()
       local pel = paletteSlotAt(R.mouse.x, R.mouse.y)
       if pel then drawCursorTip(niceName(pel), itemTooltipLines(pel))
       elseif not R.fine and not R.zoomPending and R.mouse.y > 16 and R.mouse.y < H - 45 then
-        -- World hover tooltip: name + real temperature of whatever's under the
-        -- cursor, requested as its own always-available readout, not just
-        -- something buried in a menu.
-        local wp = sim.partID(R.mouse.x, R.mouse.y)
-        if wp then
-          local nm = R.nameOf(sim.partProperty(wp, "type"))
-          local tempK = sim.partProperty(wp, "temp") or 295
-          local tempF = (tempK - 273.15) * 9 / 5 + 32
-          local ok, pr = pcall(sim.pressure, floor(R.mouse.x / sim.CELL), floor(R.mouse.y / sim.CELL))
-          drawCursorTip(niceName(nm), { string.format("%.0f F", tempF), "Pressure: " .. string.format("%.1f", ok and pr or 0) }, 110)
+        -- World hover: single-pixel when placing blocks; 7x7 gas sample when exploring.
+        local sel = (R.hotbar or {})[R.sel or 1]
+        local placing = sel and not sel:find("^tool:") and not R.ITEMS[sel]
+        local mx, my = R.mouse.x, R.mouse.y
+        local rad = placing and 0 or 3
+        local wp, nm, oxy, co2, bad = sim.partID(mx, my), nil, 0, 0, 0
+        if wp then nm = R.nameOf(sim.partProperty(wp, "type")) end
+        if rad > 0 then
+          for dy = -rad, rad do for dx = -rad, rad do
+            local pr = sim.partID(mx + dx, my + dy)
+            if pr then
+              local nn = R.nameOf(sim.partProperty(pr, "type"))
+              if nn == "OXYG" then oxy = oxy + 1
+              elseif nn == "CO2" then co2 = co2 + 1
+              elseif nn == "SMKE" or nn == "CO" then bad = bad + 1 end
+              if dx == 0 and dy == 0 then wp, nm = pr, nn end
+            end
+          end end
+          if not wp then
+            for dy = -rad, rad do
+              for dx = -rad, rad do
+                local pr = sim.partID(mx + dx, my + dy)
+                if pr then wp = pr; nm = R.nameOf(sim.partProperty(pr, "type")); break end
+              end
+              if wp then break end
+            end
+          end
+        end
+        if wp or (rad > 0 and (oxy > 0 or co2 > 0 or bad > 0)) then
+          local tempK = wp and (sim.partProperty(wp, "temp") or 295) or 295
+          local kToF = function(k) return (k - 273.15) * 9 / 5 + 32 end
+          local tempF = kToF(tempK)
+          local ok, pr = pcall(sim.pressure, floor(mx / sim.CELL), floor(my / sim.CELL))
+          pr = (ok and type(pr) == "number") and pr or 0
+          local env = R.env
+          local lines
+          if env then
+            lines = {
+              string.format("T %.0f-%.0fF (here %.0fF)", kToF(env.tempMin or tempK), kToF(env.tempMax or tempK), tempF),
+              string.format("P %+d..%+d (here %+d)", floor((env.pressMin or 0) + 0.5), floor((env.pressMax or 0) + 0.5), floor(pr + 0.5)),
+            }
+          else
+            lines = { string.format("%.0f F", tempF), string.format("P %+d", floor(pr + 0.5)) }
+          end
+          if rad > 0 and (oxy > 0 or co2 > 0 or bad > 0) then
+            local total = oxy + co2 + bad
+            lines[#lines + 1] = string.format("O2 zone %d%% (%d OXYG / %d cells)", floor(oxy / total * 100), oxy, total)
+            if co2 > 0 then lines[#lines + 1] = string.format("CO2 %d cells in 7x7", co2) end
+            if bad > 0 then lines[#lines + 1] = string.format("smoke/toxic %d cells", bad) end
+          end
+          local title = nm and niceName(nm) or (oxy > 0 and "Oxygen" or (co2 > 0 and "Carbon dioxide" or "Air"))
+          drawCursorTip(title, lines, env and 168 or 110)
         end
       end
     end

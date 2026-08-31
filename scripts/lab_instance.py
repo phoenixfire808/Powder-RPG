@@ -1,15 +1,15 @@
 """Prepare (and optionally launch) a SECOND, isolated powder.exe instance so
-experiments never collide with Drew's live session.
+experiments never collide with the owner's live session.
 
 Background (knowledge/research-tooling-2026-08-26.md, section (a) and change
 #2/#3): `ddir:DIRECTORY` chdir's powder.exe into DIRECTORY before anything
 else runs, so prefs/stamps/autorun.lua/powder-bridge.token are all read from
 DIRECTORY instead of the default `D:/The-Powder-Toy/build`. That is enough to
-run a second, fully isolated instance side by side with Drew's -- as long as
+run a second, fully isolated instance side by side with the owner's -- as long as
 it also gets its own bridge port and token, since `bridge_src/_base/
 bridge_base.lua` used to hardcode port 9876. It now reads
 `POWDER_BRIDGE_PORT` from the environment first (falling back to 9876 so
-Drew's normal launch is unaffected), which is the only change this script
+the owner's normal launch is unaffected), which is the only change this script
 depends on.
 
 `powder_bridge.client.PowderClient` already supports a distinct host/port/
@@ -25,7 +25,7 @@ below uses. The process's *working directory* must stay
 `D:/The-Powder-Toy/build` (where the DLLs live) even though `ddir` points
 elsewhere -- also matched from launch_powder.ps1.
 
-What this script does NOT do: it never touches Drew's deployed autorun.lua,
+What this script does NOT do: it never touches the owner's deployed autorun.lua,
 prefs, or token (`build_autorun.build(dry_run=True)` only returns the
 assembled text; nothing under `D:/The-Powder-Toy/build` is written), and it
 never launches anything unless `--launch` is passed explicitly.
@@ -34,7 +34,7 @@ Usage
 -----
     # 1. one-time (or whenever bridge_src/ changes): assemble the lab ddir
     #    (autorun.lua + a fresh random token + a blank prefs file) without
-    #    touching Drew's session or starting any process:
+    #    touching the owner's session or starting any process:
     python scripts/lab_instance.py --setup
 
     # 2. inspect what would launch, still without starting anything:
@@ -85,7 +85,7 @@ TOKEN_FILENAME = "powder-bridge.token"
 AUTORUN_FILENAME = "autorun.lua"
 
 # `disable-network` (report section (a)): a lab instance never needs to hit
-# powdertoy.co.uk, and this keeps it from ever touching Drew's online saves.
+# powdertoy.co.uk, and this keeps it from ever touching the owner's online saves.
 DEFAULT_EXTRA_ARGS: tuple[str, ...] = ("disable-network", "scale:1")
 
 
@@ -115,8 +115,8 @@ def prepare(
         shutil.copyfile(TEMPLATE_PREF, lab_dir / "powder.pref")
 
     # dry_run=True only returns the assembled autorun.lua text -- it never
-    # writes to build_autorun.DEPLOY_TARGETS (Drew's deployed autorun.lua),
-    # so this cannot affect Drew's live session.
+    # writes to build_autorun.DEPLOY_TARGETS (the owner's deployed autorun.lua),
+    # so this cannot affect the owner's live session.
     autorun_text = build_autorun.build(dry_run=True)
     (lab_dir / AUTORUN_FILENAME).write_text(autorun_text, encoding="utf-8", newline="\n")
 
@@ -155,7 +155,7 @@ def launch(
     The working directory is EXE_DIR (D:/The-Powder-Toy/build), matching
     launch_powder.ps1's own comment that the DLLs must be resolved from
     there; `ddir` alone is what redirects data-file reads to lab_dir.
-    POWDER_BRIDGE_PORT is set only in the child's environment, so Drew's own
+    POWDER_BRIDGE_PORT is set only in the child's environment, so the owner's own
     session (already running, already loaded into memory) is unaffected.
     """
     if not (Path(lab_dir) / TOKEN_FILENAME).is_file():
@@ -218,7 +218,7 @@ def main() -> int:
     if args.setup:
         meta = prepare(lab_dir, args.port, keep_token=args.keep_token)
         print(f"prepared lab ddir -> {meta['ddir']}")
-        print(f"  autorun.lua from bridge_src/ (dry_run assembly, nothing deployed to Drew's session)")
+        print(f"  autorun.lua from bridge_src/ (dry_run assembly, nothing deployed to the owner's session)")
         print(f"  token       -> {meta['token_path']}")
         print(f"  port        -> {meta['port']} (set via POWDER_BRIDGE_PORT at launch time)")
 

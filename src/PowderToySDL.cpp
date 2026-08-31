@@ -418,6 +418,28 @@ static void EventProcess(const SDL_Event &event)
 		case SDL_WINDOWEVENT_DISPLAY_CHANGED:
 			UpdateRefreshRate();
 			break;
+
+		case SDL_WINDOWEVENT_FOCUS_LOST:
+			// If the window loses focus (alt-tab, clicking another window, etc.) while a
+			// mouse button is physically held, SDL/the OS will not deliver the matching
+			// SDL_MOUSEBUTTONUP once focus returns -- there was never any handling for this
+			// case at all, so mouseDown (here) and every mouse-down flag downstream of it
+			// (GameView's isMouseDown, this fork's Lua R.mouse.l/r) stayed stuck true
+			// forever, reading every later mouse move as a held click/drag ("stuck down,
+			// spawning stuff everywhere just from moving the mouse"). Force a real release
+			// through the same dispatch path a genuine mouse-up uses, so every layer that
+			// tracks button state -- native and Lua alike -- gets the same synthetic-but-
+			// complete release instead of needing its own separate reset.
+			if (mouseDown)
+			{
+				engine.onMouseUp(mousex, mousey, mouseButton);
+				mouseDown = false;
+				if constexpr (!DEBUG)
+				{
+					SDL_CaptureMouse(SDL_FALSE);
+				}
+			}
+			break;
 		}
 		break;
 	}
