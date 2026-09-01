@@ -438,7 +438,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.17.3"
+R.VERSION = "1.17.4"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -1348,7 +1348,7 @@ local function surfaceAt(wx)
   s = floor(120 + v * 100 - mountainAt(wx) * 900 - smooth1(wx, 380, 72) * 70 - bump)
   surfCache[wx] = s; return s
 end
--- biome width 900 inlined at its single use (200-locals budget, see CLAUDE.md)
+-- biome width 900 inlined at its single use (200-locals budget, see DEVELOPMENT.md)
 local MAP_TYPES = { "mixed", "forest", "desert", "snow", "swamp", "flat" }
 local MAP_TYPE_OK = { mixed = 1, forest = 1, desert = 1, snow = 1, swamp = 1, flat = 1 }
 local MAP_TYPE_LABEL = {
@@ -2636,7 +2636,7 @@ R.RECIPES = {
   { out="PSCN", n=2, need={CU=1, GLAS=1}, st="workbench", txt="P-silicon", desc="Semiconductor: passes sparks one way. Basis of circuits" },
   -- ADDED 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #1): NSCN ("N-silicon")
   -- is a real stock TPT element (src/simulation/elements/NSCN.cpp, TYPE_SOLID,
-  -- Falldown=0 -- verified safe per CLAUDE.md rule 4) but had zero sources anywhere
+  -- Falldown=0 -- verified safe per DEVELOPMENT.md rule 4) but had zero sources anywhere
   -- in this fork: not mined, not crafted, not looted -- only ever drawn as decorative
   -- build-geometry pixels inside two machines' own construction code, never given to
   -- the player. That permanently blocked MAGACCELKIT (needs 4xNSCN, machines2.lua).
@@ -3514,6 +3514,15 @@ local function onTextInput(text)
   elseif R.chatOpen then if #R.chatText < 120 then R.chatText = R.chatText .. text end end
 end
 local function onKeyDown(key, scan, rep, shift, ctrl, alt)
+  -- Sandbox mode: the RPG is stopped, so every handler below is inert. Esc is the one
+  -- key we still claim, as the way back to the menu -- checked BEFORE the title-screen
+  -- and R.active guards, both of which would otherwise swallow it and leave the player
+  -- with no route back to their save. Every other key falls straight through to stock
+  -- Powder Toy, which is the entire point of the mode.
+  if R.sandboxMode then
+    if key == 27 then R.exitSandbox(); return false end
+    return true
+  end
   if R.titleScreen then
     if key == 27 then
       if R.titleCreateOpen then R.titleCreateOpen = false; return false end
@@ -3871,7 +3880,7 @@ wrap = function(text, width)                -- 6px per character (shared with ch
   return out
 end
 -- 8 = conservative drawText width for menu columns. Inlined rather than a top-level
--- local (see CLAUDE.md's 200-locals limit); R.MENU_CHAR_W below is the shared copy.
+-- local (see DEVELOPMENT.md's 200-locals limit); R.MENU_CHAR_W below is the shared copy.
 local function menuWrap(text, widthPx)
   local maxc = math.max(1, floor((widthPx - 4) / 8))
   local out, line = {}, ""
@@ -3888,7 +3897,7 @@ end
 
 -- Reachable from onDraw via the R table. Referencing the bare `menuWrap` local from
 -- inside onDraw resolves as a GLOBAL and is nil at runtime -- the exact failure mode
--- CLAUDE.md records for `wrap` (v1.15.35) and `drawMenu` (v1.15.33). Because onDraw is
+-- DEVELOPMENT.md records for `wrap` (v1.15.35) and `drawMenu` (v1.15.33). Because onDraw is
 -- not pcall-wrapped, that error aborts the entire remaining HUD every frame while
 -- lastErr stays nil, so the bridge cannot see it. Draw code must use R.menuWrap.
 R.menuWrap = menuWrap
@@ -4018,7 +4027,7 @@ for _, sec in ipairs(R.MENU_SECTIONS) do
 end
 -- (a dead `local HELP` controls table lived here; nothing referenced it -- the Esc
 -- menu builds its own CONTROLS column. Removed to reclaim a top-level local slot,
--- see CLAUDE.md's 200-locals limit note.)
+-- see DEVELOPMENT.md's 200-locals limit note.)
 local MX, MY, MW, MH = 8, 18, 596, 340          -- inside R.SAFE
 local MENU_DIV_X = MX + floor(MW * 0.50)        -- 50/50 split; controls use one full-width column
 local CTRL_X, CTRL_W = MX + 10, MENU_DIV_X - MX - 18
@@ -5481,6 +5490,11 @@ local function hotReloadCore()
 end
 local function onTick()
   if R.hotReloadRequested then R.hotReloadRequested = false; hotReloadCore(); return end
+  -- Sandbox mode runs NOTHING of the RPG. onDraw already returns early on `not R.active`,
+  -- but onTick has never had that guard -- without this, choosing "Sandbox" would still
+  -- tick enemies, weather, hunger and world logic underneath a player who asked for plain
+  -- Powder Toy. Placed after the hot-reload check so reloading still works from sandbox.
+  if R.sandboxMode then return end
   -- GAS THROUGH LIQUIDS (2026-08-31): "all the oxygen and gases are getting caught on the trees
   -- and the liquids". Root cause is an engine rule, not our Lua: SimulationData.cpp's
   -- init_can_move sets can_move[moving][dest] = 0 (bounce) whenever the mover's Weight is <= the
@@ -5694,14 +5708,21 @@ local TITLE_BTN = {
   settings = { x = 0, y = 0, w = 150, h = 26 },
   quit = { x = 0, y = 0, w = 150, h = 26 },
   multiplayer = { x = 0, y = 0, w = 150, h = 26 },
+  -- Sandbox = plain Powder Toy, no RPG. Requested directly: "I want to be able to
+  -- play the regular Powder Toy basically... regular build mode like how Powder Toy
+  -- is, without the RPG stuff." R.stop() already restores TPT's element menus, its
+  -- native HUD, normal sim speed and every original element colour, so this needs no
+  -- new teardown path -- it is the same one used when the RPG is stopped.
+  sandbox = { x = 0, y = 0, w = 150, h = 26 },
 }
 local function layoutTitleButtons()
   local cx = floor(W / 2 - 75)
   TITLE_BTN.play.x = cx; TITLE_BTN.play.y = floor(H / 2) - 38
   TITLE_BTN.newworld.x = cx; TITLE_BTN.newworld.y = floor(H / 2) - 6
-  TITLE_BTN.settings.x = cx; TITLE_BTN.settings.y = floor(H / 2) + 26
-  TITLE_BTN.quit.x = cx; TITLE_BTN.quit.y = floor(H / 2) + 58
+  TITLE_BTN.sandbox.x = cx; TITLE_BTN.sandbox.y = floor(H / 2) + 26
+  TITLE_BTN.settings.x = cx; TITLE_BTN.settings.y = floor(H / 2) + 58
   TITLE_BTN.multiplayer.x = cx; TITLE_BTN.multiplayer.y = floor(H / 2) + 90
+  TITLE_BTN.quit.x = cx; TITLE_BTN.quit.y = floor(H / 2) + 122
 end
 local function openCreateWorld()
   R.titleCreateOpen = true
@@ -5867,9 +5888,10 @@ drawTitleScreen = function()
   local buttons = {
     { TITLE_BTN.play, R.worldEverGenerated and "Resume" or "Play" },
     { TITLE_BTN.newworld, "New World" },
+    { TITLE_BTN.sandbox, "Sandbox (Classic)" },
     { TITLE_BTN.settings, "Settings" },
-    { TITLE_BTN.quit, "Quit" },
     { TITLE_BTN.multiplayer, "Multiplayer" },
+    { TITLE_BTN.quit, "Quit" },
   }
   for _, b in ipairs(buttons) do
     local r, label = b[1], b[2]
@@ -5896,6 +5918,7 @@ titleMouseDown = function(x, y)
     return true
   end
   if hitRect(x, y, TITLE_BTN.newworld) then openCreateWorld(); return true end
+  if hitRect(x, y, TITLE_BTN.sandbox) then R.enterSandbox(); return true end
   if hitRect(x, y, TITLE_BTN.settings) then R.titleSettingsOpen = true; return true end
   if hitRect(x, y, TITLE_BTN.multiplayer) then
     if R.net and R.net.drawTitleScreen then R.titleMultiplayerOpen = true end
@@ -5907,6 +5930,35 @@ titleMouseDown = function(x, y)
   return true   -- swallow clicks anywhere else on the title screen
 end
 end -- title screen
+-- Sandbox mode: hand the player a plain Powder Toy. Saves first if a world exists,
+-- so choosing "Sandbox" can never cost someone their RPG progress -- that would be an
+-- unrecoverable, one-click mistake, and the kind of thing a new player does by accident
+-- while exploring the menu.
+function R.enterSandbox()
+  if R.worldEverGenerated then pcall(R.save) end
+  R.titleScreen = false; R.titleCreateOpen = false; R.titleSettingsOpen = false
+  R.sandboxMode = true
+  pcall(R.stop)                 -- restores TPT menus, native HUD, speed, element colours
+  pcall(sim.clearSim)           -- a blank canvas, the way stock Powder Toy opens
+  pcall(sim.paused, false)
+  if R.releaseMouse then R.releaseMouse() end
+  say("Sandbox mode -- plain Powder Toy. Press Esc for the RPG menu.")
+  return "sandbox"
+end
+
+-- Return path out of sandbox. Bound to Esc (see the Esc handler) and also exposed as a
+-- console global, because a player who somehow loses the key binding should never be
+-- stuck in a mode with no way back to their save.
+function R.exitSandbox()
+  if not R.sandboxMode then return end
+  R.sandboxMode = false
+  R.active = false
+  R.titleScreen = true
+  pcall(R.setTptMenus, false)
+  return "menu"
+end
+_G.rpgMenu = function() return R.exitSandbox() or "menu" end
+
 function R.stop() R.active = false; pcall(tpt.hud, 1); pcall(R.setFX, false); pcall(R.setTptMenus, true); pcall(R.setFast, false)
   for name, col in pairs(R.origColours or {}) do local id = elem["DEFAULT_PT_" .. name]; if id then pcall(elem.property, id, "Colour", col) end end
   return "rpg stopped" end

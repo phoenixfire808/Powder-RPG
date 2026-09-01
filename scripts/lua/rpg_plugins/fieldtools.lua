@@ -248,7 +248,7 @@ local function updateReplicators()
 end
 
 -- ================================================================ tick/mousedown: bounded to
--- this file's own machine list ONLY (never a map-wide sweep -- see CLAUDE.md's live-lag
+-- this file's own machine list ONLY (never a map-wide sweep -- see DEVELOPMENT.md's live-lag
 -- complaint). Anchor/replicator upkeep run every tick but each iterates at most a handful of
 -- entries (one Gravity Anchor spawn attempt per ~90 frames, one Replicator charge check per 600);
 -- rails/doors/capacitor/warp charge add no tick cost at all (documented per-section above).

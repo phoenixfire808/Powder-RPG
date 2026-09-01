@@ -880,7 +880,7 @@ local function pageItemCode(id, catId)
     addLine(lines, T("Passive - simply carrying it is enough. No slot to equip, nothing to select.", DESCCOL))
   end
   -- v1.15.108 fixes (survival lane) with no guide-visible desc change of their own - noted by hand here
-  -- per CLAUDE.md rule 6, since the underlying desc text lives in a file this wave doesn't route through guide.lua.
+  -- per DEVELOPMENT.md rule 6, since the underlying desc text lives in a file this wave doesn't route through guide.lua.
   if id == "OXYTANK" then
     addLine(lines, T("", VALCOL)); addLine(lines, T("HOW IT WORKS", HEADCOL))
     addLine(lines, T("Refills all the way to full (100) whenever there's genuine breathable OXYG in your breath radius - it no longer stalls part-way.", DESCCOL))

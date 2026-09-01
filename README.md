@@ -20,23 +20,22 @@ Powder Toy project; it is an RPG fork (`phoenixfire808/Powder-RPG` on GitHub).
 | `src/` | Engine fork (C++ elements, bridge HTTP, game view) |
 | `scripts/lua/rpg.lua` | **Powder RPG** gameplay (survival, world gen, HUD) |
 | `scripts/lua/rpg_plugins/` | RPG plugins (machines, companion, save, UI, …) |
-| `bridge_src/` | Lua bridge modules (colony, realism, RPG loader) |
+| `bridge_src/` | Lua bridge modules (realism, RPG loader) |
 | `build_autorun.py` | Builds `build/autorun.lua` from `bridge_src/` |
-| `powder_toy_mcp.py` | MCP server for Claude / agents (`python powder_toy_mcp.py`) |
+| `powder_toy_mcp.py` | Scripting/automation server for external tooling (`python powder_toy_mcp.py`) |
 | `powder_ext/` | MCP tool implementations |
 | `knowledge/` | Design docs, modules, structures, build lessons |
 | `releases/` | Per-version release notes |
-| `CLAUDE.md` | Agent operating protocol for this project |
+| `DEVELOPMENT.md` | Development protocol and house rules for this project |
 
 Clone this repo, build the engine (`meson` + `ninja` — see wiki), run `python build_autorun.py`,
-then play from `build/PowderToyRPG.exe`. MCP: point Cursor at `.mcp.json` in the repo root.
+then play from `build/PowderRPG.exe`. MCP: point Cursor at `.mcp.json` in the repo root.
 
 Table of contents
 ---------------------------------------------------------------------------
 - [Powder RPG](#powder-rpg)
 - [Life support & machines](#life-support--machines)
 - [New physics & elements](#new-physics--elements)
-- [Colony AI sandbox](#colony-ai-sandbox)
 - [Sandbox quality-of-life](#sandbox-quality-of-life)
 - [Getting the update while you play](#getting-the-update-while-you-play)
 - [Vision](#vision)
@@ -60,9 +59,10 @@ system runs on the engine's actual physics rather than a scripted approximation 
   Canteen lets you carry and boil water, and simply standing in a real lake quenches thirst
   directly. Taking damage (falls, burns, radiation, hunger, suffocation) draws real blood
   that isn't walkable, so you can't casually stand on your own puddle.
-- **A permanent AI companion** — not a summonable pet: she's present from the moment a new
+- **A permanent companion** — not a summonable pet: she's present from the moment a new
   world generates, pathfinds and fights alongside you with her own HP and death/revive
-  cycle, narrates what she sees in the world, and answers you in a chat box.
+  cycle, reacts to what she sees in the world, and answers you in a chat box. Her behaviour
+  is hand-authored against the simulation, not delegated to a model.
 - **Fallout-style radiation** — uranium and plutonium contaminate the ground around them,
   which decays slowly over real time, and your character accumulates a long-term dose that
   keeps doing damage even after you've walked away. Lead blocks the buildup.
@@ -139,22 +139,6 @@ light enough to actually be pulled and clumped by a magnetic field, unlike a sol
 | Structural & defensive | Load-bearing structure blocks that collapse without support, defence foam, indestructible elemental walls, rubber |
 | Creatures & robots | A bee that pollinates and defends its hive, a robot pet that follows and fights alongside you |
 | Weapons & mechanisms | Guided missiles, powered projectiles, custom explosives, mechanical wheels |
-
-Colony AI sandbox
-===========================================================================
-Underneath the RPG is a second, independent system: a small AI colony you can build and
-watch run itself, and that outside tooling (Claude, via MCP) can drive directly.
-
-- **Worker ants** are real particles of a custom creature element — no scripted teleporting,
-  every step is a hand-simulated move into a cell already proven empty.
-- **Pheromone-guided pathing and a shared colony record** (nest location, tint color,
-  delivered-material store) so an arbitrary number of workers cooperate without stepping on
-  each other.
-- **Blueprint task assignment** — hand the colony a build shape once; it's compiled into
-  flat coordinate arrays so hundreds of workers can consult it every frame without ever
-  rescanning or reallocating.
-- **Direct per-worker control** exposed over HTTP: inspect, move, kill, recolor, retrait, or
-  feed any single ant by id from outside the game entirely.
 
 Sandbox quality-of-life
 ===========================================================================
@@ -448,7 +432,7 @@ Running from source
 ===========================================================================
 Standard Powder Toy build (Meson + Ninja); see the
 [_Powder Toy Development Help_ wiki page](https://powdertoy.co.uk/Wiki/W/Main_Page.html) for
-toolchain setup. The RPG and colony-sandbox layers are pure Lua (`scripts/lua/`,
+toolchain setup. The RPG layer is pure Lua (`scripts/lua/`,
 autorun-compiled from `bridge_src/`) and need no rebuild — only the new elements above
 require a native rebuild.
 

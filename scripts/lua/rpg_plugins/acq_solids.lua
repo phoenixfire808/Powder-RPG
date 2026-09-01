@@ -239,7 +239,7 @@ end
 -- ================================================================================================
 -- CHANGELOG LINES for the coordinator to land in rpg.lua's R.CHANGELOG (rpg.lua owns R.VERSION;
 -- this plugin does not touch it, per convention documented at rpg.lua:800). One line per discrete
--- change, player-facing language, per CLAUDE.md's "every little micro change" rule.
+-- change, player-facing language, per DEVELOPMENT.md's "every little micro change" rule.
 -- ================================================================================================
 -- "Material acquisition (@acq_solids): Vine, Sawdust, Broken Glass and Powdered Quartz were already
 --  appearing in the world on their own (vines from ordinary plant growth, sawdust/broken glass/

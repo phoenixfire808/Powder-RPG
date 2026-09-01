@@ -66,7 +66,7 @@ local HASBMTL = has("BMTL")
 -- (grepped world.lua/rpg.lua, zero hits; both are on knowledge/_wave/unobtainable-stock-
 -- elements.txt despite design-material-progression.md §4 chain 2 claiming FRZZ was "already
 -- placed by worldgen per the index" -- that claim does NOT hold against a real grep, exactly
--- the kind of unverified claim CLAUDE.md's INDEX.md discipline warns about; corrected here by
+-- the kind of unverified claim DEVELOPMENT.md's INDEX.md discipline warns about; corrected here by
 -- placing both for real rather than propagating it). RIME verified TYPE_SOLID/falldown=0 (SAFE)
 -- via POWDER_TOY_MATERIAL_INDEX.json; FRZZ is TYPE_PART/falldown=1 (same class as CLST/SALT --
 -- placed as a vein-shaped pocket, never bulk fill, same reasoning as the HASMERC block above).

@@ -560,7 +560,7 @@ local function buildPump(mx, my)
   R.say("Pump built - power the pad on top; real pipes drag water from the left mouth out through the right mouth")
 end
 
--- conveyor length 8 inlined below (200-locals budget, see CLAUDE.md)
+-- conveyor length 8 inlined below (200-locals budget, see DEVELOPMENT.md)
 local function buildConveyor(mx, my, dir)
   local wx, wy = mx + R.cam.x, my + R.cam.y
   local gy = groundY(wx, wy)

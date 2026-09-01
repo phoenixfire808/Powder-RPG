@@ -9,7 +9,7 @@
 // PT_STNE was the first choice for the baseline and was REJECTED after measuring it, not
 // before: STNE has no `Update = &update` assignment (confirmed by grep), which looked like
 // exactly the "generic per-particle cost only" baseline this test wants -- but
-// AGENTS.md/CLAUDE.md already document that STNE is a shipped-as-static-terrain element that
+// AGENTS.md/DEVELOPMENT.md already document that STNE is a shipped-as-static-terrain element that
 // is actually `Falldown = 1, Gravity = 0.3f` (src/simulation/elements/STNE.cpp), i.e. a real
 // falling powder. A first run using STNE as the baseline showed it costing MORE per call than
 // ICEI despite having no custom Update() body at all -- STNE was paying the movement/collision
@@ -43,7 +43,7 @@ namespace
 {
 	// Fills a contiguous block starting at (0,0), row-major, with `count` static particles of
 	// type `t`. Both PT_ICEI and PT_STNE have Falldown=0/Gravity=0 (confirmed by reading
-	// ICEI.cpp and this fork's own terrain-solidity rule in AGENTS.md/CLAUDE.md, which is the
+	// ICEI.cpp and this fork's own terrain-solidity rule in AGENTS.md/DEVELOPMENT.md, which is the
 	// exact defect check the project already runs for terrain elements) so a contiguous block
 	// is stable across repeated ticks -- it will not fall, slide or disperse, which is what
 	// makes repeated-call timing on the same instance meaningful here.
@@ -88,7 +88,7 @@ TEST_CASE("a static ICE (PT_ICEI) block costs more per UpdateParticles call than
 	SimulationData sd;
 	REQUIRE(sd.elements[PT_ICEI].Enabled == 1);
 	REQUIRE(sd.elements[PT_BRCK].Enabled == 1);
-	// The exact defect AGENTS.md/CLAUDE.md warn about, pinned here so this test would fail
+	// The exact defect AGENTS.md/DEVELOPMENT.md warn about, pinned here so this test would fail
 	// loudly if it were ever (re-)picked as a "static" baseline without checking first.
 	REQUIRE(sd.elements[PT_STNE].Falldown == 1);
 

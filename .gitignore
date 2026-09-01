@@ -108,3 +108,7 @@ ignore/
 # Derived codebase index -- regenerates on every commit, must never be committed.
 .codebase-memory/
 feedback_webhook.txt
+
+# editor/agent backups
+*.bak.*
+*.pre-framerender

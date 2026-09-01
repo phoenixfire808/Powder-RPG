@@ -164,7 +164,7 @@ addRecipe("BALLOON", 1, { GLAS=3, WOOD=2 }, "workbench", "Balloon", WEAPONS.BALL
 addRecipe("THERMLANCE", 1, { STEL=6, IRON=8, CU=2 }, "anvil", "Thermite Lance", WEAPONS.THERMLANCE.desc)
 -- ADDED 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #2): TUNG ("Tungsten") is a real
 -- stock TPT element (src/simulation/elements/TUNG.cpp, TYPE_SOLID, Falldown=0 -- verified
--- safe per CLAUDE.md rule 4; also the exact particle type fireTungsten() below spawns for
+-- safe per DEVELOPMENT.md rule 4; also the exact particle type fireTungsten() below spawns for
 -- the "hyper-dense slug punches through several blocks" mechanic, so it's not just an
 -- inventory token here) but had zero sources anywhere in this fork: not mined, not crafted,
 -- not looted. It was BOTH the build cost (6xTUNG) and the ammo (2/shot) for TUNGSNIPER --

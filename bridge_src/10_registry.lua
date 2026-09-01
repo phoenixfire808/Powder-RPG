@@ -872,39 +872,66 @@ local function scheduleRecreate(spec)
     end)
 end
 
-do
-    local saved = PBX.load(PERSIST)
-    local restored, skipped = 0, 0
-    if type(saved) == "table" then
-        for i = 1, #saved do
-            local raw = saved[i]
-            -- Re-validate on load: the file is plain JSON on disk, PBX.load
-            -- does no schema checking, and a hand-edited entry must not be
-            -- able to take the whole registry down.  Behaviour kinds are not
-            -- resolvable this early, hence lenientBehavior.
-            local ok, spec = pcall(function()
-                if type(raw) ~= "table" then error("not a table", 0) end
-                local s, _, err = validateSpec(raw, nil, true)
-                if err then error(err, 0) end
-                return s
-            end)
-            if not ok then
-                skipped = skipped + 1
-                PBX.warn(MODULE, "skipped persisted element #" .. i .. ": " .. tostring(spec))
-            elseif R.count() >= PBX.MAX_CUSTOM_ELEMENTS then
-                skipped = skipped + 1
-                PBX.warn(MODULE, "skipped persisted element " .. tostring(spec.name) ..
-                                 ": over MAX_CUSTOM_ELEMENTS")
-            elseif R.byName[spec.name] then
-                skipped = skipped + 1
-                PBX.warn(MODULE, "skipped duplicate persisted element " .. tostring(spec.name))
-            else
-                R.byName[spec.name] = { id = nil, spec = spec, hasUpdate = false }
-                scheduleRecreate(spec)
-                restored = restored + 1
-            end
+-- Queue every entry in `list` (a plain array of raw spec tables, e.g. straight out of
+-- PBX.load(PERSIST) or the source-controlled seed) whose name is not already claimed in
+-- R.byName. Returns (queued, skipped). `label` is only for the warn-log text below.
+-- Shared by both boot-time sources so a hand-edited persistence file and the
+-- source-controlled seed are held to the identical validation bar.
+local function queueSpecList(list, label)
+    local queued, skipped = 0, 0
+    if type(list) ~= "table" then return 0, 0 end
+    for i = 1, #list do
+        local raw = list[i]
+        -- Re-validate on load: the source is plain data (JSON on disk, or a Lua literal
+        -- another module could edit), PBX.load does no schema checking, and a bad entry
+        -- must not be able to take the whole registry down. Behaviour kinds are not
+        -- resolvable this early, hence lenientBehavior.
+        local ok, spec = pcall(function()
+            if type(raw) ~= "table" then error("not a table", 0) end
+            local s, _, err = validateSpec(raw, nil, true)
+            if err then error(err, 0) end
+            return s
+        end)
+        if not ok then
+            skipped = skipped + 1
+            PBX.warn(MODULE, "skipped " .. label .. " element #" .. i .. ": " .. tostring(spec))
+        elseif R.count() >= PBX.MAX_CUSTOM_ELEMENTS then
+            skipped = skipped + 1
+            PBX.warn(MODULE, "skipped " .. label .. " element " .. tostring(spec.name) ..
+                             ": over MAX_CUSTOM_ELEMENTS")
+        elseif R.byName[spec.name] then
+            skipped = skipped + 1
+            -- Not a warning: the common case here is the seed pass finding a name the
+            -- persisted snapshot (a dev machine's own live history) already supplied --
+            -- that machine's own copy wins on purpose, see queueSeedMaterials below.
+        else
+            R.byName[spec.name] = { id = nil, spec = spec, hasUpdate = false }
+            scheduleRecreate(spec)
+            queued = queued + 1
         end
     end
+    return queued, skipped
+end
+
+do
+    local restored, skipped = queueSpecList(PBX.load(PERSIST), "persisted")
+
+    -- SOURCE-CONTROLLED BASELINE (2026-09-0x, @multiplayer): pbx-custom-elements.json is a
+    -- gitignored snapshot of ONE machine's own dev-tooling history (scripts/define_materials.py
+    -- talking to a long-running process) -- a fresh checkout/download has never had that
+    -- tooling run against it and so has none of it, which is exactly the bug that shipped in
+    -- the v1.17.0 public zip (it had zero of these 64 elements; see knowledge/rpg-hub.md,
+    -- 2026-09-0x @multiplayer entry, and REALISM_RUNBOOK.md for the pre-existing half of this
+    -- gap). bridge_src/07_materials_seed.lua is checked into source control and sets
+    -- _G.PBX_MATERIALS_SEED to the same 64 specs, generated from that snapshot by
+    -- scripts/gen_materials_seed.py -- so every fresh boot, on ANY machine, ends up with the
+    -- identical baseline by construction, with zero dev tooling required. A name already
+    -- present (from the persisted snapshot above, i.e. a dev machine with its own live edits)
+    -- always wins over the seed -- queueSpecList's R.byName[spec.name] check gives whichever
+    -- list is processed first priority, and persisted is processed first.
+    local seedQueued, seedSkipped = queueSpecList(_G.PBX_MATERIALS_SEED, "seed")
+    restored, skipped = restored + seedQueued, skipped + seedSkipped
+
     PBX.log(MODULE, "registry " .. R.VERSION .. " loaded; queued " .. restored ..
-                    " persisted element(s), skipped " .. skipped)
+                    " element(s) (persisted+seed), skipped " .. skipped)
 end

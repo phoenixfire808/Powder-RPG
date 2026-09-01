@@ -12,7 +12,7 @@ re-deriving or re-guessing.
 ## Process management: MCP tool first, always
 Starting/restarting the game process on the owner's machine has caused real damage this session —
 a wrong process name led to a false conclusion, a cleanup pass disconnected the session's own
-MCP tools, and a background agent's ad-hoc instance launch caused a port collision that closed
+MCP tools, and an ad-hoc tooling instance launch caused a port collision that closed
 the owner's actual live game. **Before launching, checking, or killing any game process, check
 whether the `mcp__powder-toy__*` tools are reachable and use them.** Raw bash/PowerShell
 process management (tasklist, background launches, manual PID tracking) is a last resort for
@@ -55,15 +55,16 @@ value came back, what process it ran against) — not a bare "verified" or "fixe
 making a change, state what's being changed, why it addresses the actual cause, and why it
 won't break anything else that touches the same code.
 
-## Agent roster (background tracks)
-The standing roster is fixed at whatever the owner has explicitly named (as of 2026-08-29: bug
-fixes done directly, one feature-implementation agent, one roadmap/infrastructure agent, one
-GitHub-docs agent). When a track finishes a pass, resume the SAME agent via SendMessage —
-never spawn a fresh one for an existing track. Only add a new track when the owner explicitly asks.
+## Work tracks
+Work is organised into a small, fixed set of parallel tracks — bug fixes, feature
+implementation, roadmap/infrastructure, and documentation. A track keeps its own context across
+passes rather than starting from scratch each time. Each track owns an explicit set of files, and
+two tracks never write the same file in the same pass — that rule exists because concurrent
+writes have silently destroyed work in this repository more than once.
 
 ## Other standing rules
 - Never put the owner's real name in anything public-facing (commits, README, code comments).
 - Keep working through the TODO.md list in order of what's live/urgent; don't context-switch
   away from an in-progress task just because a new message arrives — log it and continue.
-- Full detail and rationale for all of the above lives in Claude's cross-session memory; this
-  file is the fast-reference version specific to this project.
+- Longer-form rationale and history live in the project's own working notes; this file is the
+  fast-reference version specific to this repository.
