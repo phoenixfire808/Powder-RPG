@@ -279,11 +279,24 @@ function R.submitFeedback(text)
   if R.FEEDBACK_WEBHOOK ~= "" and http and http.post then
     local ok, body = pcall(json.stringify, { content = "**Powder Toy RPG feedback:**\n" .. text })
     if ok then
-      local ok2, handle = pcall(http.post, R.FEEDBACK_WEBHOOK, body, { { "Content-Type", "application/json" } })
+      -- Discord silently drops a webhook POST sent with a default/blank User-Agent (verified:
+      -- it still answers 204, the message just never appears in the channel). Same header
+      -- R.checkForUpdate already sends GitHub with, below, for the identical reason.
+      local ok2, handle = pcall(http.post, R.FEEDBACK_WEBHOOK, body, { { "Content-Type", "application/json" }, { "User-Agent", "PowderToyRPG" } })
       if ok2 and handle then R.pendingHttp[#R.pendingHttp + 1] = handle end
     end
+    say("Feedback saved and sent - thanks!")
+  else
+    -- No webhook file is shipped in a downloaded copy, deliberately (see the comment above
+    -- R.FEEDBACK_WEBHOOK) -- without this branch feedback silently went nowhere but this
+    -- player's own disk. Open a pre-filled GitHub issue instead of a no-op.
+    local ok, err = R.openBrowserURL(R.buildGithubIssueURL("Feedback: " .. text:sub(1, 80), text, "player-feedback"))
+    if ok then
+      say("Feedback saved locally, and a GitHub issue draft just opened in your browser - click Submit issue there to actually send it.")
+    else
+      say("Feedback saved locally only - could not open your browser (" .. tostring(err) .. "). Copy feedback.txt and send it yourself.")
+    end
   end
-  say("Feedback saved" .. ((R.FEEDBACK_WEBHOOK ~= "") and " and sent - thanks!" or " - thanks!"))
 end
 -- STAMP SUBMISSIONS -> DISCORD (added 2026-09-01).
 -- Community submissions were being written ONLY to build/stamp_submissions/manifest.jsonl,
@@ -317,7 +330,8 @@ function R.submitStampToDiscord(rec)
     .. "```json\n" .. line .. "\n```"
   local okj, payload = pcall(json.stringify, { content = body })
   if not okj then return false, "encode failed" end
-  local ok2, handle = pcall(http.post, url, payload, { { "Content-Type", "application/json" } })
+  -- Same silent-204-drop bug as R.submitFeedback above: Discord needs a real User-Agent.
+  local ok2, handle = pcall(http.post, url, payload, { { "Content-Type", "application/json" }, { "User-Agent", "PowderToyRPG" } })
   if not ok2 or not handle then return false, tostring(handle) end
   R.pendingHttp[#R.pendingHttp + 1] = handle
   return true
@@ -337,6 +351,58 @@ function R.pumpFeedbackHttp()
     -- "dead" (or a pcall failure): just drop it, nothing left to release
   end
   R.pendingHttp = keep
+end
+
+-- GITHUB-ISSUE FALLBACK (added 2026-09-02, @submission). Every downloaded copy ships with NO
+-- feedback_webhook.txt -- correctly: it's a bearer credential (see the comment above
+-- R.FEEDBACK_WEBHOOK), and a webhook URL baked into a public release zip is exactly the same
+-- mistake as committing it to the repo, just harder to rotate once it's out. That means
+-- R.submitFeedback/R.submitStampToDiscord had NO delivery path at all for anyone who isn't
+-- running his own dev machine -- both silently degraded to "saved to this player's own disk
+-- and nothing else", which is indistinguishable from broken. This opens a pre-filled "New
+-- issue" page on his public repo in the OS default browser instead: zero secret shipped, zero
+-- server to host or pay for, fully attributable (a real GitHub account per report), and --
+-- unlike a relay -- provable end-to-end right now with no deployment step. Uses the exact same
+-- os.execute('start "" ...') R.applyUpdate() (below) already proves works from this sandboxed
+-- Lua on a shipped Windows build. A relay (Cloudflare Worker holding the webhook server-side)
+-- is a legitimate future upgrade if he wants tighter abuse control than "needs a GitHub
+-- account" gives for free -- see knowledge/submission-delivery.md for that design, deliberately
+-- NOT built here since it would ship unproven with no way to deploy or test it from this seat.
+function R.urlEncode(s)
+  s = tostring(s or ""):gsub("\r\n", "\n")
+  s = s:gsub("[^%w %-%_%.%~]", function(c) return string.format("%%%02X", c:byte()) end)
+  return (s:gsub(" ", "%%20"))
+end
+-- Windows' own command-line length cap (~8191 chars total for the `start` invocation) and
+-- GitHub's own URL length limit both mean a long description has to be truncated before it
+-- goes into the query string -- the FULL text is still saved locally either way (feedback.txt /
+-- stamp_submissions/manifest.jsonl); this only bounds what's pre-filled in the browser.
+R.GITHUB_ISSUE_BODY_CAP = 1500
+function R.buildGithubIssueURL(title, body, labels)
+  title = tostring(title or "Powder RPG submission"):sub(1, 120)
+  body = tostring(body or "")
+  if #body > R.GITHUB_ISSUE_BODY_CAP then
+    body = body:sub(1, R.GITHUB_ISSUE_BODY_CAP) .. "\n\n[...truncated for the URL, full text saved locally]"
+  end
+  local url = "https://github.com/" .. R.UPDATE_REPO .. "/issues/new?title=" .. R.urlEncode(title) .. "&body=" .. R.urlEncode(body)
+  if labels and labels ~= "" then url = url .. "&labels=" .. R.urlEncode(labels) end
+  return url
+end
+-- Opens `url` in the OS default browser. Windows-only ('start') -- the whole release is a
+-- Windows zip (see the task brief / AGENTS.md), same assumption R.applyUpdate() already makes.
+-- Returns false with a REAL reason on any failure (os.execute missing/blocked, launch failing)
+-- so a caller can show that honestly instead of claiming a browser opened when nothing did --
+-- the exact "make failure visible" requirement this whole fallback exists to satisfy.
+function R.openBrowserURL(url)
+  if type(url) ~= "string" or url == "" then return false, "empty url" end
+  if not os.execute then return false, "os.execute unavailable" end
+  local ok, code = pcall(os.execute, 'start "" "' .. url .. '"')
+  if not ok then return false, tostring(code) end
+  -- Lua 5.1's os.execute returns the raw OS exit code (0 == success); some LuaJIT builds
+  -- instead return true/nil for a shell that ran successfully -- accept either "clearly ok"
+  -- shape, only fail on an explicit non-zero/false result.
+  if code == false or (type(code) == "number" and code ~= 0) then return false, "exit code " .. tostring(code) end
+  return true
 end
 
 -- VERSION + SELF-UPDATE: shown on screen always (bottom-left corner) so
@@ -372,7 +438,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.17.1"
+R.VERSION = "1.17.2"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -388,6 +454,10 @@ R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 -- they all show up together next time, exactly like the GitHub one does
 -- across skipped releases.
 R.CHANGELOG = {
+  { ver = "1.17.2", notes = {
+    "Fixed: bug/suggestion reports (F8) and community stamp submissions (Y) went completely nowhere for every downloaded copy of the game -- they only ever saved to your own disk, and the game still told you 'Submitted, thanks!' either way. A downloaded copy has no way to carry the Discord link safely (it's a credential, not a password we can hand out), so submitting now opens a pre-filled GitHub issue in your browser instead -- no account needed to see it, one click to actually send it in. If it can't reach Discord or can't open your browser, it now says so plainly instead of pretending it worked.",
+    "Fixed: even on a build with Discord configured, the webhook post was silently dropped by Discord itself -- it wants a real User-Agent header and wasn't getting one.",
+  } },
   { ver = "1.17.0", notes = {
     "EVERY ELEMENT NOW HAS A WAY TO GET IT. 150 of the game's 195 Powder Toy elements are now obtainable -- up from 71 this morning. Six new acquisition systems cover fluids, solids, energy, exotics, foraging and extraction machines. The remaining 45 are either deliberately not items (sparks, fire, your own character, the eraser) or still on the list, and the guide now marks those honestly instead of hiding them.",
     "New: Isotope-Z is made by melting solid isotope in a furnace, and frozen back by chilling it in the Advanced Lab -- a real phase change the engine was already simulating.",
@@ -1104,7 +1174,14 @@ function R.applyUpdate()
     bat:write("  goto wait\r\n")
     bat:write(")\r\n")
   end
+  -- ADDED 2026-09-02: preserve the player's own settings across an update.
+  -- The release archive contains powder.pref (it is what keeps the build portable --
+  -- without it PowderToy.cpp falls back to the AppData data folder and the RPG never
+  -- loads), but -Force would overwrite the player's window size, scale and renderer
+  -- choices on every single update. Back it up, let the archive land, then restore it.
+  bat:write("if exist \"powder.pref\" copy /Y \"powder.pref\" \"powder.pref.userbak\" >NUL\r\n")
   bat:write("powershell -NoProfile -Command \"Expand-Archive -Path 'update.zip' -DestinationPath '.' -Force\"\r\n")
+  bat:write("if exist \"powder.pref.userbak\" move /Y \"powder.pref.userbak\" \"powder.pref\" >NUL\r\n")
   bat:write("del update.zip\r\n")
   -- Relaunch the .exe directly; Play.bat is only a fallback and may be absent.
   bat:write("if exist \"%~dp0PowderRPG.exe\" ( start \"\" \"%~dp0PowderRPG.exe\" ) else ( start \"\" \"%~dp0Play.bat\" )\r\n")
@@ -6166,7 +6243,7 @@ R.hooks.mount = R.hooks.mount or {}
 -- elements a real acquisition pathway, per design-material-progression{,-part2}.md. Ordered
 -- fluids -> solids -> energy -> special -> forage -> machines so that the machines lane,
 -- which consumes tokens the others define, loads last.
-R.PLUGINS = { "telemetry", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special", "acq_forage", "acq_machines", "nat_process" }
+R.PLUGINS = { "telemetry", "icons", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special", "acq_forage", "acq_machines", "nat_process" }
 R.pluginStatus = {}
 -- Critical distribution bug: this only ever checked the original dev
 -- machine's absolute path. On any other machine (a packaged copy, a

@@ -26,13 +26,14 @@ R.ui = R.ui or {
   -- history so the channel doesn't feel like a void, and one-time contextual nudges.
   submitHistory = {}, submitHistoryOpen = false, everSubmitted = false,
   craftNudgeShown = false, deathNudgeShown = false, lastDeaths = 0,
-  submitConfirmAt = nil, submitConfirmText = nil,
+  submitConfirmAt = nil, submitConfirmText = nil, submitConfirmFailed = false,
 }
 local U = R.ui
 -- R.ui survives hot-reload (it's on the persistent R table), so a field only added to the
 -- literal above never appears on an already-live table -- must also migrate it here.
 U.catalogCollapsed = U.catalogCollapsed or {}
 U.submitHistory = U.submitHistory or {}
+if U.submitConfirmFailed == nil then U.submitConfirmFailed = false end
 R.uiPanelOpen = U.bagOpen or U.questOpen or U.controlsOpen or false
 
 -- ================================================================ icon draw (defensive against @icons_engine)
@@ -1449,13 +1450,49 @@ local function submitSend()
   -- didn't -- PhoenixFire808's own words were "EASILY submit", and a mechanic nobody can tell
   -- worked is not easy, it's suspect. U.submitHistory + the confirm banner below are this
   -- receipt; drawSubmitHistoryPanel (below) is the "view your own past submissions" reader.
-  U.submitHistory[#U.submitHistory + 1] = { id = id, category = cat, context = U.submitContext, frame = R.frame or 0, status = "pending" }
+  --
+  -- DELIVERY (2026-09-02, @submission): the local manifest write above was previously the
+  -- WHOLE story for a downloaded copy -- it never left this player's own disk, yet the banner
+  -- below unconditionally said "Submitted - thanks! PhoenixFire808 reviews every one", which is
+  -- false for every player who isn't running his dev machine. Two real delivery paths now run,
+  -- in priority order, and the banner/history status reflect whichever one actually happened,
+  -- never a blanket claim of success:
+  --  1. R.FEEDBACK_WEBHOOK configured (his own dev machine, or anyone who deliberately drops in
+  --     their own feedback_webhook.txt) -> posts straight to Discord via R.submitStampToDiscord.
+  --  2. otherwise (every normal downloaded copy) -> opens a pre-filled GitHub "New issue" page
+  --     on his public repo in the default browser via R.openBrowserURL/R.buildGithubIssueURL --
+  --     zero secret shipped, needs the player's own GitHub account, still needs their own click
+  --     of "Submit new issue" to actually send (a browser opening is not itself a delivery).
+  local status, deliverMsg
+  if R.FEEDBACK_WEBHOOK and R.FEEDBACK_WEBHOOK ~= "" and R.submitStampToDiscord then
+    local elStr2 = table.concat(elements, ", ")
+    local okSend, errSend = R.submitStampToDiscord({ category = cat, context = U.submitContext, id = id, w = w, h = h, elements_str = elStr2, manifest_line = line })
+    if okSend then status, deliverMsg = "sent", "Sent to PhoenixFire808's Discord - thanks!"
+    else status, deliverMsg = "delivery_failed", "Saved locally, but could not reach Discord (" .. tostring(errSend) .. ")." end
+  elseif R.buildGithubIssueURL and R.openBrowserURL then
+    local title = "[" .. cat .. "] " .. ((U.submitContext ~= "" and U.submitContext) or ("Stamp submission " .. id)):sub(1, 70)
+    local bodyParts = { "Category: " .. cat }
+    if U.submitContext ~= "" then bodyParts[#bodyParts + 1] = U.submitContext end
+    if w > 0 then
+      bodyParts[#bodyParts + 1] = "Selection: " .. w .. "x" .. h .. (#elements > 0 and ("\nElements: " .. table.concat(elements, ", ")) or "")
+      bodyParts[#bodyParts + 1] = "A real stamp of this region was saved on this player's own machine (id " .. id .. "). To attach it, open the game's Stamps folder, find the file for that id, and drag it into this box before submitting."
+    end
+    bodyParts[#bodyParts + 1] = "```json\n" .. line .. "\n```"
+    local okOpen, errOpen = R.openBrowserURL(R.buildGithubIssueURL(title, table.concat(bodyParts, "\n\n"), cat))
+    if okOpen then status, deliverMsg = "opened_browser", "Saved locally, and a GitHub issue draft just opened - click Submit issue in your browser to actually send it."
+    else status, deliverMsg = "delivery_failed", "Saved locally only - could not open your browser (" .. tostring(errOpen) .. "). Copy stamp_submissions/manifest.jsonl (id " .. id .. ") and send it yourself." end
+  else
+    status, deliverMsg = "delivery_failed", "Saved locally only - no delivery path available on this build."
+  end
+  if R.tlog then R.tlog(status == "delivery_failed" and "warn" or "info", "submit", "delivery attempt", { status = status, id = id, cat = cat, frame = R.frame }) end
+  U.submitHistory[#U.submitHistory + 1] = { id = id, category = cat, context = U.submitContext, frame = R.frame or 0, status = status }
   if #U.submitHistory > 30 then table.remove(U.submitHistory, 1) end
   U.everSubmitted = true
   U.submitConfirmAt = R.frame or 0
-  U.submitConfirmText = "Submitted - thanks! PhoenixFire808 reviews every one."
-  if R.tlog then R.tlog("info", "submit", "confirmation shown", { id = id, cat = cat, frame = R.frame }) end
-  R.say("Submitted, thank you - category: " .. cat)
+  U.submitConfirmText = deliverMsg
+  U.submitConfirmFailed = (status == "delivery_failed")
+  if R.tlog then R.tlog("info", "submit", "confirmation shown", { id = id, cat = cat, status = status, frame = R.frame }) end
+  R.say(deliverMsg)
   submitReset()
 end
 
@@ -1616,14 +1653,22 @@ R.drawHotbarOverlay = function() drawHotbarIcons(); drawSubmitButton() end
 local function drawSubmitConfirmBanner()
   if not U.submitConfirmAt then return end
   local age = (R.frame or 0) - U.submitConfirmAt
-  if age < 0 or age > 150 then U.submitConfirmAt = nil; return end
-  local a = age < 100 and 255 or floor(255 * (1 - (age - 100) / 50))
+  -- Failure stays up longer (240f/~4s vs 150f/~2.5s) -- a silent no-op is exactly the bug this
+  -- banner exists to prevent, so a failed delivery must not be easier to miss than a success.
+  local failed = U.submitConfirmFailed
+  local dur = failed and 240 or 150
+  if age < 0 or age > dur then U.submitConfirmAt = nil; return end
+  local fadeAt = dur - 50
+  local a = age < fadeAt and 255 or floor(255 * (1 - (age - fadeAt) / 50))
   local text = U.submitConfirmText or "Submitted!"
   local w = 16 + textW(text)
   local x = floor((W - w) / 2)
-  graphics.fillRect(x, 40, w, 16, 20, 50, 24, floor(a * 0.9))
-  graphics.drawRect(x, 40, w, 16, 140, 255, 140, a)
-  graphics.drawText(x + 8, 44, text, 200, 255, 200, a)
+  local bg = failed and { 60, 22, 18 } or { 20, 50, 24 }
+  local border = failed and { 255, 120, 90 } or { 140, 255, 140 }
+  local fg = failed and { 255, 200, 180 } or { 200, 255, 200 }
+  graphics.fillRect(x, 40, w, 16, bg[1], bg[2], bg[3], floor(a * 0.9))
+  graphics.drawRect(x, 40, w, 16, border[1], border[2], border[3], a)
+  graphics.drawText(x + 8, 44, text, fg[1], fg[2], fg[3], a)
 end
 
 -- "View your own past submissions": re-reads the same manifest.jsonl this file appends to
@@ -1664,7 +1709,11 @@ local function drawSubmitHistoryPanel()
     local age = math.max(0, floor(((R.frame or 0) - (h.frame or 0)) / 36))
     local st = h.status or "pending"
     local sc = (st == "incorporated" and { 140, 255, 140 }) or (st == "rejected" and { 255, 140, 140 })
-             or (st == "reviewed" and { 200, 200, 255 }) or { 200, 180, 120 }
+             or (st == "reviewed" and { 200, 200, 255 })
+             or (st == "sent" and { 140, 255, 140 })            -- reached Discord for real (opt-in webhook build)
+             or (st == "opened_browser" and { 200, 200, 255 })  -- GitHub draft opened, still needs the player's own click
+             or (st == "delivery_failed" and { 255, 120, 90 })  -- saved locally only, nothing else worked
+             or { 200, 180, 120 }
     graphics.drawText(HISTX + 10, y, string.format("[%s] %s", h.category, (h.context or ""):sub(1, 38)), 220, 220, 230, 255)
     graphics.drawText(HISTX + HISTW - 92, y, st .. "  " .. age .. "s ago", sc[1], sc[2], sc[3], 255)
     y = y + 14
