@@ -316,13 +316,11 @@ local function need(...) local t = {}; local a = { ... }; for i = 1, #a, 2 do t[
 -- more than 4 of any single rare input, avoiding the GRNT/NSCN/TUNG/THRM/NITR quantity-deadlock
 -- shape (every input is renewably minable, not a one-time reward, so there is no fixed pool to
 -- run short against).
+-- GRAVCORE/WARPCHG moved out of this table 2026-09-0X (@progression) -- see DMND_GATED_RECIPES
+-- below, same file, for why (DMND bootstrap-critical sequencing trap).
 local ADVLAB_RECIPES = {
-  { out = "GRAVCORE", n = 2, need = need("PTNM", 2, "ZIRC", 2, "DMND", 1), st = "advlab", txt = "Graviton charge",
-    desc = "Unstable graviton material. Feeds a Gravity Anchor -- exposes the engine's real Newtonian gravity" },
   { out = "GRAVANCHORKIT", n = 1, need = need("GRAVCORE", 4, "STEL", 6, "ZIRC", 2), st = "advlab", txt = "Gravity Anchor",
     desc = "Housed graviton source, attract/repel toggle -- ore lifting, hazard control, real gravity wells" },
-  { out = "WARPCHG", n = 1, need = need("PTNM", 1, "TTAN", 2, "DMND", 1), st = "advlab", txt = "Warp charge",
-    desc = "Thrown, it scrambles nearby loose material via real spatial displacement -- fast exposure of buried ore" },
   { out = "ACCELRAILKIT", n = 1, need = need("ACEL", 2, "METL", 4), st = "research", txt = "Accelerator rail",
     desc = "A real ACEL strip -- loose material crossing it speeds up, a contactless conveyor upgrade" },
   { out = "DECELRAILKIT", n = 1, need = need("DCEL", 2, "METL", 4), st = "research", txt = "Decelerator rail",
@@ -354,29 +352,67 @@ local REACTOR_RECIPES = {
     desc = "THE FINAL UNLOCK. One per world. A real, leashed CLNE locked to duplicating Steel only -- never ore, never anything that gates progression. Consumable: burns out after sustained use, recharge with Vibranium" },
 }
 
+-- DMND-gated tier (@progression, fixing knowledge/audit-natural-pathways.md s9's "DMND is
+-- bootstrap-critical, with exactly zero margin" finding, reproduced live by
+-- scripts/check_natural.py's own BOOTSTRAP-CRITICAL check). GRAVCORE, WARPCHG and REPLICOREKIT
+-- (moved here from ADVLAB_RECIPES/REACTOR_RECIPES above) are the only fieldtools.lua recipes that
+-- spend DMND itself. DMND's entire deterministic one-time supply is 3 (two quest rewards,
+-- rpg.lua) and the diamond pick's own recipe needs exactly 3 -- the pick is what raises pick
+-- power to DMND's own R.MINEABLE tier 6, so DMND only becomes renewably mineable AFTER the pick
+-- exists. A player who spends the one-time 3 on any of these three FIRST -- REPLICOREKIT most of
+-- all, since it is THE FINAL UNLOCK and alone costs all 3 -- permanently loses the deterministic
+-- route to the pick (and to any more DMND at all): a silent, no-warning, order-dependent trap, not
+-- a hard deadlock (the probabilistic loot-chest pick bypass still exists) but exactly the shape
+-- PhoenixFire808's bar rejects. Fix: don't OFFER these three recipes until the diamond pick is
+-- already owned -- same gate-behind-a-prerequisite/poll-via-tick/install-once shape this file's
+-- own R.tech.reactor gate already uses just above, not a new mechanic. Costs unchanged (including
+-- REPLICOREKIT's own DMND=3, deliberately tuned to match supply exactly, comment above) -- this
+-- only reorders WHEN each recipe becomes selectable, so the deterministic 3-DMND route to the pick
+-- can never be spent on anything else first. REPLICOREKIT additionally still requires R.tech.reactor,
+-- unchanged from before.
+local DMND_GATED_RECIPES = {
+  { out = "GRAVCORE", n = 2, need = need("PTNM", 2, "ZIRC", 2, "DMND", 1), st = "advlab", txt = "Graviton charge",
+    desc = "Unstable graviton material. Feeds a Gravity Anchor -- exposes the engine's real Newtonian gravity" },
+  { out = "WARPCHG", n = 1, need = need("PTNM", 1, "TTAN", 2, "DMND", 1), st = "advlab", txt = "Warp charge",
+    desc = "Thrown, it scrambles nearby loose material via real spatial displacement -- fast exposure of buried ore" },
+}
+
+local function hasDiamondPick() return R.stats and R.stats.crafted and R.stats.crafted["diamond pick"] end
+
 local function installRecipes()
   for i = #R.RECIPES, 1, -1 do if R.RECIPES[i]._plugin == TAG then table.remove(R.RECIPES, i) end end
   for _, rc in ipairs(ADVLAB_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
-  if R.tech and R.tech.reactor then
+  if hasDiamondPick() then
+    for _, rc in ipairs(DMND_GATED_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
+  end
+  if R.tech and R.tech.reactor and hasDiamondPick() then
     for _, rc in ipairs(REACTOR_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
   end
 end
 installRecipes()
--- reactor-online can flip true after this file already installed once (same tick-driven gate as
--- machines.lua's own checkMilestones) -- poll cheaply, bounded to a single boolean compare/frame,
--- until the gate opens, then stop (never re-runs installRecipes after the reactor tier lands).
+-- reactor-online / diamond-pick-owned can each flip true after this file already installed once
+-- (same tick-driven gate as machines.lua's own checkMilestones) -- poll cheaply, bounded to a
+-- couple of boolean/table-field compares per frame, until each gate opens, then stop.
 hook(R.hooks.tick, function()
-  if not R.fieldtools.reactorRecipesInstalled and R.tech and R.tech.reactor then
+  if not R.fieldtools.dmndRecipesInstalled and hasDiamondPick() then
+    R.fieldtools.dmndRecipesInstalled = true
+    installRecipes()
+  end
+  if not R.fieldtools.reactorRecipesInstalled and R.tech and R.tech.reactor and hasDiamondPick() then
     R.fieldtools.reactorRecipesInstalled = true
     installRecipes()
   end
 end)
 
 hook(R.hooks.newworld, function()
-  R.fieldtools = { machines = {}, gravityOn = false, replicatorBuilt = false, reactorRecipesInstalled = false }
+  R.fieldtools = { machines = {}, gravityOn = false, replicatorBuilt = false, reactorRecipesInstalled = false, dmndRecipesInstalled = false }
   installRecipes()
 end)
-hook(R.hooks.sandbox, function() installRecipes() end)
+hook(R.hooks.sandbox, function()
+  R.fieldtools.dmndRecipesInstalled = true
+  R.fieldtools.reactorRecipesInstalled = true
+  installRecipes()
+end)
 
 -- ================================================================ save/load: generic plain-data
 -- dump via save.lua, same registration convention every other plugin uses

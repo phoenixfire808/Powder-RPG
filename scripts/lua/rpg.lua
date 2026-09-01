@@ -1348,7 +1348,7 @@ local function surfaceAt(wx)
   s = floor(120 + v * 100 - mountainAt(wx) * 900 - smooth1(wx, 380, 72) * 70 - bump)
   surfCache[wx] = s; return s
 end
--- biome width 900 inlined at its single use (200-locals budget, see DEVELOPMENT.md)
+-- biome width 900 inlined at its single use (200-locals budget, see CLAUDE.md)
 local MAP_TYPES = { "mixed", "forest", "desert", "snow", "swamp", "flat" }
 local MAP_TYPE_OK = { mixed = 1, forest = 1, desert = 1, snow = 1, swamp = 1, flat = 1 }
 local MAP_TYPE_LABEL = {
@@ -2636,7 +2636,7 @@ R.RECIPES = {
   { out="PSCN", n=2, need={CU=1, GLAS=1}, st="workbench", txt="P-silicon", desc="Semiconductor: passes sparks one way. Basis of circuits" },
   -- ADDED 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #1): NSCN ("N-silicon")
   -- is a real stock TPT element (src/simulation/elements/NSCN.cpp, TYPE_SOLID,
-  -- Falldown=0 -- verified safe per DEVELOPMENT.md rule 4) but had zero sources anywhere
+  -- Falldown=0 -- verified safe per CLAUDE.md rule 4) but had zero sources anywhere
   -- in this fork: not mined, not crafted, not looted -- only ever drawn as decorative
   -- build-geometry pixels inside two machines' own construction code, never given to
   -- the player. That permanently blocked MAGACCELKIT (needs 4xNSCN, machines2.lua).
@@ -3880,7 +3880,7 @@ wrap = function(text, width)                -- 6px per character (shared with ch
   return out
 end
 -- 8 = conservative drawText width for menu columns. Inlined rather than a top-level
--- local (see DEVELOPMENT.md's 200-locals limit); R.MENU_CHAR_W below is the shared copy.
+-- local (see CLAUDE.md's 200-locals limit); R.MENU_CHAR_W below is the shared copy.
 local function menuWrap(text, widthPx)
   local maxc = math.max(1, floor((widthPx - 4) / 8))
   local out, line = {}, ""
@@ -3897,7 +3897,7 @@ end
 
 -- Reachable from onDraw via the R table. Referencing the bare `menuWrap` local from
 -- inside onDraw resolves as a GLOBAL and is nil at runtime -- the exact failure mode
--- DEVELOPMENT.md records for `wrap` (v1.15.35) and `drawMenu` (v1.15.33). Because onDraw is
+-- CLAUDE.md records for `wrap` (v1.15.35) and `drawMenu` (v1.15.33). Because onDraw is
 -- not pcall-wrapped, that error aborts the entire remaining HUD every frame while
 -- lastErr stays nil, so the bridge cannot see it. Draw code must use R.menuWrap.
 R.menuWrap = menuWrap
@@ -4027,7 +4027,7 @@ for _, sec in ipairs(R.MENU_SECTIONS) do
 end
 -- (a dead `local HELP` controls table lived here; nothing referenced it -- the Esc
 -- menu builds its own CONTROLS column. Removed to reclaim a top-level local slot,
--- see DEVELOPMENT.md's 200-locals limit note.)
+-- see CLAUDE.md's 200-locals limit note.)
 local MX, MY, MW, MH = 8, 18, 596, 340          -- inside R.SAFE
 local MENU_DIV_X = MX + floor(MW * 0.50)        -- 50/50 split; controls use one full-width column
 local CTRL_X, CTRL_W = MX + 10, MENU_DIV_X - MX - 18
@@ -5598,6 +5598,18 @@ local function onTick()
   ok, err = pcall(adjustCamOffsets); if not ok then R.lastErr = tostring(err) end
   if not R.zoomLensCleared then pcall(ren.zoomEnabled, false); R.zoomLensCleared = true end   -- one-time: force off any lens left stuck on from the removed Ctrl+zoom feature
   pcall(R.pumpFeedbackHttp)
+  -- AUTOMATIC UPDATE CHECK (added 2026-09-02). R.checkForUpdate() previously had exactly
+  -- ONE caller -- the Esc menu's "Check for update now" -- so the game could never TELL
+  -- anyone a release existed; you had to go looking for it. That defeats the whole point
+  -- of the updater, and matters more now that releases ship several times an evening.
+  -- Checked once ~10s after the world starts (not at frame 0, so it never competes with
+  -- worldgen), then every 30 minutes, so a long session still notices a release pushed
+  -- while it was running. GitHub's unauthenticated rate limit is 60 requests/hour; this
+  -- uses 2/hour. On success pumpUpdateCheck sets R.updatePromptOpen and says
+  -- "N updates available -- press U to update"; U is already bound at the key handler.
+  if R.frame == 600 or (R.frame > 600 and R.frame % 108000 == 0) then
+    pcall(R.checkForUpdate)
+  end
   pcall(R.pumpUpdateCheck)
   pcall(R.pumpUpdateDownload)
   local   okw, errw = pcall(updateWeather); if not okw then R.lastErr = tostring(errw) end

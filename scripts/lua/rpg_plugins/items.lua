@@ -128,7 +128,6 @@ addRecipe("MUSKET", 1, { METL=6, WOOD=3 }, "anvil", "Musket", WEAPONS.MUSKET.des
 addRecipe("SHOTGUN", 1, { METL=10, WOOD=2 }, "anvil", "Shotgun", WEAPONS.SHOTGUN.desc)
 addRecipe("GRENADE", 1, { STEL=6, GOLD=2 }, "anvil", "Grenade Launcher", WEAPONS.GRENADE.desc)
 addRecipe("LIGHTGUN", 1, { CU=4, GOLD=2 }, "anvil", "Lightning Rod Gun", WEAPONS.LIGHTGUN.desc)
-addRecipe("TPWAND", 1, { GOLD=4, QRTZ=4, DMND=1 }, "anvil", "Teleport Wand", WEAPONS.TPWAND.desc)
 addRecipe("FLAMETH", 1, { STEL=4, CU=2 }, "anvil", "Flamethrower", WEAPONS.FLAMETH.desc)
 addRecipe("WATERGUN", 1, { CU=3, GLAS=2 }, "workbench", "Water Cannon", WEAPONS.WATERGUN.desc)
 addRecipe("ACIDGUN", 1, { GLAS=4, CU=2 }, "anvil", "Acid Sprayer", WEAPONS.ACIDGUN.desc)
@@ -187,16 +186,49 @@ addRecipe("TUNGSNIPER", 1, { TUNG=6, STEL=8, GOLD=2 }, "anvil", "Tungsten Sniper
 addRecipe("THRM", 2, { METL=3, COAL=4 }, "furnace", "Thermite", "Iron bar and coal, fired to extreme heat -- burns into white-hot molten metal, cutting through what a flamethrower can't. Ammo for kinetic weapons (incendiary rounds)")
 addRecipe("NITR", 2, { GOO=6 }, "furnace", "Nitroglycerin", "Pressure-sensitive explosive liquid, rendered from dirt at high furnace heat -- mixes with Clay dust for TNT. Ammo for kinetic weapons (explosive rounds)")
 addRecipe("TESLAARC", 1, { CU=10, GOLD=3, QRTZ=2 }, "anvil", "Tesla Arc", WEAPONS.TESLAARC.desc)
-addRecipe("GRAVWELL", 1, { GOLD=8, DMND=1, QRTZ=4 }, "research", "Gravity Well Grenade", WEAPONS.GRAVWELL.desc)
 addRecipe("EMPCHARGE", 1, { CU=8, GOLD=2, QRTZ=3 }, "research", "EMP Charge", WEAPONS.EMPCHARGE.desc)
 addRecipe("FOAMGUN", 1, { GLAS=8, STEL=4, CU=2 }, "anvil", "Aerogel Foam Gun", WEAPONS.FOAMGUN.desc)
-addRecipe("DISINT", 1, { DMND=2, QRTZ=8, GOLD=4 }, "advlab", "Disintegrator", WEAPONS.DISINT.desc)
 -- round 3 armor
 addRecipe("PADHARNESS", 1, { WOOD=6, GOO=8 }, "workbench", "Padded Harness", WEAPONS.PADHARNESS.desc)
 addRecipe("LAMPHELM", 1, { METL=4, GLAS=3, COAL=2 }, "workbench", "Miner's Lamp Helm", WEAPONS.LAMPHELM.desc)
 addRecipe("LEADVEST", 1, { LEAD=10, STEL=4 }, "anvil", "Lead-Lined Vest", WEAPONS.LEADVEST.desc)
 addRecipe("ZIRCPLATE", 1, { ZIRC=6, STEL=4, GLAS=2 }, "research", "Zirconium Faceplate", WEAPONS.ZIRCPLATE.desc)
 addRecipe("SEALSUIT", 1, { STEL=8, GLAS=6, CU=3 }, "anvil", "Sealed Pressure Suit", WEAPONS.SEALSUIT.desc)
+
+-- ================================================================ DMND-gated recipes (@progression,
+-- fixing knowledge/audit-natural-pathways.md s9's "DMND is bootstrap-critical, with exactly zero
+-- margin" finding, reproduced live by scripts/check_natural.py's own BOOTSTRAP-CRITICAL check).
+-- TPWAND/GRAVWELL/DISINT are the only items.lua recipes that spend DMND itself. DMND's entire
+-- deterministic one-time supply is 3 (two quest rewards, rpg.lua) and the diamond pick's own
+-- recipe needs exactly 3 -- the pick is what raises pick power to DMND's own R.MINEABLE tier 6,
+-- so DMND only becomes renewably mineable AFTER the pick exists. A player who spends the one-time
+-- 3 on one of these three FIRST, before ever crafting the pick, permanently loses the deterministic
+-- route to the pick (and to any more DMND at all) -- a silent, no-warning, order-dependent trap,
+-- not a hard deadlock (a probabilistic loot-chest pick bypass still exists) but exactly the shape
+-- PhoenixFire808's bar rejects. Fix: don't OFFER these three recipes in the crafting UI until the
+-- diamond pick is already owned -- same "gate a recipe tier behind a prerequisite, poll cheaply via
+-- R.hooks.tick, install once" pattern rpg_plugins/fieldtools.lua's own REACTOR_RECIPES/R.tech.reactor
+-- gate already uses (not a new mechanic). Costs are unchanged; this only reorders WHEN the recipe
+-- becomes selectable, so the deterministic 3-DMND route to the pick can never be spent on
+-- anything else first. Reload-safe: `dmndRecipesInstalled` resets on every hot-reload/newworld, so
+-- if the pick is already owned the very next tick re-installs these three immediately.
+local dmndRecipesInstalled = false
+local function hasDiamondPick() return R.stats and R.stats.crafted and R.stats.crafted["diamond pick"] end
+local function installDmndGatedRecipes()
+  addRecipe("TPWAND", 1, { GOLD=4, QRTZ=4, DMND=1 }, "anvil", "Teleport Wand", WEAPONS.TPWAND.desc)
+  addRecipe("GRAVWELL", 1, { GOLD=8, DMND=1, QRTZ=4 }, "research", "Gravity Well Grenade", WEAPONS.GRAVWELL.desc)
+  addRecipe("DISINT", 1, { DMND=2, QRTZ=8, GOLD=4 }, "advlab", "Disintegrator", WEAPONS.DISINT.desc)
+end
+hook(R.hooks.tick, function()
+  if not dmndRecipesInstalled and hasDiamondPick() then
+    dmndRecipesInstalled = true
+    installDmndGatedRecipes()
+  end
+end)
+hook(R.hooks.newworld, function() dmndRecipesInstalled = false end)
+hook(R.hooks.sandbox, function()
+  if not dmndRecipesInstalled then dmndRecipesInstalled = true; installDmndGatedRecipes() end
+end)
 
 -- ================================================================ shared state (persists across reload)
 R.itemsCD = R.itemsCD or {}              -- name -> frame last fired
