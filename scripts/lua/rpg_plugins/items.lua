@@ -325,6 +325,27 @@ local KINETIC_ORDER = { "THRM", "NITR", "LEAD", "METL" }
 -- WEAPONS is declared above this point, so guns opt in with the string "KINETIC" and it is
 -- resolved to the real table here, once, instead of duplicating the table on every weapon.
 for _, wdef in pairs(WEAPONS) do if wdef.alts == "KINETIC" then wdef.alts = KINETIC_AMMO end end
+-- AMMO CONSUMER INDEX (added 2026-09-02 @lead, spec by @acq_discover).
+-- The guide's "what is this used for?" reverse lookup could see R.RECIPES but NOT weapon ammo,
+-- because the ammo tables are file-locals here. @acq_discover correctly refused to hand-copy them
+-- into guide.lua -- that is the hardcoded-list antipattern that let ~90 craftables silently rot
+-- into one bucket before v1.15.98. Publishing the real data on R instead keeps one source of truth.
+-- Built once at load. guide.lua reads R.AMMO_CONSUMERS[code] defensively, so the two can ship
+-- independently in either order.
+R.AMMO_CONSUMERS = {}
+for wk, w in pairs(WEAPONS) do
+  local codes = {}
+  if w.alts then
+    for a in pairs(w.alts) do codes[#codes + 1] = a end
+  elseif w.ammo then
+    codes[1] = w.ammo
+  end
+  for _, code in ipairs(codes) do
+    local list = R.AMMO_CONSUMERS[code]
+    if not list then list = {}; R.AMMO_CONSUMERS[code] = list end
+    list[#list + 1] = { weapon = wk, cost = w.cost or 1, continuous = w.continuous or false }
+  end
+end
 local function pickAmmo(w)
   if not w.alts then return w.ammo, nil end
   local cost = w.cost or 1

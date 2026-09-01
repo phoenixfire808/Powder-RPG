@@ -61,6 +61,49 @@ local HASPTNM = has("PTNM")
 local HASDEUT = has("DEUT")
 local HASISZS = has("ISZS")
 local HASBMTL = has("BMTL")
+-- RIME/FRZZ (design: knowledge/design-material-progression.md chain 2 + task brief "ice and
+-- rime at altitude or in snow biome") -- neither had ANY worldgen placement before this pass
+-- (grepped world.lua/rpg.lua, zero hits; both are on knowledge/_wave/unobtainable-stock-
+-- elements.txt despite design-material-progression.md §4 chain 2 claiming FRZZ was "already
+-- placed by worldgen per the index" -- that claim does NOT hold against a real grep, exactly
+-- the kind of unverified claim CLAUDE.md's INDEX.md discipline warns about; corrected here by
+-- placing both for real rather than propagating it). RIME verified TYPE_SOLID/falldown=0 (SAFE)
+-- via POWDER_TOY_MATERIAL_INDEX.json; FRZZ is TYPE_PART/falldown=1 (same class as CLST/SALT --
+-- placed as a vein-shaped pocket, never bulk fill, same reasoning as the HASMERC block above).
+local HASRIME = has("RIME")
+local HASFRZZ = has("FRZZ")
+-- PhoenixFire808, verbatim (task brief 2026-09-02): "we need everything to be FOUND and
+-- acquired... it's got to have NATURAL PATHWAYS." Measured: 88 stock elements were craft-only
+-- with zero natural source (knowledge/_wave/craft-only-no-natural-source.txt). This block adds
+-- real worldgen deposits/bodies for the subset that plausibly occurs in nature (per the task's
+-- own judgement test) -- everything below is placed as a real vein/pool/pocket you walk up to
+-- and mine or scoop, never a recipe. Each has(...) hoisted once here, same convention as the
+-- HASMERC/HASLITH block above -- avoids a repeated R.has() call per pixel in the hot path.
+-- Terrain safety verified live, scripts/check_terrain_solid.py: ROCK/CRMC/SPNG/DRIC/RBDM are
+-- TYPE_SOLID/falldown=0 (SAFE); SLCN/DUST/GRAV are TYPE_PART (powder, unsafe as bulk fill,
+-- same class as SAND -- only ever placed resting on a solid floor, never as wall/structure
+-- fill); ACID/BASE/GLOW/PSTE/GEL/SLTW/DSTW are TYPE_LIQUID (unsafe as bulk fill) -- placed as
+-- compact vein-shaped POCKETS embedded in solid rock, the same already-shipped DEUT/MERC/LITH
+-- pattern, never bulk fill (ADR-003 governs this distinction).
+local HASGRAV = has("GRAV")
+local HASDUST = has("DUST")
+local HASSLCN = has("SLCN")
+local HASCRMC = has("CRMC")
+local HASACID = has("ACID")
+local HASBASE = has("BASE")
+local HASSPNG = has("SPNG")
+local HASDRIC = has("DRIC")
+local HASGLOW = has("GLOW")
+local HASPSTE = has("PSTE")
+local HASGEL = has("GEL")
+local HASSLTW = has("SLTW")
+local HASDSTW = has("DSTW")
+-- RBDM requested by @acq_special (2026-09-02 hub entry): "RBDM/LRBD ore vein... zero source
+-- anywhere in the live tree... blocked... revisit once @world lands the RBDM vein." TYPE_SOLID/
+-- falldown=0 (SAFE) -- unlike LITH (a powder, pocket-only) this is placed as an ordinary solid
+-- ore vein; its water-exclusion below is a HAZARD-placement rule (explodes on water contact,
+-- own description), not a terrain-safety one.
+local HASRBDM = has("RBDM")
 local SOIL_DEPTH_MUL = 4   -- topsoil/subsoil before stone strata (~4x default; new columns only)
 
 -- ================================================================ noise (same style as rpg.lua's hash3/vnoise)
@@ -531,6 +574,11 @@ end
 -- edge so it never reads as a wall against dirt).
 local function duneBumpAt(wx) return floor(vnoise1(wx/16, 1150) * 3.2) end
 local function swampPoolAt(wx) local v = vnoise1(wx/70, 1160); if v > 0.68 then return 1 + floor((v-0.68)*8) end; return nil end
+-- Rare desert salt-flat brine pools ~4-5% of the desert's x-range (a genuine evaporite basin,
+-- not a crafted vial) -- the "salt-flat regions" half of the task brief's "coastal/ocean or
+-- salt-flat" ask; there is no ocean/coast biome in this fork (only forest/swamp/desert/snow),
+-- so the coastal half is instead covered by brine LAKES underground (see lakeInfo's L.brine).
+local function saltFlatAt(wx) return vnoise1(wx/260, 1165) > 0.91 end
 local function oasisPoolAt(wx, surf)   -- a real water pool at the base of every oasis palm (desert's water source)
   local c = floor(wx / vsp())
   for cc = c-1, c+1 do local v = vegAt(cc); if v and v.oasis then
@@ -581,6 +629,10 @@ local function aboveGround(wx, wy, surf, biome)
   local v = vegShapeAt(wx, wy); if v then return v end
   if oasisPoolAt(wx, surf) and surf - wy <= 1 then return "WATR" end
   local wDesert = biomeWeight(wx, "desert")
+  -- Salt-flat brine pool: checked BEFORE the dune-sand cap so a salt flat reads as a real
+  -- shallow evaporite basin, not sand with a puddle on top -- "salt-flat regions" per the task
+  -- brief (see saltFlatAt's own header comment for the coastal/ocean half of that ask).
+  if wDesert > 0.15 and HASSLTW and saltFlatAt(wx) and surf - wy <= 2 then return "SLTW" end
   if wDesert > 0.04 and surf - wy <= duneBumpAt(wx) * wDesert then return "SAND" end
   local wSwamp = biomeWeight(wx, "swamp")
   if wSwamp > 0.04 then
@@ -691,11 +743,16 @@ local function lakeInfo(cl)
   L.x1 = L.x0 + 120 + floor(hash3(cl,1101,3) * 220)
   L.topD = 150 + floor(hash3(cl,1101,4) * 500)
   L.botD = L.topD + 50 + floor(hash3(cl,1101,5) * 90)   -- capped depth so a lake reads as a contained pool, not a shaft
+  -- Brine lake: ~22% of underground lakes are salt water instead of fresh -- the "coastal/
+  -- ocean or salt-flat" water body the task brief asks for, riding the existing lake system
+  -- rather than inventing a second body type (this fork has no ocean/coast biome to hang a
+  -- literal coastline off -- only forest/swamp/desert/snow). See caveAt's own call site.
+  L.brine = hash3(cl, 1101, 6) < 0.22
   lakeCache[cl] = L; return L
 end
-local function lakeAt(wx, wy, d)   -- fills the bottom of a cheese cavern up to a flat surface row, like a real lake
+local function lakeAt(wx, wy, d)   -- fills the bottom of a cheese cavern up to a flat surface row, like a real lake; returns the lake's own info table (not just true) so callers can read L.brine/L.botD
   local cl = floor(wx / LAKE_SP)
-  for cc = cl-1, cl+1 do local L = lakeInfo(cc); if L and wx >= L.x0 and wx <= L.x1 and d >= L.topD and d <= L.botD then return true end end
+  for cc = cl-1, cl+1 do local L = lakeInfo(cc); if L and wx >= L.x0 and wx <= L.x1 and d >= L.topD and d <= L.botD then return L end end
   return false
 end
 local function geodeZoneAt(wx, wy) return vnoise(wx/260, wy/260, 920) > 0.90 end
@@ -827,7 +884,21 @@ local function caveAt(wx, wy, surf, d, biome)
   if not (wopen or gopen or fopen or copen) then return nil end
   if wy >= DEPTH - 300 then return hellLavaAt(wx, wy) and "LAVA" or "" end
   if fopen then return "WATR" end
-  if copen and d > 140 and lakeAt(wx, wy, d) then return "WATR" end
+  if copen and d > 140 then
+    local lake = lakeAt(wx, wy, d)
+    if lake then
+      -- Brine lake: SLTW instead of WATR for the ~22% of lakes rolled brine at lakeInfo -- see
+      -- that function's own header comment.
+      if lake.brine and HASSLTW then return "SLTW" end
+      -- SPNG: sponge growth clinging to a lake's own floor -- "Organic: sponge (SPNG) in water
+      -- bodies" per the task brief. Thin band at the lake bottom only (never mid-lake), so it
+      -- reads as fringing growth on the lakebed, not a solid sponge floor replacing the water.
+      -- SAFE (TYPE_SOLID/falldown=0, verified check_terrain_solid.py) -- a solid clump inside a
+      -- liquid volume is the same shape as galOpenAt's own stalactites, not new risk.
+      if HASSPNG and (lake.botD - d) <= 6 and hash3(floor(wx), lake.botD, 1398) < 0.20 then return "SPNG" end
+      return "WATR"
+    end
+  end
   -- A gallery crossing a saturated band is generated already flooded: you follow a passage and
   -- hit real standing water. This is what makes the aquifer discoverable while exploring
   -- rather than something you only ever meet by accidentally digging into it.
@@ -846,6 +917,27 @@ local function caveAt(wx, wy, surf, d, biome)
     if has("OIL") and r > 0.62 then return "OIL" end
     if has("GAS") and r > 0.40 then return "GAS" end
   end
+  -- DSTW: clean, near-mineral-free water seeping/dripping onto a cave floor -- "cave puddles"
+  -- per the task brief. DSTW's own in-engine identity (distilled, non-conductive) fits
+  -- condensate/filtered seepage far better than the murky swamp pools SLTW already covers, so
+  -- placed independent of biome (any deep-enough open cave) rather than swamp-gated.
+  if d > 60 * SOIL_DEPTH_MUL and HASDSTW and vein(wx, wy, 1394, 60, 0.90, 14, 0.55) then return "DSTW" end
+  -- GLOW: bioluminescent liquid pocket, deep caves only -- "Organic: GLOW in deep caves
+  -- (bioluminescence)" per the task brief. Deeper and rarer than the geode crystal pockets
+  -- above so it reads as a genuine deep-cave discovery, not a shallow-cave commonplace.
+  -- BUG CAUGHT BY THE PROBE, same shape as the URAN/DEUT/ISZS reachability bug this file's
+  -- own header already documents: a first pass gated this at d > 400*SOIL_DEPTH_MUL (=1600),
+  -- which for a typical-elevation column (surf~0) is the SAME wy as caveAt's own hell-zone
+  -- early-return (`wy >= DEPTH-300` = 1600) a few lines above -- that branch returns LAVA/""
+  -- immediately and never reaches this line, so the check only ever fired from a rare deep-
+  -- valley column reaching d=1600 from OUTSIDE the hell zone (measured: 4 hits / 696 sampled
+  -- columns, scripts/_natworld_probe.py). Lowered to 300*dm (=1200) -- a genuine 400-raw-depth
+  -- window (1200-1600) clear of the hell-zone gate, still far below the swamp-gas ceiling
+  -- (d<500) and the geode zone's own typical range, so it still reads as "deep cave only."
+  if d > 300 * SOIL_DEPTH_MUL and HASGLOW and vein(wx, wy, 1400, 70, 0.93, 15, 0.55) then return "GLOW" end
+  -- DUST: loose dust settled on a dry cave floor -- "dust pockets... in and around desert" per
+  -- the task brief. Desert-only (a genuinely dry biome), independent of the swamp gas zone above.
+  if biomeWeight(wx, "desert") > 0.2 and d > 40 and HASDUST and vein(wx, wy, 1402, 45, 0.88, 12, 0.50) then return "DUST" end
   return ""
 end
 
@@ -855,6 +947,28 @@ local function strataAt(wx, wy, d, icy, cold)
   local band = floor((d - wave) / 15)
   if icy then
     if has("QRTZ") and hash3(band, 816, 4) > 0.95 then return "QRTZ" end
+    -- RIME/FRZZ: snow-crust-only (this branch is only reached in the icy crust just below the
+    -- subsoil in a snow biome, see rockAt's call site below) -- matches both materials' own
+    -- "cold, near-surface" identity (RIME: steam-deposition frost; FRZZ: the design doc's own
+    -- "SNOW-biome vein") better than burying them at ore depth.
+    -- CALIBRATION NOTE (measured live, scripts/_veins_density_probe.py, 2026-09-02): a first
+    -- pass used the QRTZ-style `hash3(band, salt, n)` 1D-on-depth lens -- but the crust is only
+    -- ~80px thick (band=floor(d/15), ~5-6 distinct band values total), so that roll is
+    -- effectively ONE coin-flip per band, shared identically by EVERY column in the entire
+    -- snow biome at that depth (all-or-nothing across the whole map, not per-patch) -- the
+    -- probe measured ZERO hits for both on the live seed, a real quantity-safety failure of
+    -- the same shape the hard rules warn about (GRNT: technically placed, empirically absent).
+    -- Switched to real 2D vnoise keyed on (wx, wy) like vein()/geodeZoneAt use, so different
+    -- patches can appear at different x across the whole biome -- many independent chances
+    -- instead of ~5. Re-measured after the switch: FRZZ 1.02% / RIME 0.31% of sampled icy-
+    -- crust cells (see this file's own change-log entry for the exact count).
+    if HASFRZZ and vnoise(wx / 22, wy / 16, 819) > 0.80 then return "FRZZ" end
+    if HASRIME and vnoise(wx / 20, wy / 14, 820) > 0.87 then return "RIME" end
+    -- DRIC: dry ice, forms where atmospheric CO2 deposits directly in extreme cold (a real
+    -- process -- Mars' polar caps are exactly this) -- "cold formations... should form where it
+    -- is genuinely cold, not be crafted" per the task brief. Same icy-crust band as RIME/FRZZ,
+    -- rarer than both (real 2D vnoise per the calibration note above, not the dead 1D lens).
+    if HASDRIC and vnoise(wx / 18, wy / 13, 822) > 0.91 then return "DRIC" end
     return "ICE"
   end
   -- `cold`: below a snow biome's frozen crust the rock is normal (and carries normal ore),
@@ -882,7 +996,91 @@ local function strataAt(wx, wy, d, icy, cold)
   local brckAccent = 0.08   -- thin sedimentary banding, everywhere (not just desert) -- a second real material, not a monoculture
   if pick < brckAccent and has("BRCK") then return "BRCK" end
   if pick < brckAccent + cncrShare then return ROCK2 end
+  -- Stock ROCK ("Solid, melts into various elements") vs. this file's own local `ROCK` alias
+  -- (BSLT/BRCK, used as the default return just below) is a real naming collision the design
+  -- doc flags and never resolves (§0: "the stock ROCK element sits unused"). Verified live,
+  -- check_terrain_solid.py: TYPE_SOLID/falldown=0, SAFE for bulk fill. A genuinely common,
+  -- everywhere-underground find (per the task brief's own "ROCK" listing) -- placed as a real
+  -- share of ordinary strata, distinct from the BSLT-alias default, everywhere (not biome-gated).
+  local rockShare = 0.18
+  if pick < brckAccent + cncrShare + rockShare then return "ROCK" end
   return ROCK
+end
+
+-- Cheap "is there an open cave void within LITH_SAFE_R" existence check -- reuses the same
+-- open-check primitives caveAt() itself calls (wormOpenAt/galOpenAt/waterfallAt/cheeseOpenAt),
+-- skipping caveAt's own structure/hell-lava/water-TYPE branching since only "is this a void",
+-- not "what fills it", is needed. BUG FIX (LITH water-isolation, @m3_audit_worldgen 2026-09-02
+-- finding, verified here): the file's existing comment on the LITH vein below only reasoned
+-- about the aquifer/lake/swamp-gas water SOURCES (all depth-gated above d<=790, all below
+-- LITH's d>=800 floor) -- true, but incomplete. TPT water physics do not stay where they were
+-- generated: cheeseOpenAt has NO upper depth bound (only `d < 20*SOIL_DEPTH_MUL` at the low
+-- end) and a gallery/worm CAN open a connected void that starts in the flooded aquifer band
+-- (d<760) and continues down through open air into the LITH band (d 800-1600) -- water flows
+-- down that connected void under ordinary gravity and pools at the void's lowest reachable
+-- point, which can sit directly against a LITH cell's own solid wall even though that exact
+-- LITH cell was never itself flagged "wet" by aquiferAt/lakeAt. Tracing real hydraulic
+-- connectivity per-cell would need a flood-fill (an unbounded scan, ruled out by the file's
+-- own performance budget); this is the cheap, conservative alternative -- refuse to place LITH
+-- within LITH_SAFE_R of ANY open cave void at all (not just a currently-flooded one), since any
+-- open void is a potential future water path. Paid ONLY on cells that already passed LITH's own
+-- vein() zone+detail test (rare -- same cost discipline as the MERC biomeWeight-gate above), a
+-- ring sample (8 points) rather than a filled disc, same class as vein()'s own 1-2 noise taps.
+local LITH_SAFE_R = 6   -- px; ~half the player's own height, so a LITH wall this close to open
+                        -- rock could still end up adjacent to a passage the player can stand in
+local LITH_RING = {
+  {LITH_SAFE_R, 0}, {-LITH_SAFE_R, 0}, {0, LITH_SAFE_R}, {0, -LITH_SAFE_R},
+  {4, 4}, {-4, 4}, {4, -4}, {-4, -4},
+}
+local function caveVoidNear(wx, wy)
+  for i = 1, #LITH_RING do
+    local off = LITH_RING[i]
+    local ox, oy = wx + off[1], wy + off[2]
+    local od = oy - surfaceAt(ox)
+    if od >= 20 * SOIL_DEPTH_MUL then
+      if wormOpenAt(ox, oy, od) or galOpenAt(ox, oy, od) or waterfallAt(ox, oy, od) or cheeseOpenAt(ox, oy, od) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+-- Deep ore/mineral veins (URAN/DU, DEUT, ISZS) -- split out of oreAt so rockAt's hell-zone
+-- branch (wy>=DEPTH-300) can call it directly too. BUG FIX (URAN/DEUT/ISZS reachability,
+-- @m3_audit_worldgen 2026-09-02 finding, verified here against live source): rockAt's hell-zone
+-- branch used to return TTAN/BRMT/PTNM/DMND/ROCK2 WITHOUT ever calling oreAt, so these three
+-- materials' own depth-RELATIVE thresholds (d>420*dm=1680, d>440*dm=1760) could only be tested
+-- on cells that were STILL below the hell-zone's absolute-wy gate (wy<DEPTH-300=1600) -- i.e.
+-- only where surf < wy-1680 <= 1600-1680 = -80 (URAN/DEUT) or surf < -160 (ISZS). Measured
+-- (scripts/_veins_density_probe.py, cited by the audit): only 150/1064 sampled columns (14%)
+-- ever had a low enough surface to reach that at all -- 86% of the world could not generate
+-- these three by digging, no matter how deep. Fix: call this from BOTH the hell-zone branch
+-- (covers the NORMAL case -- typical surf~0, hell zone spans wy 1600..DEPTH-40=1860, so
+-- d=1600..1860 there regardless of surface height) and from oreAt itself (keeps the rare
+-- deep-valley-column path working exactly as before -- one function, two call sites, not two
+-- copies of the logic to keep in sync).
+local function deepOreAt(wx, wy, d)
+  local dm = SOIL_DEPTH_MUL
+  if d > 420 * dm and vein(wx, wy, 965, 90, 0.90, 17, 0.52) then return UORE end
+  -- DEUT: heavy-water sibling to the uranium vein, same depth gate so the two share a
+  -- biome rather than competing for cells (design chain 3). TYPE_LIQUID -- placed as a
+  -- vein-shaped pocket, see the HASDEUT-block comment above for the safety reasoning.
+  -- Calibrated live against measured URAN rate (0.73% of reachable deep-band pixels,
+  -- scripts/_veins_density_probe.py): first-pass DEUT thresholds (92,0.91,16,0.52) measured
+  -- 6/70 = 8.6% of URAN's own rate, far too rare for a "sibling ore sharing a biome" per the
+  -- design doc. Loosened to land close to URAN's own rate instead of arbitrarily rarer.
+  -- NOTE: that calibration was measured under the OLD buggy reachability (valley columns
+  -- only) -- re-measured post-fix below; per-pixel rate inside the eligible band is unchanged
+  -- by this fix, only the eligible-column FRACTION grew (14% -> effectively all columns).
+  if HASDEUT and d > 420 * dm and vein(wx, wy, 1350, 89, 0.884, 16, 0.49) then return "DEUT" end
+  -- ISZS: solid twin of ISOZ (SAFE, TYPE_SOLID/falldown=0), placed as the actual
+  -- mineable vein per the design's own "solid form, safer to transport" framing.
+  -- Deeper + sparser than DEUT (~1/3 density target) so it reads as a rarer fuel-cycle
+  -- byproduct, not a second uranium-sized vein. Loosened alongside DEUT's recalibration
+  -- (see comment above) so "~1/3 of DEUT" is measured against DEUT's corrected rate.
+  if HASISZS and d > 440 * dm and vein(wx, wy, 1355, 94, 0.92, 14, 0.52) then return "ISZS" end
+  return nil
 end
 -- ore/mineral veins: zoneScale/detailScale are both large so a "hit" fills most of a compact, contiguous blob
 -- (Terraria-style vein) instead of speckling individual pixels - nothing here should read smaller than ~4-8px.
@@ -902,27 +1100,39 @@ local function oreAt(wx, wy, d)
   -- LITH: reactive metal, explodes on water contact per its own description. Window
   -- 200*dm..400*dm (800-1600 raw d) sits entirely below the aquifer band (AQ_TOP=80,
   -- AQ_BOT=760) and every lake's max floor (topD+h maxes ~788, see lakeInfo), and below
-  -- the swampGasZoneAt ceiling (d<500) -- so a LITH vein can never generate adjacent to
-  -- a WATR source. Upper bound stays above the hell-zone gate (wy>=DEPTH-300) so it
-  -- doesn't compete with TTAN/BRMT/PTNM/DMND cells there.
+  -- the swampGasZoneAt ceiling (d<500) -- so a LITH vein can never generate adjacent to a
+  -- STILL-WATER source generated at the same cell. BUG FIX 2026-09-02: that reasoning did not
+  -- cover water ROUTED there by a connected cave void from a shallower flooded section (see
+  -- caveVoidNear's own header comment above) -- added the `not caveVoidNear(...)` guard below
+  -- so a vein hit next to any open passage is rejected in favour of normal rock/ore instead.
+  -- Upper bound stays above the hell-zone gate (wy>=DEPTH-300) so it doesn't compete with
+  -- TTAN/BRMT/PTNM/DMND cells there.
   if HASLITH and d > 200 * dm and d < 400 * dm
-     and vein(wx, wy, 1345, 82, 0.93, 15, 0.50) then return "LITH" end
-  if d > 420 * dm and vein(wx, wy, 965, 90, 0.90, 17, 0.52) then return UORE end
-  -- DEUT: heavy-water sibling to the uranium vein, same depth gate so the two share a
-  -- biome rather than competing for cells (design chain 3). TYPE_LIQUID -- placed as a
-  -- vein-shaped pocket, see the HASDEUT-block comment above for the safety reasoning.
-  -- Calibrated live against measured URAN rate (0.73% of reachable deep-band pixels,
-  -- scripts/_veins_density_probe.py): first-pass DEUT thresholds (92,0.91,16,0.52) measured
-  -- 6/70 = 8.6% of URAN's own rate, far too rare for a "sibling ore sharing a biome" per the
-  -- design doc. Loosened to land close to URAN's own rate instead of arbitrarily rarer.
-  if HASDEUT and d > 420 * dm and vein(wx, wy, 1350, 89, 0.884, 16, 0.49) then return "DEUT" end
-  -- ISZS: solid twin of ISOZ (SAFE, TYPE_SOLID/falldown=0), placed as the actual
-  -- mineable vein per the design's own "solid form, safer to transport" framing.
-  -- Deeper + sparser than DEUT (~1/3 density target) so it reads as a rarer fuel-cycle
-  -- byproduct, not a second uranium-sized vein. Loosened alongside DEUT's recalibration
-  -- (see comment above) so "~1/3 of DEUT" is measured against DEUT's corrected rate.
-  if HASISZS and d > 440 * dm and vein(wx, wy, 1355, 94, 0.92, 14, 0.52) then return "ISZS" end
+     and vein(wx, wy, 1345, 82, 0.93, 15, 0.50) and not caveVoidNear(wx, wy) then return "LITH" end
+  -- RBDM: reactive alkali metal, explodes on water contact (its own description) -- same
+  -- hazard shape as LITH just above, so it shares LITH's water-exclusion guard (caveVoidNear)
+  -- rather than a second copy of that reasoning. Placed as an ordinary solid vein (SAFE,
+  -- TYPE_SOLID/falldown=0, verified check_terrain_solid.py -- unlike LITH this is NOT a
+  -- pocket-only exception; the water exclusion here is a hazard-placement rule, not a
+  -- terrain-safety one). Requested by @acq_special (2026-09-02 hub entry, previously blocked
+  -- with zero source anywhere in the tree). Same depth tier as LITH per that request; distinct
+  -- salt/zone so the two veins don't spatially compete for the same cells.
+  if HASRBDM and d > 200 * dm and d < 400 * dm
+     and vein(wx, wy, 1391, 84, 0.93, 15, 0.50) and not caveVoidNear(wx, wy) then return "RBDM" end
+  -- GRAV: loose sediment/gravel bed -- "sediment... gravel beds (GRAV)... in and around desert
+  -- and riverbed" per the task brief. Riverbank/desert-adjacent (swamp's pools are this fork's
+  -- closest thing to a riverbed), shallow tier alongside the CLST clay pocket just below.
+  if HASGRAV and (biomeWeight(wx, "desert") > 0.10 or biomeWeight(wx, "swamp") > 0.10) and d < 220 * dm
+     and vein(wx, wy, 1370, 55, 0.86, 15, 0.48) then return "GRAV" end
+  local dore = deepOreAt(wx, wy, d); if dore then return dore end
   local clayThresh = 0.88 - 0.10 * biomeWeight(wx, "swamp")
+  -- PSTE / GEL: colloidal bog slurry -- real swamp/peat-bog mud is exactly this (fine
+  -- particulate suspended in water, hardens under pressure / absorbs water) -- placed
+  -- alongside the clay pocket below, swamp-only, shallower ceiling than CLST's own.
+  if HASPSTE and biomeWeight(wx, "swamp") > 0.2 and d < 200 * dm
+     and vein(wx, wy, 1384, 58, 0.90, 15, 0.50) then return "PSTE" end
+  if HASGEL and biomeWeight(wx, "swamp") > 0.2 and d < 200 * dm
+     and vein(wx, wy, 1386, 58, 0.91, 15, 0.50) then return "GEL" end
   if d < 260 * dm and vein(wx, wy, 968, 60, clayThresh, 16, 0.42) then return "CLST" end   -- clay/mud pocket: large, not freckled
   return nil
 end
@@ -944,7 +1154,13 @@ local function soilMaterial(wx, wy, d, biome)
     -- genuinely loose is what makes dunes, pouring and digging behave like sand should; the
     -- solid beneath is what stops the biome draining into every cave under it.
     local sandD = 10 + floor(vnoise1(wx / 40, 837) * 10)   -- 10-20px, varied so it isn't a flat slab
-    return d <= sandD and "SAND" or SANDROCK
+    if d > sandD then return SANDROCK end
+    -- SLCN: silica-rich sand streaks within the loose dune cap -- "silica sand (SLCN)" per the
+    -- task brief. Same physical class as SAND (Falldown=1, not TYPE_SOLID) resting on the same
+    -- SANDROCK floor just below, so this introduces no new structural risk -- just a patch of a
+    -- different loose material within the existing dune.
+    if HASSLCN and vnoise(wx / 15, wy / 12, 1372) > 0.86 then return "SLCN" end
+    return "SAND"
   end
   if biome == "snow" then if d == 0 then return has("SNOW") and "SNOW" or "ICE" end; return "ICE" end
   if biome == "forest" or biome == "swamp" or not biome then
@@ -1007,6 +1223,26 @@ local function rockAt(wx, wy, surf, d, biome)
     -- of DMND's rate, far above the ~10% target; tightened to bring it down toward that
     -- target (see scripts/_veins_density_probe.py). SAFE: TYPE_SOLID/falldown=0, verified.
     if HASPTNM and vein(wx, wy, 1360, 100, 0.988, 18, 0.66) then return "PTNM" end
+    -- CRMC: natural ceramic -- clay baked hard by direct proximity to magma (a real process;
+    -- terracotta is literally "baked earth"). Reuses hellLavaAt's own zone (the same test that
+    -- colours this branch's open cave cells as LAVA in caveAt) as the "near magma" gate instead
+    -- of a second zone tap.
+    if HASCRMC and hellLavaAt(wx, wy) and vnoise(wx / 14, wy / 14, 1365) > 0.72 then return "CRMC" end
+    -- ACID / BASE: mineral and volcanic springs -- liquid, so (like DEUT/MERC/LITH above)
+    -- placed as a vein-shaped pocket embedded in solid rock, never bulk fill. Same hellLavaAt
+    -- "near magma" gate as CRMC just above -- real geothermal springs form at exactly this kind
+    -- of contact.
+    if HASACID and hellLavaAt(wx, wy) and vein(wx, wy, 1380, 55, 0.90, 14, 0.55) then return "ACID" end
+    if HASBASE and hellLavaAt(wx, wy) and vein(wx, wy, 1382, 55, 0.90, 14, 0.55) then return "BASE" end
+    -- BUG FIX 2026-09-02 (see deepOreAt's own header comment for the full reachability
+    -- writeup): URAN/DEUT/ISZS's own d-relative thresholds (d>1680/1680/1760) sit INSIDE this
+    -- hell zone for any normal-elevation column (hell zone spans wy 1600..DEPTH-40=1860, i.e.
+    -- d=1600..1860 at surf~0) -- but this branch used to return straight to ROCK2 without ever
+    -- calling oreAt/deepOreAt, so those three could only generate from a deep-valley column
+    -- (surf<-80/-160) reaching the same d band from OUTSIDE the hell zone instead. Checked
+    -- after DMND/TTAN/BRMT/PTNM (same ordering oreAt already used) so it doesn't compete with
+    -- them for the same cells.
+    local dore = deepOreAt(wx, wy, d); if dore then return dore end
     return ROCK2
   end
   -- Snow biome used to return icy strata for the ENTIRE d<480 band and skip oreAt
@@ -1017,7 +1253,21 @@ local function rockAt(wx, wy, surf, d, biome)
   -- landmasses. Now snow gets a genuine frozen crust (thick, distinct, still all ice),
   -- and below it normal rock WITH normal ore, threaded with ice lenses so it keeps a cold
   -- identity instead of becoming indistinguishable from forest rock.
-  if biome == "snow" and d < 70 then return strataAt(wx, wy, d, true) end
+  -- BUG FIX 2026-09-02 (found while placing RIME/FRZZ, verified by the density probe --
+  -- both returned ZERO hits under the old condition): the fixed `d < 70` threshold this
+  -- branch used was DEAD CODE. `subDeep` (computed above, snow: soilD=floor(5*SOIL_DEPTH_MUL)
+  -- =20 plus 24-40*SOIL_DEPTH_MUL more) is always 116-180 for snow, and the `d <= subDeep`
+  -- branch above already returns soilAt() (plain ICE) for every d up to that -- so by the
+  -- time control reaches this line, d is ALREADY > subDeep >= 116, and `d < 70` can never be
+  -- true. Every snow column has been falling straight through to oreAt below since
+  -- SOIL_DEPTH_MUL was raised to 4x (this line's own literal 70 was never updated to match),
+  -- silently losing the QRTZ crystal-lens pocket along with it -- ore itself (COAL/IRON/etc.,
+  -- gated inside oreAt on their own d thresholds, all well below subDeep) was NOT affected,
+  -- so this was a flavour/pocket-material bug, not a second ore-reachability blocker. Fixed by
+  -- keying the crust band off subDeep instead of an absolute constant, so it always starts
+  -- exactly where the subsoil ends regardless of SOIL_DEPTH_MUL: an 80px-thick icy crust
+  -- (QRTZ lens + RIME + FRZZ) immediately below the subsoil, then normal ore-bearing rock.
+  if biome == "snow" and d < subDeep + 80 then return strataAt(wx, wy, d, true) end
   local ore = oreAt(wx, wy, d); if ore then return ore end
   -- After ore on purpose: an ore vein crossing a saturated band still reads as ore, so the
   -- water table never removes ore the tech tree depends on.

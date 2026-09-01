@@ -342,7 +342,15 @@ local ADVLAB_RECIPES = {
 local REACTOR_RECIPES = {
   { out = "VIBR", n = 1, need = need("ISZS", 3, "PTNM", 2, "ZIRC", 2), st = "advlab", txt = "Vibranium",
     desc = "Stores energy and releases it violently. Reactor-grade catalysts make this stable enough to handle" },
-  { out = "REPLICOREKIT", n = 1, need = need("VIBR", 2, "DMND", 4, "PTNM", 3, "ZIRC", 4), st = "advlab", txt = "Replicator Core",
+  -- DMND reduced 4 -> 3 on 2026-09-02 (@lead). scripts/check_acquirable.py flagged this as
+  -- quantity-insufficient: DMND's deterministic supply is exactly 3 (two quest rewards), so a
+  -- cost of 4 made the game's FINAL UNLOCK reachable only via a probabilistic chest drop.
+  -- That is the identical shape as the historic diamond-pick bug (also 4-needed vs 3-supplied,
+  -- fixed earlier tonight) and the GRNT deadlock (16 available vs 20 required) -- a recipe whose
+  -- inputs exist but never in sufficient quantity. Boolean reachability misses this class
+  -- entirely, which is why the quantity pass exists. ZIRC raised 4 -> 5 to keep the total cost
+  -- roughly intact, since ZIRC is renewably mineable and DMND is not.
+  { out = "REPLICOREKIT", n = 1, need = need("VIBR", 2, "DMND", 3, "PTNM", 3, "ZIRC", 5), st = "advlab", txt = "Replicator Core",
     desc = "THE FINAL UNLOCK. One per world. A real, leashed CLNE locked to duplicating Steel only -- never ore, never anything that gates progression. Consumable: burns out after sustained use, recharge with Vibranium" },
 }
 

@@ -372,7 +372,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.16.6"
+R.VERSION = "1.17.0"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -388,6 +388,23 @@ R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 -- they all show up together next time, exactly like the GitHub one does
 -- across skipped releases.
 R.CHANGELOG = {
+  { ver = "1.17.0", notes = {
+    "EVERY ELEMENT NOW HAS A WAY TO GET IT. 150 of the game's 195 Powder Toy elements are now obtainable -- up from 71 this morning. Six new acquisition systems cover fluids, solids, energy, exotics, foraging and extraction machines. The remaining 45 are either deliberately not items (sparks, fire, your own character, the eraser) or still on the list, and the guide now marks those honestly instead of hiding them.",
+    "New: Isotope-Z is made by melting solid isotope in a furnace, and frozen back by chilling it in the Advanced Lab -- a real phase change the engine was already simulating.",
+    "New: Plutonium is bred from Platinum + solid isotope at the Advanced Lab (reactor-tier), using a real reaction that already existed in the engine.",
+    "New: Isotope Forge (reactor-tier) slowly produces Polonium and a second route to Plutonium.",
+    "New: Exotic Forge (reactor-tier) slowly produces Singularity and Antimatter. Never required to finish the game.",
+    "New: EMP charges, instant conductors, NTC/PTC thermistors, WireWorld wire, gravity pumps, heat switches and pressure pumps are all craftable at the Research Bench and Advanced Lab.",
+    "New: Powered clone and powered breakable clone (reactor-tier, one each per world, permanently locked to duplicating Steel only so they can never break progression).",
+    "New: five things the engine was already making but you could never pick up are now collectable -- vines, sawdust (from chopping wood hard), broken glass, powdered quartz, and broken electronics from EMP blasts.",
+    "New: 20 more craftable solids including ceramic, rime, stone and dust, several using real chemistry the engine already runs.",
+    "New: Noble Gas Extractor, Brine Electrolysis Cell, Ore Reduction Furnace and Isotope Enrichment Centrifuge -- machines that turn raw material into the things recipes ask for.",
+    "New: Scrap Compactor, Guardian Post, Lightning Rod and a reactor-gated Curio Vault for the strangest elements in the game.",
+    "Fixed: the Replicator Core -- the game's FINAL unlock -- needed 4 Diamond when only 3 can be reliably obtained, so it was only reachable if a rare chest happened to spawn. Now costs 3. Same bug as the diamond pick, caught by an automated check this time instead of by you hitting it.",
+    "Fixed: after restarting the game, Steel, Copper, Zirconium, Lead, Basalt, Concrete and several other materials silently stopped existing -- the game cached the fact they were missing at startup and never looked again, so half the mid-game economy quietly died. It now recovers properly.",
+    "Guide: every element in the game is now browsable, including ones with no recipe yet -- those are dimmed and marked so you can see what is still missing rather than wondering.",
+    "Guide: material pages now say how you actually get something -- mine it, craft it, forage it, or receive it -- and mining coal dust correctly says it yields Coal.",
+  } },
   { ver = "1.16.6", notes = {
     "New AUTOMATION tier (@automation): Life sensor, Velocity sensor and Delay conductor are now craftable at the Research Bench; Ray Emitter and Particle Ray Emitter at the Advanced Lab. The game has had Powder Toy's whole logic and sensor toolkit sitting unused this entire time -- it is now a real tech tier you can build with.",
     "New: sensor calibration -- right-click any placed temperature, pressure, life, velocity or delay sensor and set its real trigger threshold with the scroll wheel. The physics was always being simulated; now you can read it.",
@@ -6137,7 +6154,11 @@ R.hooks.mount = R.hooks.mount or {}
 -- "telemetry" FIRST, deliberately: it installs R.tlog and the project-wide error capture,
 -- and every plugin loaded after it can then log its own load failures. Loading it last
 -- would mean the diagnostic layer is absent for exactly the failures most worth catching.
-R.PLUGINS = { "telemetry", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools" }
+-- acq_* acquisition plugins appended 2026-09-02. Each gives a family of stock Powder Toy
+-- elements a real acquisition pathway, per design-material-progression{,-part2}.md. Ordered
+-- fluids -> solids -> energy -> special -> forage -> machines so that the machines lane,
+-- which consumes tokens the others define, loads last.
+R.PLUGINS = { "telemetry", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special", "acq_forage", "acq_machines", "nat_process" }
 R.pluginStatus = {}
 -- Critical distribution bug: this only ever checked the original dev
 -- machine's absolute path. On any other machine (a packaged copy, a
