@@ -2094,14 +2094,54 @@ local function syncFastMode()
   if needAir and R.fast then R.setFast(false); R._machinesForcedFast = true
   elseif not needAir and R._machinesForcedFast and R.fast == false then R.setFast(true); R._machinesForcedFast = false end
 end
+-- @perf 2026-09-02: this list used to be a bare `ipairs({ updateBoiler, ... })` literal, which
+-- (a) allocated a fresh 29-entry array every single tick just to throw it away, and (b) called
+-- EVERY one of these 29 functions every tick regardless of whether any machine of the kind it
+-- cares about actually exists -- each function then pays its own full O(#R.machines) scan just
+-- to find nothing. Hoisted the list to a one-time top-level table, and paired each function with
+-- the exact `m.kind` string(s) its own internal loop checks (verified against each function's
+-- own body above -- updateTurret is the one with two, `turret`+`turret2`, everything else one).
+-- A single O(#R.machines) presence pass below then lets a kind absent from the world right now
+-- skip its whole update function's own scan, collapsing 29 potential full-array scans down to
+-- (1 presence pass + only the kinds actually present) for the common case of a player with a
+-- handful of machine types, at the cost of one comparison per function on the rare kind that IS
+-- present (no scans are ever added, only skipped). updateSolarDust/updateLifeSupport/
+-- updateMachineCores keep `kinds=nil` (always run): the first two already gate on R.frame before
+-- their own loop so a presence table would save nothing, and machine-core teardown must see
+-- every kind (a destroyed core can be ANY kind of machine), not just a subset.
+local UPDATE_FNS = {
+  { updateBoiler, { boiler = true } }, { updateTurbines, { turbine = true } },
+  { updateDoors, { door = true } }, { updatePumps, { pump = true } },
+  { updateConveyors, { conveyor = true } }, { updateCranks, { crank = true } },
+  { updateEFurnace, { efurnace = true } }, { updateCrusher, { crusher = true } },
+  { updateAutocraft, { autocraft = true } }, { updateTurret, { turret = true, turret2 = true } },
+  { updateDrill, { drill = true } }, { updateAirpump, { airpump = true } },
+  { updateBellows, { bellows = true } }, { updateCompressor, { compressor = true } },
+  { updateO2gen, { o2gen = true } }, { updateScrubber, { scrubber = true } },
+  { updateVentfan, { ventfan = true } }, { updateSawmill, { sawmill = true } },
+  { updateDesal, { desal = true } }, { updateBlastfurnace, { blastfurnace = true } },
+  { updateSolarFurnace, { solarfurnace = true } }, { updateFlare, { flare = true } },
+  { updateSolarDust, nil }, { updateGasDetector, { gasdetector = true } },
+  { updateBreaker, { breaker = true } }, { updateElevator, { elevator = true } },
+  { updateTunneler, { tunneler = true } }, { updateSprinkler, { sprinkler = true } },
+  { updateLifeSupport, nil }, { updateMachineCores, nil },
+}
 hook(R.hooks.tick, function()
-  for _, f in ipairs({ updateBoiler, updateTurbines, updateDoors, updatePumps, updateConveyors, updateCranks,
-                       updateEFurnace, updateCrusher, updateAutocraft, updateTurret, updateDrill,
-                       updateAirpump, updateBellows, updateCompressor, updateO2gen, updateScrubber, updateVentfan, updateSawmill, updateDesal,
-                       updateBlastfurnace, updateSolarFurnace, updateFlare, updateSolarDust, updateGasDetector,
-                       updateBreaker, updateElevator, updateTunneler, updateSprinkler, updateLifeSupport,
-                       updateMachineCores }) do
-    local ok, err = pcall(f); if not ok then R.pluginErr = tostring(err) end
+  local kindsPresent = nil
+  if #R.machines > 0 then
+    kindsPresent = {}
+    for _, m in ipairs(R.machines) do if m.kind then kindsPresent[m.kind] = true end end
+  end
+  for _, entry in ipairs(UPDATE_FNS) do
+    local f, kinds = entry[1], entry[2]
+    local run = true
+    if kinds then
+      run = false
+      if kindsPresent then for k in pairs(kinds) do if kindsPresent[k] then run = true; break end end end
+    end
+    if run then
+      local ok, err = pcall(f); if not ok then R.pluginErr = tostring(err) end
+    end
   end
   if (R.frame or 0) % 15 == 0 then
     local ok, err = pcall(recomputePower); if not ok then R.pluginErr = tostring(err) end

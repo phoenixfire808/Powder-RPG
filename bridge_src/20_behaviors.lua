@@ -529,6 +529,669 @@ kinds.creature = {
 }
 
 -- ---------------------------------------------------------------------------
+-- Shared helpers for the power-generation / reactive-chemistry kinds below
+-- (absorber, pcm, photovoltaic, piezo, reactive, teg, turbine), added
+-- 2026-09-01 to recover 16 custom elements that were shipping in
+-- pbx-custom-elements.json / bridge_src/07_materials_seed.lua with behavior
+-- kinds this file never implemented (registry warning: "unknown behavior
+-- kind"). PORTED, not written from scratch: a prior working copy of exactly
+-- these seven kinds was found intact at
+-- knowledge/_newplayer_audit/extracted_v3/scripts/lua/{chem,power,material}_
+-- kinds.lua (dated 2026-08-26, from a different bridge architecture) and its
+-- `reactive` rule grammar matches every one of the nine `reactive` specs
+-- actually shipped in 07_materials_seed.lua character-for-character, which
+-- is strong evidence it is the real source those specs were authored
+-- against, not a guess. Ported here with three changes, all deliberate:
+--   1. Element name resolution goes through resolveElemName (below), not the
+--      original's bespoke per-file `elemId`, so there is one implementation
+--      instead of three near-duplicates.
+--   2. Neighbour lookups that must see TYPE_ENERGY particles (NEUT, PHOT --
+--      absorber and photovoltaic's whole job) go through
+--      neighbourOccupantAny (below), which this file's pre-existing
+--      neighbourOccupant cannot do: TYPE_ENERGY particles live in a separate
+--      photon map (sim.photons), confirmed from src/simulation/elements/
+--      NEUT.cpp:40 and PHOT.cpp:39 both declaring Properties = TYPE_ENERGY,
+--      and sim.photons(x,y) is a distinct API from sim.pmap (documented at
+--      40_worker.lua:158). The original extraction already knew this (its
+--      own `occupant()` checked both maps) -- this port keeps that fix and
+--      gives it a name that says why.
+--   3. `reactive`'s original had one bug fixed in translation: the "no free
+--      cell, convert the neighbour into the product instead" fallback used a
+--      single upvalue (`r_extra_done`) shared across every rule AND every
+--      particle of that element, so one particle's fallback could silently
+--      suppress another's `extra` spawn on the same tick. This port uses a
+--      call-local flag instead, so each hit is independent.
+-- ---------------------------------------------------------------------------
+
+--- Resolve an element name to a numeric id, tolerant of any custom group
+--- prefix. A custom element's real `elements` table key is "GROUP_PT_NAME"
+--- (src/lua/LuaElements.cpp:335: `identifier = group + "_PT_" + id`), not
+--- the bare name -- so a bare lookup (what PBX.vElem tries first, for speed,
+--- in the hot registry path) only ever finds DEFAULT_PT_* (stock) or
+--- PBX_PT_* elements. The `reactive` kind's rule targets can name a custom
+--- element in ANY group (MATL, POWER, ...), e.g. AL61's thermite rule
+--- targets "FSLG", a MATL_PT_FSLG element -- so this falls back to scanning
+--- every element slot's real Name property when the fast paths miss. Only
+--- called once per rule at element-definition time (inside a kind's make()),
+--- never per tick, so the O(512) scan cost is paid once per custom element
+--- defined, not once per frame.
+local function resolveElemName(raw)
+    if raw == nil then return nil end
+    local name = string.upper(tostring(raw))
+    local id = elements[name] or elements["DEFAULT_PT_" .. name] or elements["PBX_PT_" .. name]
+    if id ~= nil then return id end
+    for j = 0, 511 do
+        local ok, n = pcall(elements.property, j, "Name")
+        if ok and n == name then return j end
+    end
+    return nil
+end
+
+--- Bounds-checked neighbour occupant lookup that also finds TYPE_ENERGY
+--- particles (PHOT, NEUT, ...), which live in the separate photon map
+--- (sim.photons) rather than pmap -- see the file-header note above.
+--- neighbourOccupant alone is correct for every other kind in this file
+--- because none of them target energy-type neighbours; absorber, reactive
+--- and photovoltaic do, and must use this instead.
+local function neighbourOccupantAny(nx, ny)
+    local occ = neighbourOccupant(nx, ny)
+    if occ then return occ end
+    if nx < 0 or ny < 0 or nx >= PBX.SIM_W or ny >= PBX.SIM_H then return nil end
+    local ok, p = pcall(sim.photons, nx, ny)
+    if ok and p and p ~= 0 then return p end
+    return nil
+end
+
+--- First free (unoccupied, in-bounds) cell in the 8-neighbourhood of (x, y),
+--- or nil if all eight are full. Used by `reactive` to place a spawned
+--- product (H2, GAS, FIRE, ...) next to the reacting particle.
+local function freeNeighbourCell(x, y)
+    for k = 1, 8 do
+        local nx, ny = x + NX8[k], y + NY8[k]
+        if PBX.cellFree(nx, ny) then return nx, ny end
+    end
+    return nil
+end
+
+--- First neighbour of exactly element id `id`, or nil.
+local function findNeighbourOfType(x, y, id)
+    for k = 1, 8 do
+        local nx, ny = x + NX8[k], y + NY8[k]
+        local occ = neighbourOccupantAny(nx, ny)
+        if occ and sim.partProperty(occ, "type") == id then return occ end
+    end
+    return nil
+end
+
+--- Add `amount` directly to sim.pressure at the cell containing pixel
+--- (x, y). sim.pressure is indexed in CELL space (src/lua/LuaSimulation.cpp
+--- `pressure()` -> `sim->pv[p.Y][p.X]`, sized to PBX.CELL_W x PBX.CELL_H),
+--- and PBX.SIM_W / PBX.CELL_W == 4 exactly, hence the shift. pcall-guarded:
+--- a reaction's pressure yield is a bonus effect and must never be able to
+--- break the reaction itself if sim.pressure's exact contract ever changes.
+local function addReactionPressure(x, y, amount)
+    if not amount then return end
+    local cx, cy = math.floor(x / 4), math.floor(y / 4)
+    local ok, cur = pcall(sim.pressure, cx, cy)
+    if ok and cur then pcall(sim.pressure, cx, cy, cur + amount) end
+end
+
+--- Apply a rule's `needs` transformation (the ELEM=BECOMES extension) to the
+--- located needs-neighbour. No-op unless the rule actually declared a
+--- BECOMES target; presence-only `needs` (no '=') gates the reaction
+--- elsewhere and never reaches here.
+local function consumeNeedsNeighbour(x, y, r)
+    if not (r.needsId and r.needsBecomes) then return end
+    local nb = findNeighbourOfType(x, y, r.needsId)
+    if not nb then return end
+    if r.needsBecomes == "NONE" then
+        sim.partKill(nb)
+    elseif r.needsBecomesId then
+        sim.partChangeType(nb, r.needsBecomesId)
+    end
+end
+
+--- Bitwise AND of two non-negative 31-bit integers (Lua 5.1 has none; see
+--- 10_registry.lua's `bor` for the same reasoning applied to OR).
+local function band(a, b)
+    local res, place = 0, 1
+    for _ = 1, 31 do
+        local abit, bbit = a % 2, b % 2
+        if abit == 1 and bbit == 1 then res = res + place end
+        a, b = (a - abit) / 2, (b - bbit) / 2
+        place = place * 2
+    end
+    return res
+end
+
+local PROP_CONDUCTS = (elements and elements.PROP_CONDUCTS) or 0
+
+--- True if the live particle at index `partId` is currently an element with
+--- PROP_CONDUCTS set. Reads the flag live off `elements.property`, not a
+--- fixed name whitelist, so every conductor -- stock (PSCN, NSCN, METL, ...)
+--- and every custom one this catalogue defines (CU, STEL, CHRM, CNT, COBT,
+--- NBTI, RCNC, S316, via the `conductor` kind above) -- is recognised
+--- automatically, including ones defined after this file loads.
+local function isConductor(partId)
+    local ty = sim.partProperty(partId, "type")
+    if ty == nil then return false end
+    local ok, props = pcall(elements.property, ty, "Properties")
+    if not ok or type(props) ~= "number" then return false end
+    return band(props, PROP_CONDUCTS) ~= 0
+end
+
+local SPRK_ID = elements and elements["DEFAULT_PT_SPRK"]
+if SPRK_ID == nil then
+    PBX.warn("behaviors", "DEFAULT_PT_SPRK not found; teg/turbine/piezo/photovoltaic cannot spark conductors")
+end
+
+--- Shared "inject power into the wire" primitive for teg/turbine/piezo/
+--- photovoltaic: converts every touching, currently-unsparked (life==0)
+--- conductor into a spark, using the exact SPRK convention the `conductor`
+--- kind above documents and relies on (ctype := the conductor's own type,
+--- life := 4 + extraLife, then sim.partChangeType to SPRK; SPRK's own
+--- built-in Update reverts it on its own PROP_LIFE_DEC schedule). Returns
+--- the number of neighbours sparked.
+local function sparkNeighbourConductors(x, y, extraLife)
+    if not SPRK_ID then return 0 end
+    local sparked = 0
+    for k = 1, 8 do
+        local nx, ny = x + NX8[k], y + NY8[k]
+        local occ = neighbourOccupant(nx, ny)
+        if occ and isConductor(occ) and (sim.partProperty(occ, "life") or 0) == 0 then
+            local ty = sim.partProperty(occ, "type")
+            sim.partProperty(occ, "ctype", ty)
+            sim.partProperty(occ, "life", 4 + (extraLife or 0))
+            sim.partChangeType(occ, SPRK_ID)
+            sparked = sparked + 1
+        end
+    end
+    return sparked
+end
+
+-- ---------------------------------------------------------------------------
+-- absorber -- eats a target element (default NEUT) out of the 8-neighbourhood
+-- with probability `chance` per neighbour per tick, warming itself
+-- `heatPerHit` K per capture. Modelled on control-rod / neutron-poison
+-- materials (B4C, CD): a fuel/moderator pairing needs this to be genuinely
+-- controllable, not just decorative. See the file-header note above on why
+-- this must use neighbourOccupantAny (NEUT is TYPE_ENERGY).
+-- ---------------------------------------------------------------------------
+
+local ABSORBER_SPECS = {
+    absorbs    = { type = "string", min = 0, max = 32,  default = "NEUT" },
+    chance     = { type = "num",    min = 0, max = 1,   default = 0.9 },
+    heatPerHit = { type = "num",    min = 0, max = 100,  default = 4 },
+}
+
+kinds.absorber = {
+    params = ABSORBER_SPECS,
+    make = function(params)
+        local chance     = pNum(params, "chance", ABSORBER_SPECS.chance)
+        local heatPerHit = pNum(params, "heatPerHit", ABSORBER_SPECS.heatPerHit)
+        local absorbsRaw = (params and params.absorbs) or ABSORBER_SPECS.absorbs.default
+        local targetId = resolveElemName(absorbsRaw)
+        if not targetId then
+            PBX.warn("behaviors", "absorber: unknown absorbs '" .. tostring(absorbsRaw) .. "', falling back to NEUT")
+            targetId = resolveElemName("NEUT")
+        end
+
+        return safeUpdate("absorber", function(i, x, y, surround_space, nt)
+            if not targetId then return false end
+            local hits = 0
+            for k = 1, 8 do
+                local nx, ny = x + NX8[k], y + NY8[k]
+                local occ = neighbourOccupantAny(nx, ny)
+                if occ and sim.partProperty(occ, "type") == targetId and chanceRoll(chance) then
+                    sim.partKill(occ)
+                    hits = hits + 1
+                end
+            end
+            if hits > 0 then
+                sim.partProperty(i, "temp", (sim.partProperty(i, "temp") or 293.15) + heatPerHit * hits)
+                sim.partProperty(i, "tmp", (sim.partProperty(i, "tmp") or 0) + hits)
+            end
+            return false
+        end)
+    end,
+}
+
+-- ---------------------------------------------------------------------------
+-- turbine -- condenses an adjacent `input` (default WTRV, steam) into
+-- `output` (default DSTW, condensate) with probability `chance` per
+-- neighbour per tick, cooling the converted particle by `cool` K, and sparks
+-- every touching conductor once per tick that did any work (mechanical work
+-- -> electrical). `tmp` accumulates total conversions as a readable output
+-- gauge, matching the description shipped in 07_materials_seed.lua.
+-- ---------------------------------------------------------------------------
+
+local TURBINE_SPECS = {
+    input  = { type = "string", min = 0, max = 32, default = "WTRV" },
+    output = { type = "string", min = 0, max = 32, default = "DSTW" },
+    chance = { type = "num",    min = 0, max = 1,  default = 0.25 },
+    cool   = { type = "num",    min = 0, max = 500, default = 60 },
+}
+
+kinds.turbine = {
+    params = TURBINE_SPECS,
+    make = function(params)
+        local chance = pNum(params, "chance", TURBINE_SPECS.chance)
+        local cool   = pNum(params, "cool", TURBINE_SPECS.cool)
+        local inputId  = resolveElemName((params and params.input) or TURBINE_SPECS.input.default)
+        local outputId = resolveElemName((params and params.output) or TURBINE_SPECS.output.default)
+        if not inputId then PBX.warn("behaviors", "turbine: unknown input element") end
+        if not outputId then PBX.warn("behaviors", "turbine: unknown output element") end
+
+        return safeUpdate("turbine", function(i, x, y, surround_space, nt)
+            if not inputId or not outputId then return false end
+            local work = 0
+            for k = 1, 8 do
+                local nx, ny = x + NX8[k], y + NY8[k]
+                local occ = neighbourOccupant(nx, ny)
+                if occ and sim.partProperty(occ, "type") == inputId and chanceRoll(chance) then
+                    sim.partChangeType(occ, outputId)
+                    local ot = sim.partProperty(occ, "temp") or 293.15
+                    sim.partProperty(occ, "temp", math.max(293.15, ot - cool))
+                    work = work + 1
+                end
+            end
+            if work > 0 then
+                sim.partProperty(i, "tmp", (sim.partProperty(i, "tmp") or 0) + work)
+                sparkNeighbourConductors(x, y, 0)
+            end
+            return false
+        end)
+    end,
+}
+
+-- ---------------------------------------------------------------------------
+-- teg -- thermoelectric generator. Once its own temperature is >= `onTemp`,
+-- sparks every touching conductor every `period` ticks (using `life` as the
+-- tick counter, since TEG never uses `life` for anything else) and sheds
+-- `drop` K per pulse -- Seebeck conversion of a standing temperature
+-- difference into a wire pulse.
+-- ---------------------------------------------------------------------------
+
+local TEG_SPECS = {
+    onTemp = { type = "num", min = 0, max = 9999, default = 373.15 },
+    period = { type = "int", min = 1, max = 1000, default = 20 },
+    drop   = { type = "num", min = 0, max = 100,  default = 2 },
+}
+
+kinds.teg = {
+    params = TEG_SPECS,
+    make = function(params)
+        local onTemp = pNum(params, "onTemp", TEG_SPECS.onTemp)
+        local period = pInt(params, "period", TEG_SPECS.period)
+        local drop   = pNum(params, "drop", TEG_SPECS.drop)
+
+        return safeUpdate("teg", function(i, x, y, surround_space, nt)
+            local t = sim.partProperty(i, "temp") or 0
+            if t < onTemp then return false end
+            local life = (sim.partProperty(i, "life") or 0) + 1
+            if life < period then
+                sim.partProperty(i, "life", life)
+                return false
+            end
+            sim.partProperty(i, "life", 0)
+            sim.partProperty(i, "temp", t - drop)
+            sparkNeighbourConductors(x, y, 0)
+            return false
+        end)
+    end,
+}
+
+-- ---------------------------------------------------------------------------
+-- piezo -- once the ambient pressure magnitude at this cell exceeds
+-- `threshold`, sparks every touching conductor every `period` ticks (`life`
+-- as the tick counter, `tmp2` as a readable pulse count -- PZT has no other
+-- use for either). Pressure is read in CELL space, per addReactionPressure's
+-- comment above.
+-- ---------------------------------------------------------------------------
+
+local PIEZO_SPECS = {
+    threshold = { type = "num", min = 0, max = 256,  default = 4 },
+    period    = { type = "int", min = 1, max = 1000, default = 2 },
+}
+
+kinds.piezo = {
+    params = PIEZO_SPECS,
+    make = function(params)
+        local threshold = pNum(params, "threshold", PIEZO_SPECS.threshold)
+        local period    = pInt(params, "period", PIEZO_SPECS.period)
+
+        return safeUpdate("piezo", function(i, x, y, surround_space, nt)
+            local ok, p = pcall(sim.pressure, math.floor(x / 4), math.floor(y / 4))
+            if not ok or not p or math.abs(p) < threshold then return false end
+            local life = (sim.partProperty(i, "life") or 0) + 1
+            if life < period then
+                sim.partProperty(i, "life", life)
+                return false
+            end
+            sim.partProperty(i, "life", 0)
+            sim.partProperty(i, "tmp2", (sim.partProperty(i, "tmp2") or 0) + 1)
+            sparkNeighbourConductors(x, y, 0)
+            return false
+        end)
+    end,
+}
+
+-- ---------------------------------------------------------------------------
+-- photovoltaic -- absorbs adjacent PHOT with probability `chance` per
+-- neighbour per tick; every `perSpark` photons absorbed (accumulated in
+-- `tmp`), fires one spark pulse into touching conductors. Warms `heat` K per
+-- absorbed photon. PHOT is TYPE_ENERGY (src/simulation/elements/PHOT.cpp:39)
+-- so this must scan with neighbourOccupantAny, not neighbourOccupant.
+-- ---------------------------------------------------------------------------
+
+local PV_SPECS = {
+    chance   = { type = "num", min = 0, max = 1,   default = 0.8 },
+    perSpark = { type = "int", min = 1, max = 100, default = 3 },
+    heat     = { type = "num", min = 0, max = 50,  default = 0.5 },
+}
+
+kinds.photovoltaic = {
+    params = PV_SPECS,
+    make = function(params)
+        local chance   = pNum(params, "chance", PV_SPECS.chance)
+        local perSpark = pInt(params, "perSpark", PV_SPECS.perSpark)
+        local heat     = pNum(params, "heat", PV_SPECS.heat)
+        local photId   = resolveElemName("PHOT")
+
+        return safeUpdate("photovoltaic", function(i, x, y, surround_space, nt)
+            if not photId then return false end
+            local got = 0
+            for k = 1, 8 do
+                local nx, ny = x + NX8[k], y + NY8[k]
+                local occ = neighbourOccupantAny(nx, ny)
+                if occ and sim.partProperty(occ, "type") == photId and chanceRoll(chance) then
+                    sim.partKill(occ)
+                    got = got + 1
+                end
+            end
+            if got > 0 then
+                sim.partProperty(i, "temp", (sim.partProperty(i, "temp") or 293.15) + heat * got)
+                local acc = (sim.partProperty(i, "tmp") or 0) + got
+                if acc >= perSpark then
+                    acc = acc - perSpark
+                    sparkNeighbourConductors(x, y, 0)
+                end
+                sim.partProperty(i, "tmp", acc)
+            end
+            return false
+        end)
+    end,
+}
+
+-- ---------------------------------------------------------------------------
+-- pcm -- phase-change heat buffer. Above `meltK` it soaks up to `rate` K/tick
+-- of excess heat into a stored-energy counter (`tmp`, capped at `latent`),
+-- holding its own temperature near meltK while charging; below `meltK` with
+-- stored energy remaining, it releases stored heat back at the same rate,
+-- holding temperature near meltK while discharging. Approximates latent
+-- heat without a real enthalpy model.
+-- ---------------------------------------------------------------------------
+
+local PCM_SPECS = {
+    meltK  = { type = "num", min = 100, max = 2000,   default = 331.15 },
+    latent = { type = "int", min = 1,   max = 100000, default = 2000 },
+    rate   = { type = "num", min = 0.1, max = 50,     default = 4 },
+}
+
+kinds.pcm = {
+    params = PCM_SPECS,
+    make = function(params)
+        local meltK  = pNum(params, "meltK", PCM_SPECS.meltK)
+        local latent = pInt(params, "latent", PCM_SPECS.latent)
+        local rate   = pNum(params, "rate", PCM_SPECS.rate)
+
+        return safeUpdate("pcm", function(i, x, y, surround_space, nt)
+            local t = sim.partProperty(i, "temp") or meltK
+            local stored = sim.partProperty(i, "tmp") or 0
+            if t > meltK and stored < latent then
+                local take = math.min(rate, t - meltK, latent - stored)
+                sim.partProperty(i, "temp", t - take)
+                sim.partProperty(i, "tmp", stored + take)
+            elseif t < meltK and stored > 0 then
+                local give = math.min(rate, meltK - t, stored)
+                sim.partProperty(i, "temp", t + give)
+                sim.partProperty(i, "tmp", stored - give)
+            end
+            return false
+        end)
+    end,
+}
+
+-- ---------------------------------------------------------------------------
+-- reactive -- small chemistry DSL. `params.rules` is a ';'-separated list of:
+--
+--   TRIGGER>selfBecomes,otherBecomes:dT:chance[:needs][:extra][:conc=N][:pgas=X]
+--
+--   TRIGGER      neighbour element that triggers the rule, or ANY (any
+--                occupied neighbour), AIR (any empty neighbour), or HEATn
+--                (fires from self temperature alone at self.temp >= n, no
+--                neighbour needed -- otherBecomes is meaningless here)
+--   selfBecomes  what this particle becomes: SELF (unchanged), NONE
+--                (killed), or an element name
+--   otherBecomes same vocabulary, applied to the trigger neighbour
+--   dT           temperature delta (K) applied to both particles on a hit
+--   chance       per-neighbour, per-tick probability
+--   needs        optional second required neighbour: ELEM (must be
+--                present), ELEM=BECOMES (present AND itself transformed on a
+--                hit, NONE = killed), or HEATn (self-temperature gate)
+--   extra        element spawned into a free neighbouring cell on a hit
+--   conc=N       (any trailing field, order-independent) treat `life` as a
+--                concentration: decrement by N per hit, scale chance by
+--                life/100, only actually apply selfBecomes once life reaches 0
+--   pgas=X       (any trailing field, order-independent) add X directly to
+--                sim.pressure at the reacting cell
+--
+-- Rules are tried in listed order each tick; the closure returns as soon as
+-- one rule's neighbour scan actually rolls a hit (matching this file's
+-- return-true-or-false-and-stop convention for every other kind), but a
+-- rule whose trigger neighbour is present yet loses its own chance roll
+-- falls through to let the next rule try the same tick -- this is what lets
+-- AL61 attempt its BRMT/thermite rule on a tick where its FIRE-preheat rule
+-- happened not to roll a hit, without waiting a full extra tick.
+--
+-- Verified against every `reactive` spec actually shipped
+-- (bridge_src/07_materials_seed.lua, 9 elements: AL61, BRSS, CAC2, CAO, DU,
+-- MG, NA, NAS, RBAR) -- all nine parse and, by inspection against their own
+-- prose descriptions in that file, behave as documented there.
+-- ---------------------------------------------------------------------------
+
+local function parseReactiveRules(str)
+    local rules = {}
+    for rule in string.gmatch(str or "", "[^;]+") do
+        local with, rest = rule:match("^%s*([%w_<>]+)%s*>(.*)$")
+        if with then
+            -- Split on ':' keeping empty fields; gmatch("[^:]*") over-yields
+            -- on adjacent separators, so this walks the string by hand.
+            local f, start = {}, 1
+            while true do
+                local sep = string.find(rest, ":", start, true)
+                if not sep then f[#f + 1] = string.sub(rest, start); break end
+                f[#f + 1] = string.sub(rest, start, sep - 1)
+                start = sep + 1
+            end
+
+            local prod = f[1] or ""
+            local selfB, otherB = prod:match("^%s*([%w_]+)%s*,%s*([%w_]+)%s*$")
+            local r = {
+                with   = string.upper(with),
+                selfB  = string.upper(selfB or "SELF"),
+                otherB = string.upper(otherB or "SELF"),
+                dT     = tonumber(f[2]) or 0,
+                chance = tonumber(f[3]) or 0.2,
+                needs  = (f[4] and f[4] ~= "") and string.upper(f[4]) or nil,
+                extra  = (f[5] and f[5] ~= "") and string.upper(f[5]) or nil,
+            }
+
+            local heatK = r.with:match("^HEAT(%d+)$")
+            if heatK then r.heatK = tonumber(heatK); r.with = "HEAT" end
+            r.withId  = (r.with ~= "ANY" and r.with ~= "HEAT" and r.with ~= "AIR") and resolveElemName(r.with) or nil
+            r.selfId  = (r.selfB  ~= "SELF" and r.selfB  ~= "NONE") and resolveElemName(r.selfB)  or nil
+            r.otherId = (r.otherB ~= "SELF" and r.otherB ~= "NONE") and resolveElemName(r.otherB) or nil
+
+            if r.needs then
+                local needsHeat = r.needs:match("^HEAT(%d+)$")
+                if needsHeat then
+                    r.needsHeatK = tonumber(needsHeat)
+                else
+                    local ne, nb = r.needs:match("^([%w_]+)=([%w_]+)$")
+                    if ne then
+                        r.needsId = resolveElemName(ne)
+                        r.needsBecomes = string.upper(nb)
+                        r.needsBecomesId = (r.needsBecomes ~= "NONE" and r.needsBecomes ~= "SELF")
+                                           and resolveElemName(r.needsBecomes) or nil
+                    else
+                        r.needsId = resolveElemName(r.needs)
+                    end
+                end
+            end
+            r.extraId = r.extra and resolveElemName(r.extra) or nil
+
+            -- conc=/pgas= are scanned by prefix across every trailing field,
+            -- not a fixed position, so they can be appended without
+            -- disturbing the first five positional fields.
+            for idx = 6, #f do
+                local field = f[idx]
+                if field and field ~= "" then
+                    local concN = field:match("^conc=([%d%.]+)$")
+                    local pgasX = field:match("^pgas=(%-?[%d%.]+)$")
+                    if concN then r.conc = tonumber(concN) end
+                    if pgasX then r.pgas = tonumber(pgasX) end
+                end
+            end
+
+            rules[#rules + 1] = r
+        end
+    end
+    return rules
+end
+
+kinds.reactive = {
+    params = { rules = { type = "string", min = 0, max = 2000, default = "" } },
+    make = function(params)
+        local rules = parseReactiveRules(params and params.rules)
+
+        return safeUpdate("reactive", function(i, x, y, surround_space, nt)
+            local myT = sim.partProperty(i, "temp") or 293.15
+
+            for ri = 1, #rules do
+                local r = rules[ri]
+
+                if r.with == "HEAT" then
+                    if myT >= (r.heatK or 1e9) and chanceRoll(r.chance) then
+                        if r.extraId then
+                            local fx, fy = freeNeighbourCell(x, y)
+                            if fx then
+                                local n = sim.partCreate(-1, fx, fy, r.extraId)
+                                if n and n >= 0 then sim.partProperty(n, "temp", myT + r.dT) end
+                            end
+                        end
+                        addReactionPressure(x, y, r.pgas)
+                        sim.partProperty(i, "temp", myT + r.dT)
+                        if r.conc then
+                            local life = (sim.partProperty(i, "life") or 100) - r.conc
+                            sim.partProperty(i, "life", math.max(0, life))
+                            if life > 0 then return false end
+                        end
+                        if r.selfB == "NONE" then
+                            sim.partKill(i)
+                            return true
+                        elseif r.selfId then
+                            sim.partChangeType(i, r.selfId)
+                            return false
+                        end
+                        -- selfB == "SELF": no change to this particle; fall
+                        -- through so a later rule can still fire this same
+                        -- tick, matching the neighbour branch below (which
+                        -- only stops the closure on an actual hit).
+                    end
+                else
+                    local effChance = r.chance
+                    if r.conc then effChance = r.chance * ((sim.partProperty(i, "life") or 100) / 100) end
+
+                    for k = 1, 8 do
+                        local nx, ny = x + NX8[k], y + NY8[k]
+                        local occ = neighbourOccupantAny(nx, ny)
+                        local hit = false
+                        if r.with == "AIR" then
+                            hit = (occ == nil)
+                        elseif r.with == "ANY" then
+                            hit = (occ ~= nil)
+                        elseif occ and r.withId then
+                            hit = (sim.partProperty(occ, "type") == r.withId)
+                        end
+
+                        if hit and chanceRoll(effChance)
+                           and (not r.needsId or findNeighbourOfType(x, y, r.needsId))
+                           and (not r.needsHeatK or myT >= r.needsHeatK) then
+                            local ot = occ and (sim.partProperty(occ, "temp") or myT) or myT
+                            local producedExtra = false
+
+                            if occ then
+                                if r.otherB == "NONE" and r.extraId and not freeNeighbourCell(x, y) then
+                                    -- No free cell for the extra product: turn
+                                    -- the consumed neighbour directly into it
+                                    -- instead of losing the reaction outright.
+                                    sim.partChangeType(occ, r.extraId)
+                                    sim.partProperty(occ, "temp", myT + r.dT)
+                                    producedExtra = true
+                                elseif r.otherB == "NONE" then
+                                    sim.partKill(occ)
+                                elseif r.otherId then
+                                    sim.partChangeType(occ, r.otherId)
+                                    sim.partProperty(occ, "temp", ot + r.dT)
+                                else
+                                    sim.partProperty(occ, "temp", ot + r.dT)
+                                end
+                            end
+
+                            if r.extraId and not producedExtra then
+                                local fx, fy = freeNeighbourCell(x, y)
+                                if fx then
+                                    local n = sim.partCreate(-1, fx, fy, r.extraId)
+                                    if n and n >= 0 then sim.partProperty(n, "temp", myT + r.dT) end
+                                end
+                            end
+
+                            consumeNeedsNeighbour(x, y, r)
+                            addReactionPressure(x, y, r.pgas)
+                            sim.partProperty(i, "tmp2", (sim.partProperty(i, "tmp2") or 0) + 1)
+
+                            if r.conc then
+                                local life = (sim.partProperty(i, "life") or 100) - r.conc
+                                sim.partProperty(i, "life", math.max(0, life))
+                                if life > 0 then
+                                    sim.partProperty(i, "temp", myT + r.dT)
+                                    return false
+                                end
+                            end
+
+                            if r.selfB == "NONE" then
+                                sim.partKill(i)
+                                return true
+                            elseif r.selfId then
+                                sim.partChangeType(i, r.selfId)
+                                sim.partProperty(i, "temp", myT + r.dT)
+                                return false
+                            else
+                                sim.partProperty(i, "temp", myT + r.dT)
+                            end
+                            return false
+                        end
+                    end
+                end
+            end
+
+            return false
+        end)
+    end,
+}
+
+-- ---------------------------------------------------------------------------
 -- Diagnostics support: sorted list of every kind with its param descriptor.
 -- ---------------------------------------------------------------------------
 

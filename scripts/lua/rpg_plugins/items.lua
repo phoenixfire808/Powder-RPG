@@ -345,15 +345,30 @@ local function ammoOk(w) return (not w.ammo) or inv(w.ammo) >= 1 end
 -- the projectile IS that element and TPT's own physics does the rest - NITR really detonates,
 -- THRM really burns what it hits, LEAD is really denser. One shared table drives every kinetic
 -- gun, and the values are MULTIPLIERS so each weapon keeps the balance it already had.
+-- GUNPOWDER/BCOL added 2026-09-0X (@progression, fixing the documented DEAD-END class: machines2.lua's
+-- POWDERMILLKIT->GUNPOWDER and machines.lua's CRUSHERKIT->BCOL both produced a real inventory item
+-- with zero consumer anywhere in the game -- "a player spends real resources on a machine that does
+-- nothing" -- per this file's own header/acq_forage.lua's DEAD ENDS note. GUNPOWDER's own R.ITEMS
+-- description already calls it out as "a crafting reagent for future ammo" (machines2.lua:1009) --
+-- this is that ammo, wired the identical way THRM/NITR closed the same bug shape just above (a real
+-- element loaded into a kinetic gun, TPT's own physics driving the difference). BCOL keeps its
+-- existing mine-remap (picking it up off the ground still folds into COAL, unchanged -- see the
+-- nm=="BCOL" checks throughout this file) but the Crusher's own R.give("BCOL",2) (machines.lua) puts
+-- literal BCOL in inventory, bypassing that remap by design (a genuinely finer, purpose-milled dust,
+-- not lump coal) -- giving it a real use here closes the dead end without touching machines.lua.
 local KINETIC_AMMO = {
-  METL = { el = "BMTL", v = 1.00, dmg = 1.00, label = "standard",   fx = "spark"  },
-  LEAD = { el = "LEAD", v = 0.80, dmg = 1.55, label = "dense",      fx = "pierce" },
-  THRM = { el = "THRM", v = 0.95, dmg = 0.85, temp = 2500, label = "incendiary", fx = "burn"  },
-  NITR = { el = "NITR", v = 0.90, dmg = 1.20, temp = 500,  label = "explosive",  fx = "blast" },
+  METL      = { el = "BMTL", v = 1.00, dmg = 1.00, label = "standard",    fx = "spark" },
+  LEAD      = { el = "LEAD", v = 0.80, dmg = 1.55, label = "dense",       fx = "pierce" },
+  THRM      = { el = "THRM", v = 0.95, dmg = 0.85, temp = 2500, label = "incendiary", fx = "burn"  },
+  NITR      = { el = "NITR", v = 0.90, dmg = 1.20, temp = 500,  label = "explosive",  fx = "blast" },
+  GUNPOWDER = { el = "BCOL", v = 1.05, dmg = 1.15, temp = 400,  label = "black-powder", fx = "spark" },
+  BCOL      = { el = "BCOL", v = 0.90, dmg = 0.80, temp = 400,  label = "dust round",   fx = "spark" },
 }
 -- Exotic rounds are preferred over plain METL, so what you carry is how you "load" a gun.
 -- ponytail: inventory IS the ammo selector; add a cycle key if carrying both and choosing matters.
-local KINETIC_ORDER = { "THRM", "NITR", "LEAD", "METL" }
+-- GUNPOWDER (a deliberately milled, higher-quality dust) outranks the Crusher's raw BCOL byproduct;
+-- both still rank below the three original exotic rounds and above plain METL.
+local KINETIC_ORDER = { "THRM", "NITR", "LEAD", "GUNPOWDER", "BCOL", "METL" }
 -- WEAPONS is declared above this point, so guns opt in with the string "KINETIC" and it is
 -- resolved to the real table here, once, instead of duplicating the table on every weapon.
 for _, wdef in pairs(WEAPONS) do if wdef.alts == "KINETIC" then wdef.alts = KINETIC_AMMO end end

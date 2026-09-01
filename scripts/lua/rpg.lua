@@ -17,6 +17,19 @@ local DEPTH = 1900                   -- world bottom (bedrock from DEPTH-40)
 -- sea level y=200 inlined at its single use (200-locals budget)
 local function id(name) local i = elem["DEFAULT_PT_"..name]; if i then return i end; for j = 0, 511 do local ok, n = pcall(elem.property, j, "Name"); if ok and n == name then return j end end; return nil end
 local idcache = {}
+-- NEGATIVE-CACHE SELF-HEAL (2026-09-02). This cache used to store `false` for a missing
+-- element FOREVER. Custom elements cannot be registered at load time -- elem.allocate/element/
+-- property all assert unless called from a mutable-tools event (bridge_src/10_registry.lua:600),
+-- so the registry replays its 64 elements on a later tick, AFTER rpg.lua has already run.
+-- Every has() at this file's top level therefore asked before the answer existed, cached the
+-- "no", and never asked again. Two independent audits measured the damage on a fresh install:
+-- steel could not be crafted at all, and `local ROCK = has("BSLT") and "BSLT" or "BRCK"` fell
+-- through to BRICK, so deep strata came out 44.66% BRCK / 41.71% ROCK -- the entire world's
+-- primary stone was brick. That is the "too much brick" complaint, and it was never a worldgen
+-- tuning problem.
+-- Misses are still cached (a miss costs a 512-entry pcall scan, far too slow to repeat per
+-- call), but R.clearIdCache() drops them so a later lookup can find newly-registered elements.
+R.clearIdCache = function() for k, v in pairs(idcache) do if v == false then idcache[k] = nil end end end
 local function eid(name) local v = idcache[name]; if v == nil then v = id(name) or false; idcache[name] = v end; return v or nil end
 local namecache = {}
 local function nameOf(t) local n = namecache[t]; if n then return n end; local ok, v = pcall(elem.property, t, "Name"); n = ok and v or tostring(t); namecache[t] = n; return n end
@@ -65,7 +78,7 @@ R.ITEMS = { FLASK = { col = {150, 220, 235}, desc = "Air bladder: fills itself i
             RESEARCH = { col = {60, 120, 140}, desc = "Research Bench: place it near your workbench to unlock advanced material recipes" },
             ADVLAB = { col = {70, 90, 110}, desc = "Advanced Lab: place it near your Research Bench to unlock its recipes" } }
 R.NAMES = { GOO="Dirt", GRNT="Granite", BSLT="Granite", GRSS="Grass", PLNT="Plant", WOOD="Wood", SAND="Sand", ICE="Ice", SNOW="Snow", CLST="Clay",
-  COAL="Coal", BCOL="Coal dust", IRON="Iron ore", METL="Iron bar", STEL="Steel", GOLD="Gold", CU="Copper", DU="Uranium ore", URAN="Uranium",
+  COAL="Coal", BCOL="Coal dust", IRON="Iron ore", METL="Iron bar", STEL="Steel", GOLD="Gold", CU="Copper", DU="Uranium ore", URAN="Uranium", CNCR="Concrete",
   DMND="Diamond", QRTZ="Quartz", TTAN="Titanium", BRCK="Brick", GLAS="Glass", INSL="Insulation", WATR="Water", DSTW="Pure water", LAVA="Lava",
   BRMT="Bronze", BMTL="Scrap metal", PSCN="P-silicon", NSCN="N-silicon", TUNG="Tungsten", LEDL="LED lamp", WIFI="Wireless", B4C="Control rod", TRBN="Turbine",
   TEG="Thermo-gen", UO2="Fuel pellet", STNE="Stone", OIL="Oil", FIRE="Fire", GLOW="Glow", WORKBENCH="Workbench", FURNACE="Furnace kit", ANVIL="Anvil",
@@ -438,7 +451,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.17.4"
+R.VERSION = "1.17.5"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -1249,7 +1262,14 @@ function R.eat(item)
   if f.heal then R.hp = math.min(100, R.hp + f.heal) end
   say("Ate " .. R.nice(item)); R.rebuildHotbar(); return true
 end
-R.hooks = { tick = { profile = true, throttle = true }, draw = { profile = true }, drawHUD = { profile = true }, key = {}, mousedown = {}, mouseup = {}, place = {}, mine = {}, craft = {}, gen = {}, newworld = {}, sandbox = {}, keyup = {}, wheel = {}, mousemove = {}, chat = {} }
+R.hooks = { tick = { profile = true, throttle = true }, draw = { profile = true }, drawHUD = { profile = true }, key = {}, mousedown = {}, mouseup = {}, place = {}, mine = {}, craft = {}, gen = {}, newworld = {}, sandbox = {}, keyup = {}, wheel = {}, mousemove = {}, chat = {},
+  -- Sandbox-mode hook lists (added 2026-09-02 for rpg_plugins/sandbox.lua and ui.lua's
+  -- sandbox block). Sandbox deliberately bypasses every normal RPG handler, so plugins
+  -- that want to draw or respond THERE need their own dispatch rather than reusing the
+  -- RPG ones -- otherwise re-enabling submission would drag the whole HUD back in with it.
+  sandboxKey = {}, sandboxTextInput = {}, sandboxMouseDown = {}, sandboxMouseUp = {},
+  sandboxMouseMove = {}, sandboxDraw = { profile = true }, sandboxDrawHUD = { profile = true },
+  sandboxTick = { profile = true, throttle = true } }
 -- FRAME BUDGET: every hook is timed, and any tick hook that exceeds its budget is automatically run less
 -- often so one heavy plugin can never eat the frame rate. R.perf holds the measured cost of each hook.
 R.perf = R.perf or {}          -- tag -> { ms = exponential moving average, skip = run 1 frame in N }
@@ -1410,6 +1430,11 @@ local function biomeAt(wx)
   return here
 end
 R.biomeMix = biomeMix
+-- Drop the per-column generator caches. The sandbox worldgen sampler swaps R.seed to render a
+-- slice of some OTHER world, and without this the already-cached columns would keep returning
+-- terrain from the previous seed -- so the sampler would quietly show the wrong world, which is
+-- worse than not having the feature. Cheap: both caches are rebuilt lazily per column.
+function R.resetGenCaches() surfCache = {}; treeCache = {} end
 local BIOME = { forest={grass=GRASS, soil="GOO", trees=0.5}, swamp={grass=GRASS, soil="GOO", trees=0.35}, desert={grass="SAND", soil="SAND", trees=0.0}, snow={grass="ICE", soil="ICE", trees=0.25} }
 local treeCache = {}
 local function treeAt(cell)
@@ -2454,7 +2479,14 @@ R.blockHits = R.blockHits or {}
 -- Tier 2 matches GRNT's old tier so the wood pick (power=1) can still mine it
 -- slowly per its own flavor text ("granite... only slowly"); the stone pick
 -- (power=2) mines it at full speed once crafted.
-R.MINEABLE = { METL=3, GRSS=1, BCOL=1,  GOO=1, SAND=1, SNOW=1, ICE=1, PLNT=1, WOOD=1, CLST=1, STNE=2, COAL=1, BRCK=2, GLAS=2, BRMT=2, IRON=2, GOLD=3, CU=2, DU=4, URAN=4, STEL=4, GRNT=2, BSLT=2, TTAN=4, DMND=6, LEAD=3, ZIRC=3, STEL=4, QRTZ=3,
+-- CNCR added 2026-09-02. Measured against real generated terrain: 94.9% of solid cells a
+-- player digs through were mineable and concrete was the ONLY solid that was not -- mining
+-- it destroyed the block and returned nothing, which reads in game as "my pick spawns air".
+-- It was 40% of deep stone before tonight's strata rebalance, so this quietly swallowed a
+-- large share of every dig for a long time. Verified live before adding, per ADR-003:
+-- id=488, Falldown=0, TYPE_SOLID=true. Tier 2 matches BRCK/BSLT/GRNT (stone pick), and it
+-- already crumbles to STNE in the RUBBLE table, so the two paths now agree.
+R.MINEABLE = { METL=3, GRSS=1, BCOL=1,  GOO=1, SAND=1, SNOW=1, ICE=1, PLNT=1, WOOD=1, CLST=1, STNE=2, COAL=1, BRCK=2, GLAS=2, BRMT=2, IRON=2, GOLD=3, CU=2, DU=4, URAN=4, STEL=4, GRNT=2, BSLT=2, TTAN=4, DMND=6, LEAD=3, ZIRC=3, STEL=4, QRTZ=3, CNCR=2,
   -- ADDED 2026-09-02 (@lead): the six materials @veins placed as worldgen veins.
   -- Tiers set from the depth each is actually generated at, measured from world.lua:
   --   MERC d>160 (swamp only)  LITH d 200-400   DEUT d>420   ISZS d>440   PTNM deep+rare   BMTL ruins
@@ -2603,6 +2635,21 @@ local function updateQuests()
 end
 R.RECIPES = {
   { out="FLASK", n=1, need={GRSS=6, WOOD=3}, st="hand", txt="Air bladder", desc="A sealed plant bladder. Fills in fresh air; releases it automatically when you are running out" },
+  -- Concrete is MADE, not mined. Added 2026-09-02 after PhoenixFire808 pointed out that
+  -- concrete had no business being a natural rock layer: "that seems like something that we
+  -- make, or something that would be found around natural monuments." It has been removed
+  -- from natural strata entirely; its only worldgen source is now ruin walls (~35% of ruins),
+  -- and this is the manufactured route. Real concrete is aggregate plus sand plus a binder,
+  -- which is exactly what these inputs are -- crushed stone for aggregate, sand for the fine
+  -- fraction. Yields 4 from 6 inputs, so building with it is worth the trip.
+  { out="CNCR", n=4, need={STNE=4, SAND=2}, st="workbench", txt="Concrete", desc="Crushed stone and sand bound into a hard artificial block. Not found in natural rock -- you either make it, or salvage it from ruins" },
+  -- Brick is FIRED CLAY, so it is made at the furnace from the clay you dig, not found in
+  -- the ground. Removed from natural strata the same day for the same reason as concrete:
+  -- it had been generating as 8% of every non-desert stone pixel, justified in a comment as
+  -- "thin sedimentary banding", which is not something bricks do. Its only other source is
+  -- ruin walls, which is exactly where fired brick belongs. CLST is already mineable at
+  -- tier 1, so this is reachable with the very first pick.
+  { out="BRCK", n=4, need={CLST=4}, st="furnace", txt="Brick", desc="Clay fired hard in a furnace. A made material -- you will not find bricks in bedrock, only in the ruins of something somebody built" },
   -- by hand
   { out="WORKBENCH", n=1, need={WOOD=10}, st="hand", txt="Workbench", desc="Place it and stand near it: unlocks tools, kits and building blocks" },
   { out="FURNACE", n=1, need={[ROCK]=20, COAL=5}, st="workbench", txt="Furnace kit", desc="Granite box with a coal bed. Place, then light with the torch (slot 4). Smelts ore while burning" },
@@ -3375,6 +3422,36 @@ local function onMouseDown(x, y, button)
   -- through to Window::DoMouseDown (GameView.cpp). Title/inactive used to return nil, so
   -- Create/Play held the native brush down through world start -- sand spray every new seed.
   if titleMouseDown(x, y) then return false end
+  -- SANDBOX FIX 2026-09-02: reported immediately as "the sandbox vanilla isn't working at
+  -- all". In TPT, returning FALSE from a Lua mouse handler CANCELS the event
+  -- (GameView.cpp / Window::DoMouseDown). Sandbox mode sets R.active = false, so this guard
+  -- and its twin in onMouseUp were swallowing every click -- the native brush could never
+  -- place a single particle. Sandbox must fall through to stock Powder Toy untouched, so it
+  -- returns nil (allow default) BEFORE the inactive guard. Checked first in all three mouse
+  -- handlers for the same reason.
+  -- SANDBOX BRUSH SIZING. PhoenixFire808: "when I'm holding my middle mouse button and moving
+  -- the mouse up or down, I want it to be the same as if I'm scrolling." Stock TPT only
+  -- resizes a step at a time on the wheel, so getting to a large brush means spinning it a
+  -- lot; this makes sizing a single smooth drag instead. Hold MIDDLE mouse, move up to grow
+  -- and down to shrink, exactly like the wheel but continuous.
+  -- Size is computed from the ORIGINAL size plus total travel (not accumulated per event) so
+  -- it is predictable: return to where you started and you get the size you started with.
+  -- tpt.brushx/brushy are writable but "restricted to interface events" (compat.lua:699), so
+  -- this only works from a real input handler like this one -- never from tooling.
+  if R.sandboxMode then
+    if button == 2 then
+      local okx, bx = pcall(function() return tpt.brushx end)
+      local oky, by = pcall(function() return tpt.brushy end)
+      R.sbBrush = {
+        active = true, ax = x, ay = y,
+        baseX = (okx and type(bx) == "number") and bx or 4,
+        baseY = (oky and type(by) == "number") and by or 4,
+      }
+      return false   -- consume the middle click so it does not also act as a paste/sample
+    end
+    if runHooks(R.hooks.sandboxMouseDown, x, y, button) then return false end
+    return
+  end
   if not R.active then return false end
   R.mouse.x, R.mouse.y = x, y
   -- Modal popups: click their button to dismiss (or click anywhere else on
@@ -3403,6 +3480,12 @@ local function onMouseUp(x, y, button)
   -- Button-state reset runs before ANY early return (title/inactive used to skip
   -- the whole handler when not R.active, so a Create-click release never cleared state).
   if button == 1 then R.mouse.l = false; R._clickArmed = false end; if button == 3 then R.mouse.r = false end
+  if R.sandboxMode then
+    if R.sbBrush and R.sbBrush.active and button == 2 then R.sbBrush.active = false; return false end
+    R.sbCheckShape()   -- also catches clicking the shape button in TPT's own toolbar
+    if runHooks(R.hooks.sandboxMouseUp, x, y, button) then return false end
+    return   -- see onMouseDown: `return false` here cancelled every click in sandbox
+  end
   if R.titleScreen or not R.active then return false end
   if R.placeBox and button == 1 then commitBox(x, y) end
   if R.placeRect and button == 1 then commitRect(x, y) end
@@ -3448,6 +3531,29 @@ function R.wouldPlace()
 end
 local function onMouseMove(x, y, dx, dy)
   if R.titleScreen then titleMouseX, titleMouseY = x, y end
+  if R.sandboxMode then
+    local b = R.sbBrush
+    if b and b.active then
+      -- WARP THE SHAPE: width and height move INDEPENDENTLY, so one drag can turn a circle
+      -- into a wide ellipse or a square into a tall rectangle. Horizontal travel drives
+      -- brushx, vertical drives brushy (up = taller, matching a wheel-up growing the brush).
+      -- This works for whatever brush shape is selected -- circle, square or triangle -- since
+      -- TPT builds all of them from the same x/y radii.
+      -- Both are measured from the size the brush had when the drag STARTED, not accumulated
+      -- per event, so returning to where you began restores exactly what you began with.
+      -- 2px of travel per step felt closest to the wheel's own rate without being twitchy.
+      local w = b.baseX + math.floor((x - b.ax) / 2)
+      local h = b.baseY + math.floor((b.ay - y) / 2)
+      w = math.max(1, math.min(200, w))
+      h = math.max(1, math.min(200, h))
+      b.w, b.h = w, h
+      pcall(function() tpt.brushx = w; tpt.brushy = h end)
+      return false
+    end
+    R.mouse = R.mouse or {}; R.mouse.x, R.mouse.y = x, y
+    runHooks(R.hooks.sandboxMouseMove, x, y, dx, dy)
+    return
+  end
   if not R.active then return end
   pcall(R.pullNativeBrush, false)
   if R._brushTest then
@@ -3509,6 +3615,15 @@ local function onTextInput(text)
     if R.titleMultiplayerOpen and R.net and R.net.titleTextInput then pcall(R.net.titleTextInput, text) end
     return
   end
+  -- Sandbox needs real text input for the bug/suggestion box and the stamp submission form.
+  -- Checked before the `not R.active` guard below, because sandbox sets R.active = false and
+  -- would otherwise never receive a single character -- the same class of mistake that made
+  -- `return false` in the mouse handlers swallow every click when sandbox first shipped.
+  if R.sandboxMode then
+    if not text or text == "" then return end
+    runHooks(R.hooks.sandboxTextInput, text)
+    return
+  end
   if not R.active or not text or text == "" then return end
   if R.feedbackOpen then if #R.feedbackText < 400 then R.feedbackText = R.feedbackText .. text end
   elseif R.chatOpen then if #R.chatText < 120 then R.chatText = R.chatText .. text end end
@@ -3520,8 +3635,21 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
   -- with no route back to their save. Every other key falls straight through to stock
   -- Powder Toy, which is the entire point of the mode.
   if R.sandboxMode then
-    if key == 27 then R.exitSandbox(); return false end
-    return true
+    R.sbMod = R.sbMod or {}
+    R.sbMod.shift, R.sbMod.ctrl = shift, ctrl   -- tracked here because the mouse handlers get no modifier args
+    R.sbCheckShape()   -- TAB and the shape hotkeys come through here
+    -- Hooks get EVERY key first, including Esc. Previously Esc was intercepted here and went
+    -- straight to exitSandbox, so pressing Esc to back out of the submit form instead threw
+    -- you to the main menu -- and from there the only way back into sandbox cleared the
+    -- simulation, destroying whatever you were building. Panels must be allowed to consume
+    -- Esc first; only an Esc that nothing else wants leaves sandbox.
+    if not rep and runHooks(R.hooks.sandboxKey, key, keyName(key), shift, ctrl, alt) then return false end
+    if key == 1073741888 then R.sandboxWalk(true); return false end   -- F7: spawn and walk
+    if key == 27 then
+      if R.sbBrush and R.sbBrush.active then R.sbBrush.active = false; return false end
+      R.exitSandbox(); return false
+    end
+    return   -- nil = let every other key through to stock Powder Toy
   end
   if R.titleScreen then
     if key == 27 then
@@ -3590,6 +3718,10 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
     else R.setMenuOpen(not R.menuOpen) end
     return false
   end
+  -- F7 toggles back out of sandbox walk mode. Checked here because while walking R.sandboxMode
+  -- is false, so the sandbox key branch above is skipped entirely -- without this you could get
+  -- into walk mode but never back to building.
+  if R.sandboxWalking and key == 1073741888 then R.sandboxWalk(false); return false end
   if k == "m" then R.minimap = not R.minimap; return false end
   if k == "n" then R.enemies = not R.enemies; say(R.enemies and "Enemies ON" or "Enemies OFF"); return false end
   if k == "h" then R.hud = not R.hud; return false end
@@ -3637,7 +3769,12 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
   if k == "z" then R.zoomPending = not R.zoomPending; say(R.zoomPending and "Zoom: move to the spot, click to lock. Z again closes." or "Zoom closed"); return end
   return  -- anything else goes to TPT
 end
-local function onKeyUp(key, scan, rep, shift, ctrl, alt) if not R.active then return end
+local function onKeyUp(key, scan, rep, shift, ctrl, alt)
+  if R.sandboxMode then
+    R.sbMod = R.sbMod or {}; R.sbMod.shift, R.sbMod.ctrl = shift, ctrl
+    return
+  end
+  if not R.active then return end
   if SHIFTK[key] then R.shiftHeld = false; R.placeAnchor = nil; R.placeBox = false; R.placeRect = false; R.placeLine = false end
   if CTRLK[key] then R.ctrlHeld = false; R.placeAnchor = nil; R.placeBox = false; R.placeRect = false; R.placeLine = false end
   if ARROWK[key] then R.keys[ARROWK[key]] = false; return false end
@@ -4196,6 +4333,33 @@ end
 end -- UI/menu scope (hot-reload local cap)
 local function onDraw()
   if R.titleScreen then drawTitleScreen(); return end
+  -- SANDBOX BRUSH PREVIEW. He asked to "go back to the centre of where I was doing my shape"
+  -- after a middle-mouse resize. The cursor itself CANNOT be moved: tpt.mousex/mousey are
+  -- explicitly read-only (compat.lua:711-714, "property is read-only") and SDL_WarpMouse is
+  -- not present anywhere in src/. So instead of moving the cursor to the shape, this draws
+  -- the shape at the anchor: while the middle button is held, an outline of the NEW size is
+  -- drawn centred on the point where the drag began, with a live w x h readout. You size the
+  -- brush against the exact spot you intend to use it, and the cursor wandering off during
+  -- the drag stops mattering. Only runs while actively resizing, so it costs nothing
+  -- otherwise, and it is the only thing the RPG draws in sandbox mode.
+  if R.sandboxMode then
+    local b = R.sbBrush
+    if b and b.active and b.w and b.h then
+      local ax, ay, w, h = b.ax, b.ay, b.w, b.h
+      graphics.drawLine(ax - 5, ay, ax + 5, ay, 255, 220, 120, 200)   -- centre crosshair
+      graphics.drawLine(ax, ay - 5, ax, ay + 5, 255, 220, 120, 200)
+      if w == h then
+        graphics.drawCircle(ax, ay, w, h, 255, 220, 120, 190)
+      else
+        graphics.drawRect(ax - w, ay - h, w * 2, h * 2, 255, 220, 120, 150)
+        graphics.drawCircle(ax, ay, w, h, 255, 220, 120, 190)
+      end
+      graphics.drawText(ax + 8, ay - 16, w * 2 .. " x " .. h * 2, 255, 235, 170, 230)
+    end
+    runHooks(R.hooks.sandboxDraw)
+    runHooks(R.hooks.sandboxDrawHUD)
+    return
+  end
   if not R.active then return end
   local phase = ((R.frame or 0) % 14000) / 14000
   local night = phase < (R.dayFrac or 0.65) and 0 or math.max(0, math.sin(((phase - (R.dayFrac or 0.65)) / (1 - (R.dayFrac or 0.65))) * math.pi))
@@ -5490,11 +5654,43 @@ local function hotReloadCore()
 end
 local function onTick()
   if R.hotReloadRequested then R.hotReloadRequested = false; hotReloadCore(); return end
+  -- BOOT SELF-HEAL, other half of the negative-cache fix above. By this frame the registry
+  -- has drained its queue, so the elements this file gave up on at load time now genuinely
+  -- exist. Drop the cached misses and re-ask; if an element that was missing has appeared,
+  -- request exactly ONE core reload so every top-level constant (ROCK, GRASS, UORE, HASCU and
+  -- the rest) is re-evaluated with the real element table. This is the same hot-reload path
+  -- that already makes these constants correct on a development machine -- the only reason
+  -- the bug never showed up locally is that reloading masked it every single time.
+  -- Runs once per session, gated on a flag, and only fires the reload when something actually
+  -- changed, so a build with no custom elements pays nothing.
+  -- Own counter, NOT R.frame: R.frame is only incremented further down, AFTER
+  -- `if not R.active then return end`, so it stays nil on the title screen. Gating on it
+  -- meant the heal could not fire until a world was already running -- by which point
+  -- worldgen has already baked the wrong ROCK constant into the terrain it just generated.
+  -- This counter advances on every tick from the moment the game boots, so the reload lands
+  -- while the player is still looking at the menu.
+  R.bootTicks = (R.bootTicks or 0) + 1
+  if not R.bootHealDone and R.bootTicks > 120 then
+    R.bootHealDone = true
+    local before = { BSLT = has("BSLT"), GRSS = has("GRSS"), DU = has("DU"), CU = has("CU"), STEL = has("STEL") }
+    R.clearIdCache()
+    local changed = {}
+    for n, was in pairs(before) do if not was and has(n) then changed[#changed + 1] = n end end
+    if #changed > 0 then
+      -- PBX.log, not R.tlog: this must land in autorun-runtime.log, the one file that exists
+      -- on a plain downloaded copy with no telemetry plugin and no bridge. Diagnosing this
+      -- class of bug on a stranger's machine is otherwise impossible.
+      if PBX and PBX.log then PBX.log("boot", "late element registration (" .. table.concat(changed, ",") .. ") -- reloading core so element constants re-resolve") end
+      if R.tlog then R.tlog("warn", "boot", "late element registration -- reloading core", { elements = table.concat(changed, ",") }) end
+      R.hotReloadRequested = true
+      return
+    end
+  end
   -- Sandbox mode runs NOTHING of the RPG. onDraw already returns early on `not R.active`,
   -- but onTick has never had that guard -- without this, choosing "Sandbox" would still
   -- tick enemies, weather, hunger and world logic underneath a player who asked for plain
   -- Powder Toy. Placed after the hot-reload check so reloading still works from sandbox.
-  if R.sandboxMode then return end
+  if R.sandboxMode then runHooks(R.hooks.sandboxTick); return end
   -- GAS THROUGH LIQUIDS (2026-08-31): "all the oxygen and gases are getting caught on the trees
   -- and the liquids". Root cause is an engine rule, not our Lua: SimulationData.cpp's
   -- init_can_move sets can_move[moving][dest] = 0 (bounce) whenever the mover's Weight is <= the
@@ -5900,7 +6096,7 @@ drawTitleScreen = function()
   local buttons = {
     { TITLE_BTN.play, R.worldEverGenerated and "Resume" or "Play" },
     { TITLE_BTN.newworld, "New World" },
-    { TITLE_BTN.sandbox, "Sandbox (Classic)" },
+    { TITLE_BTN.sandbox, R.sandboxSuspended and "Resume Sandbox" or "Sandbox (Classic)" },
     { TITLE_BTN.settings, "Settings" },
     { TITLE_BTN.multiplayer, "Multiplayer" },
     { TITLE_BTN.quit, "Quit" },
@@ -5946,15 +6142,85 @@ end -- title screen
 -- so choosing "Sandbox" can never cost someone their RPG progress -- that would be an
 -- unrecoverable, one-click mistake, and the kind of thing a new player does by accident
 -- while exploring the menu.
+-- WALK MODE inside sandbox. He asked for this directly: "I still can't spawn my guy that I can
+-- walk around with, that I normally use in the RPG, and that's a serious problem so that we can
+-- test stuff." Building something and then being unable to walk through it makes sandbox useless
+-- for testing the thing you just built.
+-- This is a toggle, not a mode change: the canvas is never cleared in either direction, so you
+-- can build, walk through it, come back and keep building. Enemies are forced off (you asked to
+-- test, not to fight) and TPT's element menus stay visible so building keeps working.
+-- R.active drives the whole RPG tick/draw path, so enabling it is what actually gives you a
+-- controllable character with real physics; R.sandboxMode goes false while walking so onTick
+-- stops early-returning, and comes back on when you toggle out.
+function R.sandboxWalk(on)
+  if on == nil then on = not R.sandboxWalking end
+  if on then
+    if not R.P then return end
+    -- Spawn at the cursor when we know it, else mid-canvas. Never at surfaceAt(0): in a sandbox
+    -- there is no generated terrain, so that would drop him through an empty world forever.
+    local mx = (R.mouse and R.mouse.x) or 300
+    local my = (R.mouse and R.mouse.y) or 100
+    R.P.x, R.P.y = mx, my
+    R.P.vx, R.P.vy = 0, 0
+    R.sandboxWalking = true
+    R.sandboxMode = false      -- let the normal tick/draw path run so the player updates
+    R.active = true
+    R.enemies = false
+    pcall(R.setTptMenus, true) -- keep building available while walking
+    pcall(tpt.hud, 1)
+    say("Walk mode -- WASD/arrows to move, F7 to go back to building. Enemies off.")
+  else
+    R.sandboxWalking = false
+    R.active = false
+    R.sandboxMode = true
+    say("Build mode -- F7 to walk around again.")
+  end
+  return R.sandboxWalking and "walking" or "building"
+end
+_G.sandboxWalk = R.sandboxWalk
+
+-- Reset the brush to a clean, un-warped shape whenever the SHAPE ITSELF changes. He asked
+-- that "when I switch shapes, the rotation and all the warping go back to regular" -- a
+-- squashed ellipse carrying its aspect over onto a freshly-picked square is confusing, and
+-- there is no way to tell by looking that the new shape is still warped.
+-- Size is preserved (both axes snap to the LARGER of the two) rather than reset to a fixed
+-- default, so switching shape never silently shrinks a brush you just spent a drag sizing.
+-- MUST be called from an interface event: tpt.brushID/brushx/brushy are "restricted to
+-- interface events" (compat.lua:699), so this is invoked from the key and mouse handlers,
+-- never from onTick or onDraw, where it would simply error every frame.
+function R.sbCheckShape()
+  if not R.sandboxMode then return end
+  local ok, shape = pcall(function() return tpt.brushID end)
+  if not ok or type(shape) ~= "number" then return end
+  if R.sbLastShape == nil then R.sbLastShape = shape; return end
+  if shape == R.sbLastShape then return end
+  R.sbLastShape = shape
+  pcall(function()
+    local w, h = tpt.brushx, tpt.brushy
+    if type(w) == "number" and type(h) == "number" and w ~= h then
+      local s = math.max(w, h)
+      tpt.brushx = s; tpt.brushy = s
+      say("Brush reset to " .. (s * 2) .. " x " .. (s * 2))
+    end
+  end)
+end
+
 function R.enterSandbox()
-  if R.worldEverGenerated then pcall(R.save) end
+  -- RESUMING keeps your build. Leaving sandbox (Esc) suspends it rather than discarding it,
+  -- so coming back in must NOT clear the canvas -- otherwise stepping out to the menu for ten
+  -- seconds silently destroys everything you made, with no warning and no undo.
+  local resuming = R.sandboxSuspended
+  if R.worldEverGenerated and not resuming then pcall(R.save) end
   R.titleScreen = false; R.titleCreateOpen = false; R.titleSettingsOpen = false
   R.sandboxMode = true
+  R.sandboxSuspended = false
   pcall(R.stop)                 -- restores TPT menus, native HUD, speed, element colours
-  pcall(sim.clearSim)           -- a blank canvas, the way stock Powder Toy opens
+  if not resuming then
+    pcall(sim.clearSim)         -- a blank canvas, the way stock Powder Toy opens
+  end
   pcall(sim.paused, false)
   if R.releaseMouse then R.releaseMouse() end
-  say("Sandbox mode -- plain Powder Toy. Press Esc for the RPG menu.")
+  say("Sandbox mode -- plain Powder Toy. Esc = RPG menu | Y = submit a stamp | F8 = bug/suggestion | F6 = dev toolkit (probe, pause/step, world sampler)")
   return "sandbox"
 end
 
@@ -5964,6 +6230,7 @@ end
 function R.exitSandbox()
   if not R.sandboxMode then return end
   R.sandboxMode = false
+  R.sandboxSuspended = true   -- there is a build to come back to; do not clear it on re-entry
   R.active = false
   R.titleScreen = true
   pcall(R.setTptMenus, false)
@@ -6307,7 +6574,7 @@ R.hooks.mount = R.hooks.mount or {}
 -- elements a real acquisition pathway, per design-material-progression{,-part2}.md. Ordered
 -- fluids -> solids -> energy -> special -> forage -> machines so that the machines lane,
 -- which consumes tokens the others define, loads last.
-R.PLUGINS = { "telemetry", "icons", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special", "acq_forage", "acq_machines", "nat_process" }
+R.PLUGINS = { "telemetry", "icons", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special", "acq_forage", "acq_machines", "nat_process", "sandbox" }
 R.pluginStatus = {}
 -- Critical distribution bug: this only ever checked the original dev
 -- machine's absolute path. On any other machine (a packaged copy, a

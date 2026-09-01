@@ -5,6 +5,30 @@
 -- eight built-ins (conductor, creature, decayer, emitter, glower, grower, inert,
 -- pheromone).
 --
+-- REDUNDANT-BUT-HARMLESS as of 2026-09-01 (@behaviors): 20_behaviors.lua now
+-- implements these same seven kinds natively (ported from the same source
+-- these three scripts/lua/*_kinds.lua files came from -- content verified
+-- byte-identical against a captured copy at knowledge/_newplayer_audit/
+-- extracted_v3/scripts/lua/{chem,material,power}_kinds.lua). Root cause this
+-- module could not fix by itself: it depends on files OUTSIDE bridge_src/
+-- (scripts/lua/) being present at a guessed relative path at runtime, and on
+-- some human/agent remembering to re-run build_autorun.py so a build
+-- containing this loader actually reaches the deployed autorun.lua -- it did
+-- not, on the copy this was verified against tonight (D:/The-Powder-Toy/
+-- build/autorun.lua had no "21_extra_kinds" marker at all until this same
+-- pass regenerated it), which is why the 16 elements using these kinds were
+-- still dropping on a fresh install despite this file existing in source.
+-- Kept rather than deleted: if scripts/lua/*_kinds.lua is ever edited
+-- directly (e.g. by a future materials-tooling change) without the
+-- equivalent edit landing in 20_behaviors.lua, this loader's registrations
+-- simply overwrite 20_behaviors.lua's (last loaded wins, both assign into
+-- the same PBX.state.behaviors.kinds table, plain assignment, no
+-- registration guard) -- defense in depth, not the primary path anymore.
+-- 20_behaviors.lua is now the authoritative, self-contained implementation:
+-- it ships inside bridge_src/ itself and needs no external file to exist on
+-- disk at runtime, which is the fragility this loader's own file-search-path
+-- design (SEARCH_PATHS below) could not remove.
+--
 -- WHY THIS EXISTS (2026-09-0x, @multiplayer): those three files were only ever
 -- executed by a human running `python scripts/define_materials.py` against a
 -- LIVE, already-running process (its own register_kinds() does the equivalent

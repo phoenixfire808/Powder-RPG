@@ -1884,6 +1884,111 @@ hook(R.hooks.mouseup, function(x, y, button)
   return
 end)
 
+-- ================================================================ SANDBOX MODE (R.sandboxMode): submission only
+-- rpg.lua stops running the normal RPG entirely while R.sandboxMode is set -- onKeyDown/
+-- onMouseDown/onMouseUp/onMouseMove/onTextInput/onDraw/onTick all return before ever reaching
+-- runHooks(R.hooks.key/mousedown/mouseup/mousemove/draw/drawHUD/tick), see rpg.lua's own
+-- SANDBOX FIX comments. PhoenixFire808's own follow-up ask: "I still want the option to submit
+-- stamps and suggestions... kind of the same stuff" in sandbox. This re-dispatches the SAME
+-- submission functions above (submitBeginSelect/submitFinishDrag/submitGoStampless/submitSend/
+-- handleSubmitPanelClick/drawSubmitPanel/drawSubmitDragBox/drawSubmitHint/
+-- drawSubmitConfirmBanner/drawSubmitHistoryPanel/refreshSubmitHistoryStatuses -- no logic
+-- duplicated, only new glue) through a SEPARATE, narrow set of hook lists that rpg.lua only runs
+-- while R.sandboxMode is true: R.hooks.sandboxKey/sandboxMouseDown/sandboxMouseUp/sandboxDraw/
+-- sandboxDrawHUD (patch requested from @survival, posted to knowledge/rpg-hub.md -- rpg.lua is
+-- not this lane's file). Deliberately NOT the full R.hooks.key/mousedown closures above -- those
+-- also open the bag/quest/controls panels and the hotbar/native-brush click-to-place logic,
+-- exactly the "rest of the RPG" sandbox must not drag back in.
+--
+-- Discoverability button/history button live at their OWN sandbox-only screen position (top
+-- right corner) rather than reusing submitBtnRect/submitHistBtnRect, which are anchored to the
+-- RPG's own bottom hotbar tray -- that position sits inside stock Powder Toy's own bottom menu
+-- strip (visible in sandbox, R.tptMenus stays on), so drawing there would cover native UI.
+--
+-- REGRESSION GUARD, found live in a lab instance: until rpg.lua's own patch lands,
+-- R.hooks.sandboxKey/sandboxMouseDown/sandboxMouseUp/sandboxDraw/sandboxDrawHUD do not exist
+-- yet, and hook() (see the top of this file) does `#list`, which THROWS on nil -- an error
+-- here aborts the REST of this file's load (every hook registration below this point, tick/
+-- mine/craft/draw/drawHUD, never runs). ui.lua reloads on every single boot (R.PLUGINS), so
+-- this would have broken the floater/vignette/compass/submit-nudge hooks for EVERY player,
+-- not just in sandbox, for as long as the rpg.lua patch is outstanding. Lazily create the
+-- lists first, same fix as sandbox.lua already has -- once the real patch lands this is a
+-- harmless no-op (the tables already exist by then).
+for _, hn in ipairs({ "sandboxKey", "sandboxTextInput", "sandboxMouseDown", "sandboxMouseUp", "sandboxMouseMove", "sandboxDraw", "sandboxDrawHUD", "sandboxTick" }) do
+  R.hooks[hn] = R.hooks[hn] or {}
+end
+local function sandboxSubmitBtnRect() return R.W - 74, 4, 68, 14 end
+local function sandboxSubmitHistBtnRect() return R.W - 74, 20, 68, 11 end
+hook(R.hooks.sandboxKey, function(key, k, shift, ctrl, alt)
+  if U.submitMode == "form" and U.submitContextFocused then
+    if k == "escape" or k == "13" or k == "10" then U.submitContextFocused = false; return true end
+    if k == "8" then U.submitContext = U.submitContext:sub(1, -2); return true end
+    if k == "space" then U.submitContext = U.submitContext .. " "; return true end
+    if type(k) == "string" and #k == 1 and (k:match("%a") or k:match("%d")) and #U.submitContext < 500 then U.submitContext = U.submitContext .. k; return true end
+    return true
+  end
+  if U.submitMode == "selecting" then
+    if k == "escape" then submitReset(); R.say("Submission cancelled"); return true end
+    if k == "13" or k == "10" then submitGoStampless(); return true end
+    return true
+  end
+  if U.submitMode == "form" then
+    if k == "escape" then submitReset(); R.say("Submission cancelled"); return true end
+    return true
+  end
+  if U.submitHistoryOpen then
+    if k == "escape" then U.submitHistoryOpen = false end
+    return true
+  end
+  if k == "y" then submitBeginSelect("y-key-sandbox"); return true end
+  return
+end)
+hook(R.hooks.sandboxMouseDown, function(x, y, button)
+  if U.submitMode == "selecting" then
+    U.submitDragging = true; U.submitDragStart = { x = x, y = y }; return true
+  end
+  if U.submitMode == "form" then handleSubmitPanelClick(x, y); return true end
+  if U.submitHistoryOpen then
+    if not (x >= HISTX and x < HISTX + HISTW and y >= HISTY and y < HISTY + HISTH) then U.submitHistoryOpen = false end
+    return true
+  end
+  local bx, by, bw, bh = sandboxSubmitBtnRect()
+  if x >= bx and x < bx + bw and y >= by and y < by + bh then submitBeginSelect("hud-button-sandbox"); return true end
+  if #U.submitHistory > 0 then
+    local hx, hy, hw, hh = sandboxSubmitHistBtnRect()
+    if x >= hx and x < hx + hw and y >= hy and y < hy + hh then U.submitHistoryOpen = true; refreshSubmitHistoryStatuses(); return true end
+  end
+  return
+end)
+hook(R.hooks.sandboxMouseUp, function(x, y, button)
+  if U.submitMode == "selecting" and U.submitDragging then
+    U.submitDragging = false
+    local start = U.submitDragStart
+    submitFinishDrag(start and start.x or x, start and start.y or y, x, y)
+    return true
+  end
+  if U.submitMode == "form" then return true end
+  return
+end)
+hook(R.hooks.sandboxDraw, function() drawSubmitDragBox() end)
+hook(R.hooks.sandboxDrawHUD, function()
+  drawSubmitHint()
+  drawSubmitConfirmBanner()
+  if U.submitMode == "form" then drawSubmitPanel()
+  elseif U.submitHistoryOpen then drawSubmitHistoryPanel()
+  else
+    local bx, by, bw, bh = sandboxSubmitBtnRect()
+    local hov = R.mouse.x >= bx and R.mouse.x < bx + bw and R.mouse.y >= by and R.mouse.y < by + bh
+    graphics.fillRect(bx, by, bw, bh, hov and 40 or 20, hov and 38 or 18, hov and 20 or 14, 220)
+    graphics.drawRect(bx, by, bw, bh, hov and 255 or 200, hov and 220 or 170, hov and 80 or 60, 255)
+    graphics.drawText(bx + 6, by + 3, "Y: submit", hov and 255 or 200, hov and 230 or 200, hov and 120 or 120, 255)
+    if #U.submitHistory > 0 then
+      local hx, hy = sandboxSubmitHistBtnRect()
+      graphics.drawText(hx + 2, hy, submitHistLabel(), 190, 200, 215, 220)
+    end
+  end
+end)
+
 hook(R.hooks.tick, function()
   R.uiPanelOpen = U.bagOpen or U.questOpen or U.controlsOpen or (U.submitMode ~= nil) or U.submitHistoryOpen or false
   if U.bagOpen or U.questOpen or U.controlsOpen or U.submitMode == "form" or U.submitHistoryOpen then R.mouse.l = false; R.mouse.r = false end

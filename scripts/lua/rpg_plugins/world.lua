@@ -66,7 +66,7 @@ local HASBMTL = has("BMTL")
 -- (grepped world.lua/rpg.lua, zero hits; both are on knowledge/_wave/unobtainable-stock-
 -- elements.txt despite design-material-progression.md §4 chain 2 claiming FRZZ was "already
 -- placed by worldgen per the index" -- that claim does NOT hold against a real grep, exactly
--- the kind of unverified claim DEVELOPMENT.md's INDEX.md discipline warns about; corrected here by
+-- the kind of unverified claim CLAUDE.md's INDEX.md discipline warns about; corrected here by
 -- placing both for real rather than propagating it). RIME verified TYPE_SOLID/falldown=0 (SAFE)
 -- via POWDER_TOY_MATERIAL_INDEX.json; FRZZ is TYPE_PART/falldown=1 (same class as CLST/SALT --
 -- placed as a vein-shaped pocket, never bulk fill, same reasoning as the HASMERC block above).
@@ -728,11 +728,23 @@ local function waterfallAt(wx, wy, d)   -- a vertical crack of falling water fro
   for cc = cf-1, cf+1 do local f = fallAt(cc); if f and d >= f.topD and d <= f.topD + f.h and abs(wx - f.x) <= 1 then return true end end
   return false
 end
+-- @perf 2026-09-02: cheeseOpenAt runs UNCONDITIONALLY for almost every underground pixel below
+-- d=80 (it is the last link in caveAt's wopen/gopen/fopen/copen OR-chain, so it only gets
+-- short-circuited away on the minority of pixels already inside a worm/gallery/waterfall --
+-- confirmed by re-reading caveAt's own call site below), which made its 2-tap fBm (8 sin() calls
+-- via vnoise's 4-hash3-per-tap cost) the single most-repeated expensive check in the whole
+-- per-pixel cascade. Rewritten as an EXACT short-circuit, not an approximation: since
+-- cavern = 0.60*n1 + 0.40*n2 with both taps in [0,1], once n1 alone is known, the maximum
+-- possible total (n2=1) or minimum possible total (n2=0) can already decide the comparison
+-- for a real fraction of cells without ever touching n2 -- same boolean result for every input,
+-- for free, on whichever cells that first tap alone already settles.
 local function cheeseOpenAt(wx, wy, d)
   if d < 20 * SOIL_DEPTH_MUL then return false end
-  -- 2-tap fBm (worm tunnels already fixed the "slitty" look, so this stays cheap: no domain warp needed here)
-  local cavern = 0.60*vnoise(wx/110, wy/65, 611) + 0.40*vnoise(wx/38, wy/26, 612)
-  return cavern > (0.70 - min(0.08, d/9000))
+  local thresh = 0.70 - min(0.08, d/9000)
+  local n1 = vnoise(wx/110, wy/65, 611)
+  if 0.60*n1 + 0.40 <= thresh then return false end   -- n2 maxed at 1 still can't clear thresh
+  if 0.60*n1 > thresh then return true end             -- n1 alone already clears thresh
+  return 0.60*n1 + 0.40*vnoise(wx/38, wy/26, 612) > thresh
 end
 local LAKE_SP = 460
 local lakeCache = {}
@@ -777,11 +789,24 @@ local function swampGasZoneAt(wx, wy) return vnoise(wx/140, wy/90, 1230) > 0.82 
 --                up with the visible rock banding instead of cutting across it
 --   porosity  -- saturated rock is not a solid sheet of water; this is what makes it read as
 --                wet rock, and bounds how much any single breach can release
+-- @perf 2026-09-02: `(vnoise1(wx/85,810)-0.5)*8` is the same per-column "strata wobble" tap
+-- strataAt() computes below, and both functions can run for the SAME wx within a single
+-- rockAt() call (aquiferAt is checked right before strataAt on the no-ore fallthrough path) --
+-- caching it per-column (identical convention to blendCache above it) means the second caller
+-- pays a table lookup instead of a repeat vnoise1 tap (2 hash3/sin calls). Pure function of
+-- (wx, R.seed), so caching it is always safe, and it is cleared on newworld with every other
+-- per-column cache in this file's own hook(R.hooks.newworld, ...) below.
+local strataWaveCache = {}
+local function strataWaveAt(wx)
+  local w = strataWaveCache[wx]
+  if w == nil then w = (vnoise1(wx / 85, 810) - 0.5) * 8; strataWaveCache[wx] = w end
+  return w
+end
 local AQ_TOP, AQ_BOT = 80, 760
 local function aquiferAt(wx, wy, d)
   if d < AQ_TOP or d > AQ_BOT then return false end
   if vnoise1(wx / 380, 1310) < 0.42 then return false end
-  local wave = (vnoise1(wx / 85, 810) - 0.5) * 8   -- identical to strataAt's wobble, on purpose
+  local wave = strataWaveAt(wx)   -- identical to strataAt's wobble, on purpose
   local band = floor((d - wave) / 15)
   -- Measured 2026-08-31: at 0.80/0.42 these gates put WATR at 14.05% of all sampled
   -- underground cells -- far too much standing water. Tightened to ~12% of bands and ~45%
@@ -943,7 +968,7 @@ end
 
 -- ================================================================ solid rock: depth-band strata, then ore/crystal veins
 local function strataAt(wx, wy, d, icy, cold)
-  local wave = (vnoise1(wx/85, 810) - 0.5) * 8      -- slow per-column wobble: bands aren't perfectly flat
+  local wave = strataWaveAt(wx)      -- slow per-column wobble: bands aren't perfectly flat (cached, see strataWaveAt above)
   local band = floor((d - wave) / 15)
   if icy then
     if has("QRTZ") and hash3(band, 816, 4) > 0.95 then return "QRTZ" end
@@ -998,9 +1023,24 @@ local function strataAt(wx, wy, d, icy, cold)
   -- the game. The earlier depth-ramp fixed concrete being UNIFORM but left it DOMINANT.
   -- Now 3% shallow -> 15% deep: concrete reads as a deep-rock accent, not the ground itself.
   local cncrShare = 0.03 + 0.12 * min(1, max(0, (d - 60 * SOIL_DEPTH_MUL) / (360 * SOIL_DEPTH_MUL)))
-  local brckAccent = 0.08   -- thin sedimentary banding, everywhere (not just desert) -- a second real material, not a monoculture
-  if pick < brckAccent and has("BRCK") then return "BRCK" end
-  if pick < brckAccent + cncrShare then return ROCK2 end
+  -- BRICK REMOVED FROM NATURAL STRATA 2026-09-02, same reasoning as concrete an hour
+  -- earlier. PhoenixFire808: "brick doesn't seem like it should be a material found out in
+  -- the world -- the game needs to be realistic." Correct: brick is FIRED CLAY, a kiln
+  -- product. It was 8% of every non-desert stone pixel at every depth, and the comment here
+  -- justified it as "thin sedimentary banding", which is not a thing bricks do. Brick now
+  -- comes from exactly two places, both honest: ruin walls (man-made structures, see
+  -- ruinHere) and the furnace, where clay is fired into it. Set to 0 rather than deleting
+  -- the term so the two cumulative comparisons below keep their existing shape.
+  local brckAccent = 0.00
+  -- CONCRETE REMOVED FROM NATURAL STRATA 2026-09-02. PhoenixFire808: "concrete isn't a real
+  -- mineable material -- that seems like something we MAKE, or something found around natural
+  -- monuments." He is right and this was a design error, not a tuning one: concrete is a
+  -- manufactured composite and has no business being a rock layer you dig through. Earlier
+  -- today it was 40% of deep stone, then 15% after a rebalance -- both wrong for the same
+  -- reason. It now generates ONLY in ruins (man-made, see ruinHere) and is craftable.
+  -- cncrShare is retained and folded into ordinary rock so the depth ramp still shifts the
+  -- BSLT/ROCK mix with depth, which is what actually made deep stone read differently.
+  if pick < brckAccent + cncrShare then return "ROCK" end
   -- Stock ROCK ("Solid, melts into various elements") vs. this file's own local `ROCK` alias
   -- (BSLT/BRCK, used as the default return just below) is a real naming collision the design
   -- doc flags and never resolves (§0: "the stock ROCK element sits unused"). Verified live,
@@ -1344,6 +1384,13 @@ local function ruinHere(wx, wy, d)
       local onWall = (wx == rr.x0 or wx == rr.x1 or d == rr.d0 or d == rr.d1)
       if onWall then
         if vnoise(wx/2.3, wy/2.3, 1060) > 0.80 then return nil end   -- eroded gap: read as a ruin, not a pristine box
+        -- Ruin walls are brick by default, but ~35% of ruins are CONCRETE instead -- rolled
+        -- once per ruin on its own x0 (not per pixel), so a structure is uniformly one
+        -- material rather than speckled. This is where concrete belongs: a man-made thing in
+        -- a man-made place. It is the only worldgen source of CNCR now that it has been
+        -- removed from natural rock, which makes finding a concrete ruin genuinely worth
+        -- something instead of concrete being the commonest stone underground.
+        if has("CNCR") and hash3(rr.x0, 1071, 2) < 0.35 then return "CNCR" end
         return has("BRCK") and "BRCK" or ROCK
       end
       local scrap = ruinScrapAt(rr, wx, d); if scrap then return scrap end
@@ -2286,4 +2333,5 @@ hook(R.hooks.newworld, function()
   wormCache, fallCache, lakeCache, galCache = {}, {}, {}, {}
   mshaftCache, ruinCache, sCache = {}, {}, {}
   strataTintCache = {}
+  strataWaveCache = {}
 end)

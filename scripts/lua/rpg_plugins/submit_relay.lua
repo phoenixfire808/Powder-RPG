@@ -1,3 +1,19 @@
+-- SUPERSEDED (2026-09-0x): @submission landed a complete, BETTER fix for the exact gap this
+-- file was written to close -- submitSend() (ui.lua) now dispatches INLINE at the moment of
+-- submission (R.submitStampToDiscord if a webhook is configured, else R.buildGithubIssueURL +
+-- R.openBrowserURL, a credential-free path that needs no webhook at all) and shows the player
+-- an honest sent/opened_browser/delivery_failed status immediately -- strictly better UX than
+-- this file's delayed background poll. **DO NOT add "submit_relay" to R.PLUGINS.** Every
+-- manifest line is now already handled inline by submitSend() itself, so this file's own
+-- dispatch would be a genuine DUPLICATE SEND (a second Discord post / a second GitHub-issue
+-- browser tab for the same submission), not a harmless no-op. Left in the repo only as a record
+-- of the investigation (see knowledge/rpg-hub.md, 2026-09-0x @multiplayer and @submission
+-- entries, for the full account of how two lanes independently converged on the same gap and
+-- how the collision was caught before this file was ever registered/loaded). rpg.lua's
+-- R.PLUGINS list has no "submit_relay" entry and none should be added.
+--
+-- Original header follows, describing the file as designed before the collision was found:
+--
 -- submit_relay.lua - closes the "Y to submit" -> off-disk wiring gap (2026-09-02, @multiplayer).
 --
 -- ui.lua's Y-key submission flow (submitSend()) already builds a full manifest record and

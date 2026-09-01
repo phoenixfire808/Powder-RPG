@@ -1,5 +1,19 @@
-"""Assemble D:/The-Powder-Toy/build/autorun.lua from the base bridge plus the
+"""Assemble <this tree's root>/build/autorun.lua from the base bridge plus the
 extension modules in bridge_src/.
+
+IMPORTANT -- this deploys ONLY within the tree this copy of the script lives
+in (DEPLOY_TARGETS is built from ROOT = this file's own parent directory).
+There are two independent copies of this script, one at D:/powder-toy/ and
+one at D:/The-Powder-Toy/, because there are two independent trees with their
+own bridge_src/ and build/. Running this script in one tree NEVER touches the
+other. D:/The-Powder-Toy is the tree the live game actually loads from and
+the only one that is published -- a fix made in bridge_src/ is not live, and
+is not shipped, until this script has been run AND its output hand-verified
+in BOTH trees. That two-copies-must-both-run fact, undocumented until now,
+is exactly what let a source-level fix (PBX.MAX_CUSTOM_ELEMENTS 40->160) ship
+to the public with the old value still baked into the deployed autorun.lua:
+the source was fixed in both trees, but only one tree's autorun.lua was ever
+regenerated. `--verify` (below) is the check that would have caught it.
 
 Why concatenation instead of require/dofile: TPT's Lua sandbox does not
 guarantee module loading from the build directory, so the shipped autorun is a
@@ -15,6 +29,9 @@ Usage:
     python build_autorun.py            # build, verify, deploy
     python build_autorun.py --dry-run  # build and report, write nothing
     python build_autorun.py --restore  # put the pristine base back
+    python build_autorun.py --verify   # report staleness/drift, write nothing,
+                                        # exit nonzero if the deployed autorun.lua
+                                        # does not reflect current bridge_src/
 """
 
 import argparse
@@ -177,17 +194,15 @@ def structural_check(name, src):
     verified, err = lua51_compile(name, src)
     if verified:
         return [err] if err else [], True
-    if re.search(r"(^|\s)goto(\s|$)", src):
-        problems.append("uses 'goto' (Lua 5.2+, unsupported)")
-    if re.search(r"[^/]//[^/]", src):
-        problems.append("uses '//' (integer division, Lua 5.3+)")
-    if "::" in src and re.search(r"::\w+::", src):
-        problems.append("uses label syntax (Lua 5.2+)")
-
-    # Strip strings and comments before counting keywords, otherwise the word
-    # "end" inside a message is counted as a block terminator. This has to be
-    # a single left-to-right pass: stripping double-quoted strings first would
-    # let a '"' inside a single-quoted string swallow real code.
+    # Strip strings and comments before ANY syntax check, not just the keyword
+    # count below. A string literal legitimately containing "::" (e.g. a
+    # `reactive` rule spec like "...GAS::pgas=8..." in 07_materials_seed.lua)
+    # or a comment merely naming a banned construct (10_registry.lua's own
+    # "no goto, no `//`, no bitwise operators" reminder) is not a USE of
+    # either -- checking the raw source here previously produced false
+    # positives on both files that blocked a real deploy. Single
+    # left-to-right pass: stripping double-quoted strings first would let a
+    # quote inside a single-quoted string swallow real code.
     stripped = re.sub(
         r"--\[(=*)\[.*?\]\1\]"          # long comment
         r"|--[^\n]*"                    # line comment
@@ -197,6 +212,16 @@ def structural_check(name, src):
         " ", src, flags=re.S,
     )
 
+    if re.search(r"(^|\s)goto(\s|$)", stripped):
+        problems.append("uses 'goto' (Lua 5.2+, unsupported)")
+    if re.search(r"[^/]//[^/]", stripped):
+        problems.append("uses '//' (integer division, Lua 5.3+)")
+    if "::" in stripped and re.search(r"::\w+::", stripped):
+        problems.append("uses label syntax (Lua 5.2+)")
+
+    # Re-use the same comment/string-stripped text for the keyword-balance
+    # count below, for the identical reason: the word "end" inside a message
+    # must not be counted as a block terminator.
     # 'for'/'while' are always followed by their own 'do', and 'elseif' does
     # not match \bif\b, so these three openers pair one-to-one with 'end'.
     opens = len(re.findall(r"\b(function|do|if)\b", stripped))
@@ -207,7 +232,81 @@ def structural_check(name, src):
     return problems, False
 
 
+MAX_CUSTOM_ELEMENTS_RE = re.compile(r"PBX\.MAX_CUSTOM_ELEMENTS\s*=\s*(\d+)")
+
+
+def _extract_max_custom_elements(text):
+    m = MAX_CUSTOM_ELEMENTS_RE.search(text)
+    return int(m.group(1)) if m else None
+
+
+def verify_deployed():
+    """Report whether the currently-DEPLOYED autorun.lua (before any rebuild)
+    actually reflects the current bridge_src/ source, in this tree only.
+
+    This is the check that would have caught tonight's incident: source can be
+    fixed (bridge_src/00_util.lua raised 40->160) while the deployed artifact
+    silently keeps shipping the old number, because nobody re-ran this script
+    after the source change. Two things are checked, both generic rather than
+    hardcoded to the one constant that actually bit us:
+
+      1. Every module file present in bridge_src/ has a matching
+         "-- ==== bridge_src/<name> ====" marker in the deployed output. A
+         module added to source (like bridge_src/21_extra_kinds.lua was) but
+         never folded into a rebuild is otherwise invisible: the game boots,
+         logs nothing about it, and simply behaves as if the module does not
+         exist.
+      2. PBX.MAX_CUSTOM_ELEMENTS in bridge_src/00_util.lua matches the value
+         actually embedded in the deployed file -- named explicitly because
+         it is the one that shipped wrong, and a single-line regex check costs
+         nothing to keep even though check #1 would also have caught the
+         missing-module half of that same incident (21_extra_kinds.lua).
+
+    Returns a list of problem strings; empty means the deployed file matches
+    source. Never writes anything.
+    """
+    problems = []
+    target = Path(DEPLOY_TARGETS[0])
+    if not target.is_file():
+        return ["%s does not exist -- never deployed" % target]
+    deployed = read(target)
+
+    names = module_files()
+    missing = [n for n in names if ("bridge_src/%s" % n) not in deployed]
+    if missing:
+        problems.append(
+            "deployed %s is missing %d bridge_src module(s) present on disk: %s "
+            "(source was added/changed but this script was never re-run since)"
+            % (target, len(missing), ", ".join(missing))
+        )
+
+    util_path = SRC_DIR / "00_util.lua"
+    if util_path.is_file():
+        src_cap = _extract_max_custom_elements(read(util_path))
+        deployed_cap = _extract_max_custom_elements(deployed)
+        if src_cap is not None and deployed_cap is not None and src_cap != deployed_cap:
+            problems.append(
+                "PBX.MAX_CUSTOM_ELEMENTS is %s in bridge_src/00_util.lua but %s in "
+                "the deployed %s -- deployed artifact is stale"
+                % (src_cap, deployed_cap, target)
+            )
+
+    return problems
+
+
+def report_verify(label, problems):
+    if not problems:
+        print("%s: deployed autorun.lua matches current bridge_src/ -- no staleness detected" % label)
+        return
+    print("\n%s: DEPLOYED AUTORUN.LUA IS STALE" % label)
+    for p in problems:
+        print("  - %s" % p)
+
+
 def build(dry_run=False):
+    pre_problems = verify_deployed()
+    report_verify("pre-build check", pre_problems)
+
     base, snapped = ensure_base_snapshot()
     if snapped:
         print("snapshotted pristine base -> %s" % BASE_SNAPSHOT)
@@ -294,7 +393,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--restore", action="store_true")
+    ap.add_argument("--verify", action="store_true",
+                     help="report staleness of the deployed autorun.lua vs bridge_src/ and exit; write nothing")
     args = ap.parse_args()
+    if args.verify:
+        problems = verify_deployed()
+        report_verify(str(Path(DEPLOY_TARGETS[0])), problems)
+        return 1 if problems else 0
     if args.restore:
         restore()
         return 0

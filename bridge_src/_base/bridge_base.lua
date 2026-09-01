@@ -71,6 +71,24 @@ end
 
 _G.POWDER_BRIDGE_PENDING_STEPS = 0
 _G.POWDER_BRIDGE_COMPLETED_STEPS = 0
+
+-- Diagnosed 2026-09-01: LuaSocketNet.cpp's net.listen accept/serve loop
+-- (Process(), called from CommandInterface::OnTick() BEFORE HandleEvent(TickEvent{}))
+-- invokes this file's handleRequest via a raw lua_pcall with no eventTraits set,
+-- so lsi->eventTraits == eventTraitNone for the whole HTTP request. Any C++ Lua
+-- binding that unconditionally calls AssertInterfaceEvent() -- the entire `ren.*`
+-- module (LuaRenderer.cpp), tpt.set_pause()/sim.paused (both get AND set --
+-- LuaSimulation.cpp:138), tpt.screenshot, sim.saveStamp/loadStamp/deleteStamp/
+-- listStamps, event.register/unregister, socket/http client calls -- throws
+-- "this functionality is restricted to interface events" no matter what the
+-- request does. TickEvent{} traits ARE eventTraitInterface (GameControllerEvents.h),
+-- so a call deferred into this onTick handler is legal -- exactly the existing
+-- sim.frameRender precedent below. Generalised into a request/poll queue so any
+-- bridge action can defer a privileged call instead of throwing.
+_G.POWDER_BRIDGE_IFACE_NEXT_ID = 0
+_G.POWDER_BRIDGE_IFACE_QUEUE = {}   -- FIFO list of {id=N, fn=<loaded function>}
+_G.POWDER_BRIDGE_IFACE_RESULTS = {} -- id -> {ok=bool, result=<string tostring'd>}
+
 local function onTick()
     local pending = _G.POWDER_BRIDGE_PENDING_STEPS or 0
     if pending > 0 and sim and sim.step then
@@ -88,6 +106,17 @@ local function onTick()
             _G.POWDER_BRIDGE_PENDING_STEPS = (_G.POWDER_BRIDGE_PENDING_STEPS or 0) + batch
             log("STEP_ERR " .. tostring(err))
         end
+    end
+
+    -- Run queued interface-only calls now that eventTraits includes
+    -- eventTraitInterface. Capped per tick so one client can't starve the frame.
+    local queue = _G.POWDER_BRIDGE_IFACE_QUEUE
+    local ran = 0
+    while #queue > 0 and ran < 4 do
+        local job = table.remove(queue, 1)
+        local jok2, jresult = pcall(job.fn)
+        _G.POWDER_BRIDGE_IFACE_RESULTS[job.id] = { ok = jok2, result = jresult }
+        ran = ran + 1
     end
 end
 if event and event.register and event.TICK then
@@ -951,6 +980,37 @@ local function handleRequest(body)
             local rok, rval = pcall(fn)
             if not rok then return jerr("runtime", ',"detail":' .. jesc(rval)) end
             return jok("executeLua", ',"result":' .. jesc(rval))
+
+        -- Two-step counterpart to executeLua for code that needs a real
+        -- interface-event context (ren.*, tpt.screenshot, sim.paused, ...;
+        -- see the comment above onTick()). runInterfaceLua queues the code to
+        -- run on the next tick's TickEvent dispatch and returns immediately;
+        -- pollInterfaceLua fetches the result once onTick has run it. A
+        -- client calls queue then polls (0.05-0.1s intervals; one game tick
+        -- is normally enough) -- the same pattern rpg_reload already uses for
+        -- R.hotReloadRequested.
+        elseif action == "runInterfaceLua" then
+            local code = req.code or req.lua
+            if not code then return jerr("missing code") end
+            local fn, err = loadstring(code)
+            if not fn then return jerr("load error", ',"detail":' .. jesc(err)) end
+            _G.POWDER_BRIDGE_IFACE_NEXT_ID = (_G.POWDER_BRIDGE_IFACE_NEXT_ID or 0) + 1
+            local id = _G.POWDER_BRIDGE_IFACE_NEXT_ID
+            table.insert(_G.POWDER_BRIDGE_IFACE_QUEUE, { id = id, fn = fn })
+            return jok("runInterfaceLua", ',"id":' .. jnum(id) .. ',"queued":true')
+
+        elseif action == "pollInterfaceLua" then
+            local id = tonumber(req.id)
+            if not id then return jerr("missing id") end
+            local entry = _G.POWDER_BRIDGE_IFACE_RESULTS[id]
+            if not entry then
+                return jok("pollInterfaceLua", ',"done":false')
+            end
+            _G.POWDER_BRIDGE_IFACE_RESULTS[id] = nil
+            if not entry.ok then
+                return jerr("runtime", ',"id":' .. jnum(id) .. ',"detail":' .. jesc(entry.result))
+            end
+            return jok("pollInterfaceLua", ',"done":true,"result":' .. jesc(entry.result))
         else
             return jerr("unknown action", ',"action":' .. jesc(action))
         end
@@ -966,11 +1026,25 @@ end
 -- (scripts/lab_instance.py) can run its own bridge without colliding with the
 -- default session; unset/invalid falls back to the historical default.
 local serverPort = tonumber(os.getenv and os.getenv("POWDER_BRIDGE_PORT") or "") or 9876
+-- OPT-IN 2026-09-02. The bridge used to call net.listen() unconditionally. On a player's
+-- machine that raises a Windows Firewall prompt on first launch and opens a port nobody
+-- asked for -- and handleRequest already REJECTS every request when bridgeToken is nil, so
+-- listening without a token could never serve anyone anyway. It was pure cost.
+-- Enabled by the presence of powder-bridge.token (dev machines and lab_instance.py have
+-- one; a downloaded copy does not) or by POWDER_BRIDGE_PORT being set explicitly.
+-- This lives in bridge_base.lua rather than the generated autorun.lua so that rebuilding
+-- autorun.lua cannot silently undo it -- the previous fix was applied to the generated
+-- artifact only, which is exactly how the MAX_CUSTOM_ELEMENTS=40 regression reached a
+-- public release.
+local bridgeWanted = (bridgeToken ~= nil and bridgeToken ~= "")
+              or ((os.getenv and os.getenv("POWDER_BRIDGE_PORT")) and true or false)
 local server
 local listenOk, err = pcall(function()
-    server = net.listen(serverPort, handleRequest)
+    if bridgeWanted then server = net.listen(serverPort, handleRequest) end
 end)
-if listenOk and server then
+if not bridgeWanted then
+    log("[INFO] Bridge disabled (no powder-bridge.token). Normal play needs no network.")
+elseif listenOk and server then
     _G.POWDER_BRIDGE_SERVER = server
     _G.POWDER_BRIDGE_HANDLER = handleRequest
     log("[OK] HTTP API listening on port " .. tostring(serverPort))

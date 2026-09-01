@@ -180,7 +180,12 @@ local function addMetalShine(c, base)
 end
 
 -- ================================================================ shared silhouettes (grammar: outline + top-left highlight)
-local function drawChunk(c, base)
+-- `seed`, when given, adds a few darkened grain flecks (a subtler, neutral-toned cousin of
+-- addSpeckle's bright ore treatment) -- raises the long-tail procedural fallback (@iconart pass,
+-- 2026-09-02: PhoenixFire808's bar is "everything has to look super good", and a flat bevel with
+-- no texture at all was the honest gap in an otherwise-total function) without touching any of the
+-- ~30 hand-authored icons above, which never pass a seed and render byte-identical to before.
+local function drawChunk(c, base, seed)
   local out, hi = darken(base, 0.55), lighten(base, 0.45)
   rectc(c, 2, 3, 13, 13, out)
   rectc(c, 3, 4, 12, 12, base)
@@ -188,6 +193,40 @@ local function drawChunk(c, base)
   for _, p in ipairs({ { 3, 4 }, { 12, 4 }, { 3, 12 }, { 12, 12 } }) do setc(c, p[1], p[2], out) end
   for i = 0, 4 do setc(c, 4 + i, 5, hi) end
   setc(c, 4, 6, hi)
+  if seed then
+    local grain = darken(base, 0.2)
+    local n = 0
+    for y = 5, 11 do
+      for x = 4, 11 do
+        if n < 5 and getc(c, x, y) and cellNoise(seed, x, y) < 5 then setc(c, x, y, grain); n = n + 1 end
+      end
+    end
+  end
+end
+
+-- Filled ellipse via two passes over the same per-row half-width (fill, then darken the two edge
+-- columns) -- exactly the technique the hand-authored food:generic icon below already uses inline;
+-- factored out here so the new food icons in this pass share one implementation instead of five
+-- copies of the same sqrt loop. Existing hand icons are left calling their own inline version
+-- untouched (targeted addition, not a refactor of already-shipped code).
+local function drawBlobOutlined(c, cx, cy, rx, ry, col)
+  local dark = darken(col, 0.5)
+  for y = cy - ry, cy + ry do
+    local dy = (y - cy) / ry
+    local t = 1 - dy * dy
+    if t > 0 then
+      local halfw = floor(sqrt(t) * rx + 0.5)
+      rectc(c, cx - halfw, y, cx + halfw, y, col)
+    end
+  end
+  for y = cy - ry, cy + ry do
+    local dy = (y - cy) / ry
+    local t = 1 - dy * dy
+    if t > 0 then
+      local halfw = floor(sqrt(t) * rx + 0.5)
+      setc(c, cx - halfw, y, dark); setc(c, cx + halfw, y, dark)
+    end
+  end
 end
 
 local function drawPowder(c, base, seed)
@@ -208,11 +247,15 @@ local function drawPowder(c, base, seed)
   end
 end
 
-local function drawLiquid(c, base)
+-- `seed`, when given, shifts the meniscus's raised span left/right by up to 1 cell so two liquids
+-- with similar colours (e.g. clean vs boiled water) still read as distinct shapes, not just tints.
+-- Omitted entirely, existing hand-authored liquid:water renders byte-identical to before.
+local function drawLiquid(c, base, seed)
   local out, hi = darken(base, 0.5), lighten(base, 0.5)
   rectc(c, 2, 7, 13, 13, out)
   rectc(c, 3, 8, 12, 13, base)
-  for x = 3, 12 do setc(c, x, (x >= 6 and x <= 9) and 6 or 7, hi) end -- meniscus, higher mid-span
+  local shift = seed and (cellNoise(seed, 1, 1) % 3 - 1) or 0
+  for x = 3, 12 do setc(c, x, (x >= 6 + shift and x <= 9 + shift) and 6 or 7, hi) end -- meniscus, higher mid-span
   setc(c, 5, 9, hi); setc(c, 9, 10, hi)
 end
 
@@ -419,11 +462,11 @@ function ICON._defineElementFallback(key, code, tid)
   local state = classifyState(tid)
   local seed = strHash(tostring(code))
   local canvas = newCanvas()
-  if state == "liquid" then drawLiquid(canvas, base)
+  if state == "liquid" then drawLiquid(canvas, base, seed)
   elseif state == "gas" then drawGas(canvas, base, seed)
   elseif state == "powder" then drawPowder(canvas, base, seed)
   elseif state == "energy" then drawEnergy(canvas, base)
-  else drawChunk(canvas, base) end
+  else drawChunk(canvas, base, seed) end
   if state ~= "gas" and state ~= "energy" then
     if looksLikeOre(code) then addSpeckle(canvas, seed, { 255, 240, 190, 255 }, 7) end
     if looksMetal(code) then addMetalShine(canvas, base) end
@@ -435,7 +478,7 @@ function ICON._defineStringFallback(key, code)
   local seed = strHash(tostring(code))
   local base = { 90 + seed % 140, 90 + floor(seed / 7) % 140, 90 + floor(seed / 13) % 140 }
   local canvas = newCanvas()
-  drawChunk(canvas, base)
+  drawChunk(canvas, base, seed)
   addSpeckle(canvas, seed, lighten(base, 0.8), 6)
   ICON.defineCanvas(key, canvas)
 end
@@ -458,7 +501,9 @@ function ICON.resolve(code)
   return skey
 end
 
--- ================================================================ ~30-40 hand-authored icons (highest-traffic things)
+-- ================================================================ ~60 hand-authored icons (highest-traffic things,
+-- extended 2026-09-02 by @iconart with the first-hour food/weapon/machine icons -- see that pass's
+-- comment further down for what was added and why)
 local function pickCanvas(head, handle)
   local c = newCanvas()
   thickLine(c, 11, 14, 5, 5, darken(handle, 0.55), 4)
@@ -686,6 +731,305 @@ do -- food: bread loaf
   ICON.defineCanvas("food:bread", c)
 end
 
+-- ================================================================ @iconart pass, 2026-09-02: the game is
+-- public (v1.17.3) -- these are the things a first-hour player actually sees and holds that had NO
+-- real particle backing at all (foraged food, held weapons, machine kits), so they were falling
+-- through to the WORST fallback tier (_defineStringFallback's hashed-colour chunk, no real shape).
+-- Same grammar as the block above: darken()/lighten() outline+highlight, restrained palette.
+local function gunCanvas(barrelColor, stockColor, doubleBarrel)
+  local c = newCanvas()
+  local stock = stockColor
+  thickLine(c, 3, 13, 8, 10, darken(stock, 0.5), 4)
+  thickLine(c, 3, 13, 8, 10, stock, 2)
+  if doubleBarrel then
+    thickLine(c, 6, 11, 14, 4, darken(barrelColor, 0.5), 4)
+    thickLine(c, 6, 11, 14, 4, barrelColor, 2)
+    thickLine(c, 6, 13, 14, 6, darken(barrelColor, 0.5), 3)
+    thickLine(c, 6, 13, 14, 6, barrelColor, 1)
+  else
+    thickLine(c, 6, 12, 14, 4, darken(barrelColor, 0.5), 3)
+    thickLine(c, 6, 12, 14, 4, barrelColor, 2)
+  end
+  setc(c, 8, 9, lighten(barrelColor, 0.5)); setc(c, 9, 8, lighten(barrelColor, 0.5))
+  return c
+end
+ICON.defineCanvas("wpn:musket", gunCanvas({ 150, 110, 60 }, { 110, 80, 50 }, false))
+ICON.defineCanvas("wpn:shotgun", gunCanvas({ 90, 90, 100 }, { 120, 85, 55 }, true))
+
+do -- weapon: bow (arc via connected segments + string)
+  local c = newCanvas()
+  local wood, dark = { 150, 105, 60 }, darken({ 150, 105, 60 }, 0.5)
+  local pts = { { 9, 2 }, { 6, 3 }, { 4, 6 }, { 4, 10 }, { 6, 13 }, { 9, 14 } }
+  for i = 1, #pts - 1 do lineC(c, pts[i][1], pts[i][2], pts[i + 1][1], pts[i + 1][2], dark) end
+  for i = 1, #pts - 1 do lineC(c, pts[i][1] + 1, pts[i][2], pts[i + 1][1] + 1, pts[i + 1][2], wood) end
+  lineC(c, 9, 2, 9, 14, { 230, 230, 220, 255 })
+  setc(c, 5, 4, lighten(wood, 0.5))
+  ICON.defineCanvas("wpn:bow", c)
+end
+do -- weapon: boomerang (two curved arms meeting at the grip)
+  local c = newCanvas()
+  local wood = { 170, 130, 80 }
+  thickLine(c, 3, 4, 8, 12, darken(wood, 0.5), 3); thickLine(c, 3, 4, 8, 12, wood, 2)
+  thickLine(c, 13, 4, 8, 12, darken(wood, 0.5), 3); thickLine(c, 13, 4, 8, 12, wood, 2)
+  setc(c, 4, 5, lighten(wood, 0.5)); setc(c, 12, 5, lighten(wood, 0.5))
+  ICON.defineCanvas("wpn:boomerang", c)
+end
+
+do -- food: wheat sheaf (fanned stalks + tie band)
+  local c = newCanvas()
+  local gold, dark = { 215, 178, 70 }, { 150, 110, 40 }
+  local tips = { { 3, 3 }, { 6, 2 }, { 9, 1 }, { 12, 2 } }
+  for _, t in ipairs(tips) do lineC(c, 8, 14, t[1], t[2], dark) end
+  for _, t in ipairs(tips) do lineC(c, 8, 14, t[1], t[2] + 1, gold) end
+  for _, t in ipairs(tips) do
+    local mx, my = floor((8 + t[1]) / 2), floor((14 + t[2]) / 2)
+    setc(c, mx - 1, my, gold); setc(c, mx + 1, my, gold)
+  end
+  rectc(c, 6, 13, 10, 14, { 120, 85, 50, 255 })
+  ICON.defineCanvas("food:wheat", c)
+end
+do -- food: berries (three red blobs, green leaf accent)
+  local c = newCanvas()
+  local red, hi = { 200, 45, 60 }, lighten({ 200, 45, 60 }, 0.5)
+  drawBlobOutlined(c, 6, 10, 3, 3, red)
+  drawBlobOutlined(c, 10, 10, 3, 3, red)
+  drawBlobOutlined(c, 8, 6, 3, 3, red)
+  setc(c, 5, 9, hi); setc(c, 9, 5, hi)
+  rectc(c, 7, 2, 9, 3, { 70, 150, 60, 255 })
+  setc(c, 8, 1, { 70, 150, 60, 255 })
+  ICON.defineCanvas("food:berry", c)
+end
+do -- food: root (tapering tuber + leaf top)
+  local c = newCanvas()
+  local root, dark = { 190, 140, 90 }, darken({ 190, 140, 90 }, 0.5)
+  for y = 5, 13 do
+    local w = max(1, 5 - floor((y - 5) / 2))
+    rectc(c, 8 - w, y, 8 + w, y, root)
+  end
+  setc(c, 8, 5, dark)
+  rectc(c, 7, 2, 9, 4, { 80, 160, 70, 255 })
+  ICON.defineCanvas("food:root", c)
+end
+do -- food: fish (oval body, tail notch, eye)
+  local c = newCanvas()
+  local body, dark, hi = { 150, 180, 200 }, darken({ 150, 180, 200 }, 0.5), lighten({ 150, 180, 200 }, 0.5)
+  drawBlobOutlined(c, 9, 8, 5, 3, body)
+  lineC(c, 4, 8, 2, 5, dark); lineC(c, 4, 10, 2, 13, dark)
+  setc(c, 7, 7, { 20, 20, 25, 255 })
+  setc(c, 8, 6, hi)
+  ICON.defineCanvas("food:fish", c)
+end
+do -- food: mushroom (raw -- warm tan cap, pale stem)
+  local c = newCanvas()
+  local cap, stem = { 190, 90, 60 }, { 230, 220, 200 }
+  drawBlobOutlined(c, 8, 6, 6, 4, cap)
+  for _, p in ipairs({ { 5, 5 }, { 8, 4 }, { 11, 6 } }) do setc(c, p[1], p[2], lighten(cap, 0.5)) end
+  rectc(c, 6, 9, 10, 14, darken(stem, 0.3))
+  rectc(c, 7, 9, 9, 13, stem)
+  ICON.defineCanvas("food:mushroom", c)
+end
+do -- food: cooked fish (browner body + steam wisp, same silhouette as raw)
+  local c = newCanvas()
+  local body, dark = { 170, 110, 70 }, darken({ 170, 110, 70 }, 0.5)
+  drawBlobOutlined(c, 9, 8, 5, 3, body)
+  lineC(c, 4, 8, 2, 5, dark); lineC(c, 4, 10, 2, 13, dark)
+  setc(c, 7, 7, { 40, 25, 20, 255 })
+  setc(c, 7, 3, { 230, 230, 230, 160 }); setc(c, 8, 2, { 230, 230, 230, 140 })
+  ICON.defineCanvas("food:cfish", c)
+end
+do -- food: roasted mushroom (charred cap flecks, same silhouette as raw)
+  local c = newCanvas()
+  local cap, stem = { 120, 60, 40 }, { 210, 190, 160 }
+  drawBlobOutlined(c, 8, 6, 6, 4, cap)
+  setc(c, 6, 5, { 40, 25, 20, 255 }); setc(c, 10, 6, { 40, 25, 20, 255 })
+  rectc(c, 6, 9, 10, 14, darken(stem, 0.3))
+  rectc(c, 7, 9, 9, 13, stem)
+  ICON.defineCanvas("food:cmshrm", c)
+end
+do -- food: hearty stew (bowl + filling + veggie flecks)
+  local c = newCanvas()
+  local bowl, food = { 160, 160, 170 }, { 140, 90, 55 }
+  rectc(c, 2, 9, 13, 13, darken(bowl, 0.5)); rectc(c, 3, 9, 12, 12, bowl)
+  rectc(c, 4, 7, 11, 9, darken(food, 0.4)); rectc(c, 4, 8, 11, 9, food)
+  setc(c, 6, 8, { 200, 60, 50, 255 }); setc(c, 9, 8, { 90, 150, 60, 255 })
+  ICON.defineCanvas("food:stew", c)
+end
+do local c = newCanvas(); drawLiquid(c, { 150, 210, 235 }); setc(c, 10, 9, { 255, 255, 255, 200 }); ICON.defineCanvas("food:boiledwater", c) end
+do local c = newCanvas(); drawLiquid(c, { 130, 200, 235 }); ICON.defineCanvas("food:cleanwater", c) end
+do
+  local c = newCanvas(); drawLiquid(c, { 110, 110, 70 })
+  addSpeckle(c, strHash("DIRTYWATER"), darken({ 110, 110, 70 }, 0.5), 4)
+  ICON.defineCanvas("food:dirtywater", c)
+end
+
+do -- machine: boiler (riveted tank + lit firebox + vent stub)
+  local c = newCanvas()
+  local metal = { 110, 110, 120 }
+  rectc(c, 3, 2, 12, 13, darken(metal, 0.5)); rectc(c, 4, 3, 11, 12, metal)
+  for _, p in ipairs({ { 4, 3 }, { 11, 3 }, { 4, 12 }, { 11, 12 } }) do clearc(c, p[1], p[2]) end
+  for y = 4, 11, 3 do setc(c, 4, y, darken(metal, 0.3)); setc(c, 11, y, darken(metal, 0.3)) end
+  rectc(c, 6, 10, 9, 12, { 40, 25, 20, 255 })
+  rectc(c, 7, 11, 8, 12, { 255, 140, 40, 255 })
+  rectc(c, 7, 0, 9, 2, darken(metal, 0.4))
+  setc(c, 4, 4, lighten(metal, 0.4))
+  ICON.defineCanvas("mach:boiler", c)
+end
+do -- machine: turbine (housing + radiating blades + shaft hub)
+  local c = newCanvas()
+  local metal, blade = { 90, 95, 105 }, { 200, 210, 220 }
+  drawBlobOutlined(c, 8, 8, 6, 6, metal)
+  for _, a in ipairs({ 0, 60, 120, 180, 240, 300 }) do
+    local rad = a * math.pi / 180
+    lineC(c, 8, 8, floor(8 + math.cos(rad) * 5), floor(8 + math.sin(rad) * 5), blade)
+  end
+  drawBlobOutlined(c, 8, 8, 2, 2, darken(metal, 0.3))
+  setc(c, 6, 6, lighten(metal, 0.6))
+  ICON.defineCanvas("mach:turbine", c)
+end
+do -- machine: hand crank generator (housing + handle arm + knob)
+  local c = newCanvas()
+  local metal, wood = { 120, 120, 130 }, { 150, 105, 60 }
+  drawBlobOutlined(c, 6, 8, 4, 4, metal)
+  thickLine(c, 9, 8, 14, 4, darken(wood, 0.5), 3)
+  thickLine(c, 9, 8, 14, 4, wood, 2)
+  setc(c, 14, 3, { 90, 90, 95, 255 })
+  setc(c, 5, 7, lighten(metal, 0.5))
+  ICON.defineCanvas("mach:crank", c)
+end
+do -- machine: water wheel (spoked wooden wheel + water trough)
+  local c = newCanvas()
+  local wood, water = { 150, 105, 60 }, { 70, 130, 220 }
+  drawBlobOutlined(c, 8, 7, 6, 6, wood)
+  for _, a in ipairs({ 0, 45, 90, 135, 180, 225, 270, 315 }) do
+    local rad = a * math.pi / 180
+    lineC(c, 8, 7, floor(8 + math.cos(rad) * 5), floor(7 + math.sin(rad) * 5), darken(wood, 0.5))
+  end
+  rectc(c, 2, 13, 13, 14, water)
+  setc(c, 6, 5, lighten(wood, 0.5))
+  ICON.defineCanvas("mach:wheel", c)
+end
+do -- machine: water pump (housing + intake pipe + valve wheel)
+  local c = newCanvas()
+  local metal, pipe = { 110, 115, 125 }, { 70, 130, 220 }
+  rectc(c, 4, 7, 11, 13, darken(metal, 0.5)); rectc(c, 5, 8, 10, 12, metal)
+  rectc(c, 6, 3, 9, 7, darken(pipe, 0.4)); rectc(c, 7, 3, 8, 6, pipe)
+  drawBlobOutlined(c, 8, 5, 2, 2, darken(metal, 0.3))
+  setc(c, 5, 8, lighten(metal, 0.5))
+  ICON.defineCanvas("mach:pump", c)
+end
+do -- machine: powered door (slab + handle)
+  local c = newCanvas()
+  local slab = { 130, 120, 110 }
+  rectc(c, 4, 1, 11, 14, darken(slab, 0.5)); rectc(c, 5, 2, 10, 13, slab)
+  setc(c, 9, 7, { 230, 210, 80, 255 })
+  for _, x in ipairs({ 6, 9 }) do setc(c, x, 3, lighten(slab, 0.4)) end
+  ICON.defineCanvas("mach:door", c)
+end
+do -- machine: conveyor belt (two rollers + belt strip + direction arrow)
+  local c = newCanvas()
+  local metal, belt = { 90, 90, 100 }, { 60, 60, 65 }
+  drawBlobOutlined(c, 3, 11, 2, 2, metal)
+  drawBlobOutlined(c, 13, 11, 2, 2, metal)
+  rectc(c, 3, 8, 13, 9, darken(belt, 0.4)); rectc(c, 3, 9, 13, 10, belt)
+  lineC(c, 5, 6, 9, 6, { 230, 210, 80, 255 }); lineC(c, 9, 6, 7, 4, { 230, 210, 80, 255 }); lineC(c, 9, 6, 7, 8, { 230, 210, 80, 255 })
+  ICON.defineCanvas("mach:conveyor", c)
+end
+do -- machine: wire coil (spiralled copper loop)
+  local c = newCanvas()
+  local cu = { 200, 120, 70 }
+  for r = 2, 6, 2 do
+    for a = 0, 350, 20 do
+      local rad = a * math.pi / 180
+      setc(c, floor(8 + math.cos(rad) * r), floor(8 + math.sin(rad) * r), r == 6 and darken(cu, 0.4) or cu)
+    end
+  end
+  setc(c, 6, 6, lighten(cu, 0.5))
+  ICON.defineCanvas("mach:wirecoil", c)
+end
+do -- machine: LED lamp (glowing bulb + base)
+  local c = newCanvas()
+  local glass, glow = { 230, 225, 150 }, { 255, 240, 120, 220 }
+  drawBlobOutlined(c, 8, 6, 4, 4, glass)
+  for _, p in ipairs({ { 6, 4 }, { 10, 4 }, { 8, 2 } }) do setc(c, p[1], p[2], glow) end
+  rectc(c, 6, 10, 10, 13, darken({ 140, 140, 150 }, 0.4))
+  rectc(c, 7, 10, 9, 12, { 140, 140, 150, 255 })
+  ICON.defineCanvas("mach:lamp", c)
+end
+do -- machine: solar panel (grid of cells + sun-ray corner)
+  local c = newCanvas()
+  local panel, cell = { 40, 50, 90 }, { 70, 90, 160 }
+  rectc(c, 2, 6, 13, 12, darken(panel, 0.5)); rectc(c, 3, 7, 12, 11, panel)
+  for x = 4, 11, 2 do for y = 8, 10, 2 do rectc(c, x, y, x + 1, y + 1, cell) end end
+  setc(c, 12, 3, { 255, 220, 120, 255 }); setc(c, 13, 4, { 255, 220, 120, 255 }); setc(c, 11, 2, { 255, 220, 120, 255 })
+  ICON.defineCanvas("mach:solar", c)
+end
+do -- machine: battery bank (case + two terminal nubs)
+  local c = newCanvas()
+  local body = { 70, 150, 90 }
+  rectc(c, 3, 5, 12, 13, darken(body, 0.5)); rectc(c, 4, 6, 11, 12, body)
+  rectc(c, 6, 3, 7, 5, darken({ 90, 90, 95 }, 0.3)); rectc(c, 9, 3, 10, 5, darken({ 90, 90, 95 }, 0.3))
+  setc(c, 5, 6, lighten(body, 0.5))
+  ICON.defineCanvas("mach:battery", c)
+end
+do -- machine: gas detector (handheld body + dial)
+  local c = newCanvas()
+  local body, dial = { 90, 95, 105 }, { 230, 90, 60 }
+  rectc(c, 4, 6, 11, 13, darken(body, 0.5)); rectc(c, 5, 7, 10, 12, body)
+  drawBlobOutlined(c, 8, 9, 2, 2, { 230, 230, 230 })
+  setc(c, 8, 9, dial)
+  rectc(c, 7, 3, 9, 6, darken(body, 0.4))
+  ICON.defineCanvas("mach:gasdetector", c)
+end
+do -- machine: sorter (T-junction chute + diverting arrow)
+  local c = newCanvas()
+  local metal, arrow = { 110, 110, 120 }, { 230, 210, 80 }
+  rectc(c, 6, 2, 9, 9, darken(metal, 0.5)); rectc(c, 7, 3, 8, 8, metal)
+  rectc(c, 9, 9, 13, 12, darken(metal, 0.5)); rectc(c, 9, 10, 12, 11, metal)
+  rectc(c, 3, 9, 7, 12, darken(metal, 0.5)); rectc(c, 4, 10, 6, 11, metal)
+  lineC(c, 8, 6, 11, 9, arrow); lineC(c, 8, 6, 5, 9, arrow)
+  ICON.defineCanvas("mach:sorter", c)
+end
+do -- machine: splitter (single input, two output lanes)
+  local c = newCanvas()
+  local metal, arrow = { 110, 110, 120 }, { 230, 210, 80 }
+  rectc(c, 7, 2, 8, 7, darken(metal, 0.5)); rectc(c, 7, 3, 8, 6, metal)
+  rectc(c, 3, 9, 7, 12, darken(metal, 0.5)); rectc(c, 4, 10, 6, 11, metal)
+  rectc(c, 9, 9, 13, 12, darken(metal, 0.5)); rectc(c, 10, 10, 12, 11, metal)
+  lineC(c, 7, 7, 5, 9, arrow); lineC(c, 8, 7, 10, 9, arrow)
+  ICON.defineCanvas("mach:splitter", c)
+end
+do -- machine: proximity gate (lintel + alternating bars)
+  local c = newCanvas()
+  local metal = { 100, 100, 110 }
+  rectc(c, 2, 2, 13, 3, darken(metal, 0.5))
+  for x = 3, 12, 2 do rectc(c, x, 4, x, 13, darken(metal, 0.4)) end
+  for x = 4, 12, 2 do rectc(c, x, 4, x, 13, metal) end
+  setc(c, 4, 5, lighten(metal, 0.5))
+  ICON.defineCanvas("mach:gate", c)
+end
+do -- machine: security camera (housing + lens)
+  local c = newCanvas()
+  local body, lens = { 70, 70, 80 }, { 40, 180, 220 }
+  rectc(c, 3, 5, 12, 9, darken(body, 0.5)); rectc(c, 4, 6, 11, 8, body)
+  drawBlobOutlined(c, 11, 7, 2, 2, lens)
+  rectc(c, 7, 9, 9, 12, darken(body, 0.4))
+  ICON.defineCanvas("mach:camera", c)
+end
+do -- machine: breaker (switch box + lever)
+  local c = newCanvas()
+  local body, lever = { 90, 90, 100 }, { 230, 90, 60 }
+  rectc(c, 4, 4, 11, 13, darken(body, 0.5)); rectc(c, 5, 5, 10, 12, body)
+  thickLine(c, 7, 10, 9, 5, darken(lever, 0.5), 3); thickLine(c, 7, 10, 9, 5, lever, 2)
+  ICON.defineCanvas("mach:breaker", c)
+end
+do -- machine: sprinkler (riser pipe + spray fan)
+  local c = newCanvas()
+  local metal, water = { 110, 110, 120 }, { 90, 150, 230 }
+  rectc(c, 7, 7, 9, 14, darken(metal, 0.5)); rectc(c, 7, 7, 8, 13, metal)
+  for _, p in ipairs({ { 4, 4 }, { 6, 2 }, { 9, 2 }, { 12, 4 }, { 3, 7 }, { 13, 7 } }) do setc(c, p[1], p[2], water) end
+  ICON.defineCanvas("mach:sprinkler", c)
+end
+
 -- Direct exports so other lanes can wire these in without re-deriving indices/heuristics --
 -- order matches R.PICKS/R.SWORDS exactly (verified against rpg.lua:2404-2405, 2026-09-01).
 ICON.PICK_ICON = { "tool:pick:wood", "tool:pick:stone", "tool:pick:iron", "tool:pick:steel", "tool:pick:diamond" }
@@ -702,6 +1046,20 @@ ICON.ELEMENT_ICON = {
   IRON = "mat:iron_ore", COAL = "mat:coal", GOLD = "mat:gold_ore", CU = "mat:copper",
   STEL = "mat:steel", METL = "mat:iron_bar", DMND = "mat:diamond", WATR = "liquid:water",
   GOO = "mat:dirt", SAND = "mat:sand",
+  -- @iconart pass, 2026-09-02 -- foraged food, held weapons and machine kits have NO backing TPT
+  -- element (R.eid(code) returns nil for every one of these, verified against survival.lua's/
+  -- machines.lua's own R.give()/recipe `out` strings), so without an explicit mapping here they
+  -- fell through to the worst fallback tier (hashed-colour chunk, no real shape at all).
+  WHEAT = "food:wheat", BERRY = "food:berry", ROOT = "food:root", FISH = "food:fish",
+  MSHRM = "food:mushroom", CFISH = "food:cfish", CMSHRM = "food:cmshrm", STEW = "food:stew",
+  BOILEDWATER = "food:boiledwater", CLEANWATER = "food:cleanwater", DIRTYWATER = "food:dirtywater",
+  MUSKET = "wpn:musket", SHOTGUN = "wpn:shotgun", BOW = "wpn:bow", BOOMERANG = "wpn:boomerang",
+  BOILER = "mach:boiler", TURBINE = "mach:turbine", CRANKKIT = "mach:crank", WHEELKIT = "mach:wheel",
+  PUMPKIT = "mach:pump", DOORKIT = "mach:door", CONVEYOR = "mach:conveyor", WIRECOIL = "mach:wirecoil",
+  LAMPKIT = "mach:lamp", SOLARKIT = "mach:solar", BATTERYKIT = "mach:battery",
+  GASDETECTORKIT = "mach:gasdetector", SORTERKIT = "mach:sorter", SPLITTERKIT = "mach:splitter",
+  GATEKIT = "mach:gate", CAMERAKIT = "mach:camera", BREAKERKIT = "mach:breaker",
+  SPRINKLERKIT = "mach:sprinkler",
 }
 
 -- Warm the small/large caches for every hand-authored icon right now, at load time, so the very
@@ -777,26 +1135,46 @@ do
     if not a then return -1 end
     return tonumber(a) * 1000000 + tonumber(b) * 1000 + tonumber(c)
   end
-  local NEW_VERSION = "1.17.1"
-  if vnum(NEW_VERSION) > vnum(R.VERSION) then R.VERSION = NEW_VERSION end
-  R.CHANGELOG = R.CHANGELOG or {}
-  local NOTE = "Icons (@icons_engine): new procedural icon system -- every material and machine can "
-    .. "now draw a real distinctive icon instead of a flat colour swatch (ore gets speckle, liquid "
-    .. "gets a meniscus, gas gets scatter, powder gets granules, metal gets a shine), plus ~30 "
-    .. "hand-drawn icons for the picks, swords, stations, core materials, water, food and torch. "
-    .. "Not wired into any screen yet in this pass -- see the contact-sheet self-test."
-  local dupe = false
-  for _, e in ipairs(R.CHANGELOG) do
-    local s = type(e) == "table" and tostring(e.ver or "") or tostring(e)
-    if s == NOTE or (type(e) == "table" and tostring(e.ver or "") == NEW_VERSION) then dupe = true break end
-  end
-  if not dupe then
-    local at = #R.CHANGELOG + 1
-    for i, e in ipairs(R.CHANGELOG) do
+  local ENTRIES = {
+    { ver = "1.17.1", note = "Icons (@icons_engine): new procedural icon system -- every material and machine can "
+      .. "now draw a real distinctive icon instead of a flat colour swatch (ore gets speckle, liquid "
+      .. "gets a meniscus, gas gets scatter, powder gets granules, metal gets a shine), plus ~30 "
+      .. "hand-drawn icons for the picks, swords, stations, core materials, water, food and torch. "
+      .. "Not wired into any screen yet in this pass -- see the contact-sheet self-test." },
+    -- @iconart, 2026-09-02: the game is public now, so "most icons are still procedural" is a
+    -- stranger's first impression, not a backlog item. Four lines, one per discrete change (see
+    -- shipping-and-release skill): more hand-drawn icons, a quality pass on the fallback, plus the
+    -- two things that made both possible without a new visual bug slipping through blind.
+    { ver = "1.17.4", note = "Icons: 31 more hand-drawn icons for things every new player sees in "
+      .. "the first hour -- foraged food (wheat, berries, root, fish, mushroom, cooked versions, "
+      .. "stew, water), the first weapons (musket, shotgun, bow, boomerang), and early machines "
+      .. "(boiler, turbine, crank, water wheel, pump, powered door, conveyor, wire coil, lamp, "
+      .. "solar panel, battery, gas detector, sorter, splitter, gate, camera, breaker, sprinkler)." },
+    { ver = "1.17.4", note = "Icons: the procedural fallback (everything still without hand-drawn "
+      .. "art) now has subtle grain texture on solids and a shifted meniscus highlight on liquids, "
+      .. "so the long tail reads less like a flat bevel and two similar-coloured materials look "
+      .. "less identical to each other." },
+    { ver = "1.17.4", note = "Icons: captured a fresh full contact sheet of every icon (hand-drawn "
+      .. "and procedural) for review -- nothing shipped blind, per the standing lesson from the "
+      .. "dotted-effect revert." },
+  }
+  for _, entry in ipairs(ENTRIES) do
+    local NEW_VERSION, NOTE = entry.ver, entry.note
+    if vnum(NEW_VERSION) > vnum(R.VERSION) then R.VERSION = NEW_VERSION end
+    R.CHANGELOG = R.CHANGELOG or {}
+    local dupe = false
+    for _, e in ipairs(R.CHANGELOG) do
       local s = type(e) == "table" and tostring(e.ver or "") or tostring(e)
-      if vnum(s) <= vnum(NEW_VERSION) then at = i break end
+      if s == NOTE then dupe = true break end
     end
-    table.insert(R.CHANGELOG, at, NOTE)
+    if not dupe then
+      local at = #R.CHANGELOG + 1
+      for i, e in ipairs(R.CHANGELOG) do
+        local s = type(e) == "table" and tostring(e.ver or "") or tostring(e)
+        if vnum(s) <= vnum(NEW_VERSION) then at = i break end
+      end
+      table.insert(R.CHANGELOG, at, NOTE)
+    end
   end
 end
 
