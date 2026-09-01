@@ -11,9 +11,9 @@ in a side-scrolling world made entirely of simulated particles. This repo is **n
 Powder Toy project; it is an RPG fork (`phoenixfire808/Powder-RPG` on GitHub).
 
 **[Download the latest Windows build](https://github.com/phoenixfire808/Powder-RPG/releases/latest)**
-— unzip, then **double-click `PowderToyRPG.exe`**. No batch file required.
+— unzip, then **double-click `PowderRPG.exe`**. No batch file required.
 
-## Repo layout (everything is here)
+## Repo layout
 
 | Path | What |
 |------|------|
@@ -22,14 +22,14 @@ Powder Toy project; it is an RPG fork (`phoenixfire808/Powder-RPG` on GitHub).
 | `scripts/lua/rpg_plugins/` | RPG plugins (machines, companion, save, UI, …) |
 | `bridge_src/` | Lua bridge modules (realism, RPG loader) |
 | `build_autorun.py` | Builds `build/autorun.lua` from `bridge_src/` |
-| `powder_toy_mcp.py` | Scripting/automation server for external tooling (`python powder_toy_mcp.py`) |
-| `powder_ext/` | MCP tool implementations |
-| `knowledge/` | Design docs, modules, structures, build lessons |
+| `powder_toy_mcp.py` | Scripting/automation server exposing game state and actions over a local HTTP bridge, for external tooling (`python powder_toy_mcp.py`) |
+| `powder_ext/` | Automation tool implementations used by the scripting server |
+| `knowledge/` | Design docs, modules, structures, build lessons (local-only, `.gitignore`d — not part of this published repo) |
 | `releases/` | Per-version release notes |
 | `DEVELOPMENT.md` | Development protocol and house rules for this project |
 
 Clone this repo, build the engine (`meson` + `ninja` — see wiki), run `python build_autorun.py`,
-then play from `build/PowderRPG.exe`. MCP: point Cursor at `.mcp.json` in the repo root.
+then play from `build/PowderRPG.exe`.
 
 Table of contents
 ---------------------------------------------------------------------------
@@ -114,8 +114,9 @@ requires sustaining yourself with machines that chain into each other, not just 
 
 New physics & elements
 ===========================================================================
-Roughly 60 new elements on top of the ~180 stock ones, several backed by real physical
-constants rather than arbitrary game numbers.
+64 custom elements on top of the 195 stock ones (measured directly from
+`pbx-custom-elements.json` and `POWDER_TOY_MATERIAL_INDEX.json`), several backed by real
+physical constants rather than arbitrary game numbers.
 
 **Antimatter & magnetism showcase** — a from-scratch physics demo (inspired by
 [Veritasium's antimatter video](https://www.youtube.com/watch?v=fp7GetAY-1I)) with four
@@ -228,7 +229,7 @@ This section reflects the real, current state of the project — what's actually
 verified (grounded in `R.CHANGELOG` / `CHANGELOG.md`, not aspiration), what's designed but not
 yet built, and what's still just a proposal. The full running wishlist of proposed systems,
 including newer ones not yet promoted into this roadmap, lives in
-[knowledge/feature-wishlist.md](knowledge/feature-wishlist.md) and is meant to keep growing
+`knowledge/feature-wishlist.md` (internal notes, not part of this published repo) and is meant to keep growing
 across sessions — check there for the latest state if this section looks stale.
 
 ### Shipped (selected — see [CHANGELOG.md](CHANGELOG.md) for the full version-by-version list)
@@ -254,9 +255,9 @@ across sessions — check there for the latest state if this section looks stale
       destroying 397 wood cells against a limit of 25. This is
       real, live, bridge-verified plumbing — but it's scoped to tree-adjacent moisture,
       not a world-wide water table or player-facing flooding/draining/pumping system; see
-      [knowledge/current-progress.md](knowledge/current-progress.md) for the verification
-      detail and [knowledge/feature-wishlist.md](knowledge/feature-wishlist.md#1-full-aquifer-system)
-      for the full-aquifer-system item this precedent feeds into.
+      `knowledge/current-progress.md` (internal notes) for the verification
+      detail and `knowledge/feature-wishlist.md` #1 for the full-aquifer-system item this
+      precedent feeds into.
 - [x] **Underground environment feel (v1.15.60 → v1.15.62)** — real depth-scaled
       geothermal gradient, biome-specific surface temperatures, and per-cave-pocket
       microclimates, with the TEMP/PRESS HUD reading the full depth column instead of a
@@ -277,7 +278,7 @@ across sessions — check there for the latest state if this section looks stale
       / `verify_claim.py` with a mandatory screenshot gate, because `lastErr == nil` was
       repeatedly proven **not** sufficient on its own (three real bugs — `drawMenu`,
       `wrap`, HUD row overlap — all shipped with `lastErr=nil` and passed the old,
-      bridge-only checks). See [knowledge/verification-system.md](knowledge/verification-system.md).
+      bridge-only checks). See `knowledge/verification-system.md` (internal notes).
 
 ### Near-term (designed or actively in flight)
 - [ ] **Full aquifer system** — extend the tree-water precedent above into a real
@@ -285,7 +286,7 @@ across sessions — check there for the latest state if this section looks stale
       real `WATR` via TPT's own hydrostatic settling, replacing today's isolated
       noise-placed deep-cavern pockets), tunnels that fill/drain in response to player
       digging, and wells/pumps as a craftable hook into it. Proposed, not yet designed in
-      full — see [feature-wishlist.md #1](knowledge/feature-wishlist.md#1-full-aquifer-system).
+      full — see `knowledge/feature-wishlist.md` #1 (internal notes).
 - [ ] **Real geological layering for subsoil / bedrock** — currently the bottom of the
       world keeps defaulting to fired brick, which is structurally fine but cosmetically
       wrong. Researched against actual soil science (topsoil → subsoil / regolith →
@@ -300,11 +301,11 @@ across sessions — check there for the latest state if this section looks stale
 - [ ] **Structural cave-ins** — wide mining tunnels become genuinely dangerous: ceiling
       blocks over a large unsupported span convert to a falling-powder copy after a short
       warning delay, using TPT's own unsupported-granular-fall physics, no new elements.
-      Proposed — see [feature-wishlist.md #5](knowledge/feature-wishlist.md#5-structural-cave-ins).
+      Proposed — see `knowledge/feature-wishlist.md` #5 (internal notes).
 - [ ] **Flash-flood caverns** — some deep-cavern water pockets are sealed behind a thin
       rock membrane; breaking through with a pick lets TPT's real pressure/gravity sim
       flood the newly opened tunnel instead of just revealing static water. Proposed — see
-      [feature-wishlist.md #6](knowledge/feature-wishlist.md#6-flash-flood-caverns).
+      `knowledge/feature-wishlist.md` #6 (internal notes).
 - [ ] **Behavior-kind persistence** — a few of the power / reactor elements (turbine,
       thermoelectric, reactive concrete) are defined through custom behavior kinds that
       are not yet re-registered on restart, so they currently only work in a live dev
@@ -326,12 +327,12 @@ across sessions — check there for the latest state if this section looks stale
       outbreak pocket (cured by fire, chest reward gated on infection clearing) or a
       `PSCN`/`NSCN` logic-gate puzzle vault, both built entirely from existing element
       behaviors. See
-      [feature-wishlist.md #2](knowledge/feature-wishlist.md#2-landmarks--points-of-interest).
+      `knowledge/feature-wishlist.md` #2 (internal notes).
 - [ ] **Biome variety expansion** — visual *and* mechanical variety beyond the current
       forest/desert/snow/swamp set, pairing real geological strata bands (granite,
       sandstone, limestone with genuine acid reactivity) with per-biome survival mechanics
       instead of just re-skinned terrain. See
-      [feature-wishlist.md #3](knowledge/feature-wishlist.md#3-biome-variety-expansion).
+      `knowledge/feature-wishlist.md` #3 (internal notes).
 - [x] **Mountains / vertical terrain (v1.15.70)** — shipped as the predicted
       low-frequency surface-height noise pass: a long-wavelength layer (period 1100px)
       hard-thresholded to zero across most of the map, so plains stay plains while 22% of
@@ -339,19 +340,19 @@ across sessions — check there for the latest state if this section looks stale
       across 8000 columns with the steepest slope still 2px per column, so peaks stay
       walkable without digging. Topsoil was deepened 20px → 50px in the same bump so a
       hillside can actually be dug into. Applies to newly generated terrain only. See
-      [feature-wishlist.md #4](knowledge/feature-wishlist.md#4-mountains--vertical-terrain).
+      `knowledge/feature-wishlist.md` #4 (internal notes).
 - [ ] **Portal-pipe item logistics network** — placeable `PRTI`/`PRTO` portal pairs (real
       stock teleport-by-channel mechanic) for Terraria-style long-distance item pipes,
       complementing the fluid/gas logistics tier below. See
-      [feature-wishlist.md #7](knowledge/feature-wishlist.md#7-portal-pipe-item-logistics-network).
+      `knowledge/feature-wishlist.md` #7 (internal notes).
 - [ ] **Snow-biome hypothermia + insulated bases** — real cold-drain tick outside
       snow-biome shelter, countered by real insulator material (`AERO`) and a `TEG` that
       passively generates power at a warm/cold boundary. See
-      [feature-wishlist.md #8](knowledge/feature-wishlist.md#8-snow-biome-hypothermia--insulated-bases).
+      `knowledge/feature-wishlist.md` #8 (internal notes).
 - [ ] **Meteor strike events** — rare scheduled falling hot-rock event that craters
       terrain and leaves a rare-ore impact site, giving the world something that can
       *happen* during play rather than only be discovered. See
-      [feature-wishlist.md #9](knowledge/feature-wishlist.md#9-meteor-strike-events).
+      `knowledge/feature-wishlist.md` #9 (internal notes).
 - [ ] **Reactor tier, sealed-base life support, fluid/gas logistics tier** — the next
       three rungs of the industrial-ecosystem tech tree; see the [Vision](#vision) section
       above for the full grounding (each already reuses existing, live-tested element
@@ -426,7 +427,7 @@ and the individual release pages linked from its summary table.
 
 Full version-by-version history lives in [CHANGELOG.md](CHANGELOG.md). The full, growing
 wishlist of proposed systems (including anything added after this roadmap pass) lives in
-[knowledge/feature-wishlist.md](knowledge/feature-wishlist.md).
+`knowledge/feature-wishlist.md` (internal notes, not part of this published repo).
 
 Running from source
 ===========================================================================

@@ -2,7 +2,7 @@
 
 Research-derived loop (2026-08-25, extended 2026-08-26 -- round 3):
   * world_state before EVERY model turn (state tracking is the #1 failure mode)
-  * grammar/schema-constrained decoding so the model cannot emit malformed JSON
+  * grammar/schema-constrained decoding so the caller cannot emit malformed JSON
   * compile -> lint -> errors fed back verbatim, up to --rounds
   * every attempt logged with record_attempt (dataset + curriculum memory,
     now with a decomposed score + temperature/round_no/resample_no)
@@ -129,7 +129,7 @@ def world_line() -> str:
 
 
 def solve(request: str, args, practice: dict | None = None) -> tuple[dict | None, dict | None, list[str], dict]:
-    """Ask the model for a blueprint, loop compile/lint errors back.
+    """Ask the caller for a blueprint, loop compile/lint errors back.
     Returns (blueprint, last_result, errors, meta) where meta = {"round_no", "resample_no"}
     records which round/resample the returned candidate actually settled on
     (round 3 item 3: sampling metadata for future GRPO-style grouping).

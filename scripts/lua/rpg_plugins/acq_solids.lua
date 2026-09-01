@@ -212,9 +212,8 @@ local ACQ_RECIPES = {
     desc="Quartz sheared at high velocity on a spinning-blade attachment -- a very light dust that visibly changes colour with its own speed, useful as an automation read-out." },
   { out="YEST", n=2, need={WHEAT=2, WATR=1}, st="furnace", txt="Yeast",
     desc="Wheat and water left to proof near steady furnace warmth (its own real ~37C growth condition) -- yeast, the farming tier's first quality ingredient." },
-  -- T6 sandbox-cosmetic curio per part2's own classification -- never gates progression
-  { out="BIZS", n=1, need={GOLD=3, QRTZ=3, DMND=1}, st="advlab", txt="Bizarre Curio",
-    desc="An inert cabinet curiosity assembled from precision off-cuts -- no known scientific use, purely a collector's trophy for players who've cleared the tech tree." },
+  -- BIZS moved out of this list 2026-09-02 (@acq) -- see DMND_GATED_RECIPES below, same reason
+  -- items.lua/fieldtools.lua already gate every other DMND-spending recipe in the game.
   -- NOTE: chain 7's own BGLA->GLAS / PQRT->QRTZ recycling-recovery recipes were deliberately left
   -- OUT of this list. scripts/check_reachable.py's own parse_mineable() only reads rpg.lua's single
   -- literal R.MINEABLE table (documented in its source, not a bug) -- it cannot see the R.MINEABLE.
@@ -225,12 +224,42 @@ local ACQ_RECIPES = {
   -- past a gate this task explicitly says to run and paste. BGLA/PQRT remain obtainable (mineable)
   -- either way; only the optional remelt-back-to-GLAS/QRTZ bonus loop is deferred.
 }
+
+-- ================================================================ DMND-gated tier (@acq,
+-- 2026-09-02, fixing knowledge/audit-natural-pathways.md s9's "DMND is bootstrap-critical, with
+-- exactly zero margin" finding). BIZS is this file's only recipe that spends DMND. DMND's entire
+-- deterministic one-time supply is 3 (two quest rewards, rpg.lua) and the diamond pick's own
+-- recipe needs exactly 3 -- the pick is what raises pick power to DMND's own R.MINEABLE tier 6,
+-- so DMND only becomes renewably mineable AFTER the pick exists. A player who spends the one-time
+-- 3 on BIZS first (a T6 cosmetic curio, not even a required item) permanently loses the
+-- deterministic route to the pick -- the exact order-dependent trap items.lua/fieldtools.lua
+-- already fixed for every OTHER DMND-consuming recipe in the game (TPWAND/GRAVWELL/DISINT/
+-- GRAVCORE/WARPCHG/REPLICOREKIT). Same fix here, same gate-behind-a-prerequisite/poll-via-tick/
+-- install-once shape those files use, not a new mechanic. Cost unchanged; this only reorders WHEN
+-- the recipe becomes selectable.
+local DMND_GATED_RECIPES = {
+  -- T6 sandbox-cosmetic curio per part2's own classification -- never gates progression
+  { out="BIZS", n=1, need={GOLD=3, QRTZ=3, DMND=1}, st="advlab", txt="Bizarre Curio",
+    desc="An inert cabinet curiosity assembled from precision off-cuts -- no known scientific use, purely a collector's trophy for players who've cleared the tech tree." },
+}
+local dmndRecipesInstalled = false
+local function hasDiamondPick() return R.stats and R.stats.crafted and R.stats.crafted["diamond pick"] end
 local function installRecipes()
   for i = #R.RECIPES, 1, -1 do if R.RECIPES[i]._plugin == TAG then table.remove(R.RECIPES, i) end end
   for _, rc in ipairs(ACQ_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
+  if hasDiamondPick() then
+    dmndRecipesInstalled = true
+    for _, rc in ipairs(DMND_GATED_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
+  end
 end
 installRecipes()
-hook(R.hooks.newworld, function() installRecipes() end)
+hook(R.hooks.newworld, function() dmndRecipesInstalled = false; installRecipes() end)
+hook(R.hooks.tick, function()
+  if not dmndRecipesInstalled and hasDiamondPick() then installRecipes() end
+end)
+hook(R.hooks.sandbox, function()
+  if not dmndRecipesInstalled then dmndRecipesInstalled = true; installRecipes() end
+end)
 
 if R.tlog then
   R.tlog("info", TAG, "loaded", { recipes = #ACQ_RECIPES, mineable_added = 5, names_added = 26 })
@@ -241,15 +270,18 @@ end
 -- this plugin does not touch it, per convention documented at rpg.lua:800). One line per discrete
 -- change, player-facing language, per DEVELOPMENT.md's "every little micro change" rule.
 -- ================================================================================================
--- "Material acquisition (@acq_solids): Vine, Sawdust, Broken Glass and Powdered Quartz were already
+-- "Material acquisition: Vine, Sawdust, Broken Glass and Powdered Quartz were already
 --  appearing in the world on their own (vines from ordinary plant growth, sawdust/broken glass/
 --  powdered quartz from the game's own physics) but couldn't be picked up -- all four are now
 --  mineable with the starting pick."
--- "Material acquisition (@acq_solids): Broken Electronics is now mineable -- it's what the existing
+-- "Material acquisition: Broken Electronics is now mineable -- it's what the existing
 --  EMP Charge weapon already leaves behind when it hits your own wiring."
--- "Material acquisition (@acq_solids): 18 new craftable materials that had no acquisition path --
+-- "Material acquisition: 18 new craftable materials that had no acquisition path --
 --  Ceramic and Dry Ice at the furnace; Nitrogen Ice, Freeze Powder, Rime Frost and Solid Resist and
 --  Optic Filter at the Advanced Lab; Heat Conductor, Pressed Paste, Anti-air Dust and Velocity Dust
 --  at the Research Bench; Fused Rock and Fine Dust at the Anvil; Concrete, Camp Beacon, Companion
 --  Beacon, Beeswax, Yeast and Dead Yeast at the Workbench/Furnace. A rare Bizarre Curio is craftable
 --  at the Advanced Lab as a late-game collector trophy."
+-- "Balance: the Bizarre Curio (Advanced Lab, spends a Diamond) no longer shows up in the
+--  crafting menu until you've built the diamond pick first -- it was possible to spend your only
+--  starting diamonds on this cosmetic trophy and permanently lock yourself out of the pick."

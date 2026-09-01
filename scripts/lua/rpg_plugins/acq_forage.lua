@@ -277,17 +277,17 @@ end
 -- this plugin does not touch it, per the convention documented at rpg.lua:800 and every acq_*
 -- sibling's own trailing comment this wave). One line per discrete change, player-facing language.
 -- ================================================================================================
--- "Foraging (@acq_forage): harvesting wheat now has a chance to turn up wild yeast clinging to the
+-- "Foraging: harvesting wheat now has a chance to turn up wild yeast clinging to the
 --  stalks, and mining gold in a forest canopy has a chance to turn up a wild honeycomb (Liquid Wax)
 --  -- the last stock ingredient in the beeswax/wax family that had no way to reach your inventory."
--- "Foraging (@acq_forage): new buildable Proofing Box (Workbench: Glass + Wood) -- put a Yeast
+-- "Foraging: new buildable Proofing Box (Workbench: Glass + Wood) -- put a Yeast
 --  culture inside and it multiplies on its own if you keep it warm, exactly like real yeast does;
 --  build it too close to a furnace or lava and the culture dies to Dead Yeast instead."
--- "Farming (@acq_forage): Fertiliser -- both the machine-made kind and a new hand-made Composted
+-- "Farming: Fertiliser -- both the machine-made kind and a new hand-made Composted
 --  Fertiliser (Dead Yeast + Sawdust + Water, craftable anywhere) -- actually does something now.
 --  Aim it at a planted farm plot and place it to speed that crop toward harvest. It had a real
 --  description promising this for a while with nothing behind it."
--- "Materials (@acq_forage): Dead Yeast and Wax are now mineable wherever they turn up for real --
+-- "Materials: Dead Yeast and Wax are now mineable wherever they turn up for real --
 --  Dead Yeast from overheated yeast, Wax from Liquid Wax cooling and hardening on its own."
 --
 -- R.PLUGINS: request "acq_forage" appended to rpg.lua:6140's literal list (alongside the other

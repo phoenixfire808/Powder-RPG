@@ -247,7 +247,22 @@ end
 --- name, or a number) and re-resolved at apply time, so a spec persisted as
 --- "WATR" still means water after a restart.  -1 / "NT" is no transition;
 --- 0 / "NONE" destroys the particle.
-local function validateTransition(raw, key)
+---
+--- `pendingNames`, when given, is a set (UPPERNAME -> true) of every element
+--- name in the current boot batch (see queueSpecList below).  A batch entry
+--- is validated before ANY entry's elements.allocate() has run (allocation is
+--- deferred, see the module header), so two custom elements naming each
+--- other -- NA -> NAK, NAK -> NA -- can never both resolve through
+--- elements.exists no matter which is checked first: neither is live yet.
+--- Without this, that combination fails validation for BOTH names and drops
+--- both elements from the boot entirely, which is strictly worse than the
+--- dangling-id bug this format replaced (empirically reproduced 2026-09-02,
+--- @phase, see scripts/gen_materials_seed.py _EXPLICIT_CORRECTIONS' NA/NAK
+--- entries). A target present in `pendingNames` is accepted on trust that its
+--- own batch entry will define it; queueSpecList's post-batch transition
+--- fixup (below) corrects any reference that was still unresolved -- fell
+--- back to NT -- at the moment its own element was actually created.
+local function validateTransition(raw, key, pendingNames)
     if type(raw) == "number" then
         local n, e = PBX.vInt(raw, key, -1, 65535)
         if e then return nil, e end
@@ -262,7 +277,10 @@ local function validateTransition(raw, key)
     local up = string.upper(raw)
     if up == "NT" or up == "NONE_TRANSITION" then return NT, nil end
     local _, e = PBX.vElem(up)
-    if e then return nil, key .. ": " .. e end
+    if e then
+        if pendingNames and pendingNames[up] then return up, nil end
+        return nil, key .. ": " .. e
+    end
     return up, nil
 end
 
@@ -277,7 +295,7 @@ local function resolveTransition(v)
     return id or NT
 end
 
-local function validateField(f, raw)
+local function validateField(f, raw, pendingNames)
     if f.kind == "str" then
         return PBX.vStr(raw, f.key, f.max)
     elseif f.kind == "int" then
@@ -287,7 +305,7 @@ local function validateField(f, raw)
     elseif f.kind == "menu" then
         return validateMenuSection(raw)
     elseif f.kind == "trans" then
-        return validateTransition(raw, f.key)
+        return validateTransition(raw, f.key, pendingNames)
     end
     return nil, f.key .. " has no validator"
 end
@@ -454,7 +472,7 @@ end
 --- 20_behaviors.lua has not been concatenated in yet and every kind would
 --- otherwise look unknown; the recreation job resolves the kind for real one
 --- tick later.
-local function validateSpec(req, base, lenientBehavior)
+local function validateSpec(req, base, lenientBehavior, pendingNames)
     local spec, changed = {}, {}
 
     local function note(key, oldv, newv)
@@ -514,7 +532,7 @@ local function validateSpec(req, base, lenientBehavior)
         local raw = req[f.key]
         if raw == nil and f.alias then raw = req[f.alias] end
         if raw ~= nil then
-            local v, e = validateField(f, raw)
+            local v, e = validateField(f, raw, pendingNames)
             if e then return nil, nil, e end
             note(f.key, base and base[f.key], v)
             spec[f.key] = v
@@ -872,14 +890,34 @@ local function scheduleRecreate(spec)
     end)
 end
 
+-- Names of every element in `list` (a plain array of raw spec tables), upper-cased,
+-- merged into `into` (created if omitted). Used to build the pending-names set below --
+-- deliberately a full pre-scan rather than "names seen so far", so a same-batch
+-- transition reference resolves regardless of which of the two entries appears first.
+local function namesInList(list, into)
+    into = into or {}
+    if type(list) == "table" then
+        for i = 1, #list do
+            local raw = list[i]
+            if type(raw) == "table" and type(raw.name) == "string" then
+                into[string.upper(raw.name)] = true
+            end
+        end
+    end
+    return into
+end
+
 -- Queue every entry in `list` (a plain array of raw spec tables, e.g. straight out of
 -- PBX.load(PERSIST) or the source-controlled seed) whose name is not already claimed in
--- R.byName. Returns (queued, skipped). `label` is only for the warn-log text below.
--- Shared by both boot-time sources so a hand-edited persistence file and the
--- source-controlled seed are held to the identical validation bar.
-local function queueSpecList(list, label)
+-- R.byName. Returns (queued, skipped, queuedSpecs). `label` is only for the warn-log text
+-- below. `pendingNames` (UPPERNAME -> true) is every name across the whole boot batch --
+-- see the do-block below -- and lets a transition target validate against a sibling entry
+-- that has not been created yet. Shared by both boot-time sources so a hand-edited
+-- persistence file and the source-controlled seed are held to the identical validation bar.
+local function queueSpecList(list, label, pendingNames)
     local queued, skipped = 0, 0
-    if type(list) ~= "table" then return 0, 0 end
+    local queuedSpecs = {}
+    if type(list) ~= "table" then return 0, 0, queuedSpecs end
     for i = 1, #list do
         local raw = list[i]
         -- Re-validate on load: the source is plain data (JSON on disk, or a Lua literal
@@ -888,7 +926,7 @@ local function queueSpecList(list, label)
         -- resolvable this early, hence lenientBehavior.
         local ok, spec = pcall(function()
             if type(raw) ~= "table" then error("not a table", 0) end
-            local s, _, err = validateSpec(raw, nil, true)
+            local s, _, err = validateSpec(raw, nil, true, pendingNames)
             if err then error(err, 0) end
             return s
         end)
@@ -908,13 +946,80 @@ local function queueSpecList(list, label)
             R.byName[spec.name] = { id = nil, spec = spec, hasUpdate = false }
             scheduleRecreate(spec)
             queued = queued + 1
+            queuedSpecs[#queuedSpecs + 1] = spec
         end
     end
-    return queued, skipped
+    return queued, skipped, queuedSpecs
+end
+
+-- Post-batch transition fixup (@phase escalation, 2026-09-02): scheduleRecreate defers one
+-- job per spec, so within a single boot batch it is possible for spec A's job to run before
+-- spec B's -- if A's transition names B, A's elements.element() call resolves it while B is
+-- still unallocated and resolveTransition's safe fallback (NT, "no transition") silently
+-- wins. That is quieter than the validation-time rejection the pendingNames set above fixes,
+-- but just as wrong: A would boot with the reference to B silently dropped. Fixed by
+-- re-resolving and re-writing every string-named transition field, for every spec actually
+-- queued this boot, in ONE job appended after every scheduleRecreate job from both lists --
+-- PBX.defer's queue is strict FIFO (00_util.lua pumpJobs: table.remove(jobQueue, 1)), so
+-- deferring this after both queueSpecList calls return guarantees it runs after every entry
+-- in the batch has had its own create job attempt, regardless of how many ticks that takes.
+-- Re-applying an already-correct transition (e.g. a target that was already live, like LAVA)
+-- is a harmless no-op write, so this does not need to track which references were pending.
+local function scheduleTransitionFixup(specLists)
+    local specs = {}
+    for j = 1, #specLists do
+        local list = specLists[j]
+        for i = 1, #list do specs[#specs + 1] = list[i] end
+    end
+    local hasNamedTransition = false
+    for i = 1, #specs do
+        local s = specs[i]
+        if type(s.highTemperatureTransition) == "string" or type(s.lowTemperatureTransition) == "string" then
+            hasNamedTransition = true
+            break
+        end
+    end
+    if not hasNamedTransition then return end
+
+    PBX.defer(function()
+        PBX.guard(MODULE, function()
+            local fixed = 0
+            for i = 1, #specs do
+                local s = specs[i]
+                local ent = R.byName[s.name]
+                if ent and ent.id ~= nil and elements.exists(ent.id) then
+                    local patch, any = {}, false
+                    if type(s.highTemperatureTransition) == "string" then
+                        patch.HighTemperatureTransition = resolveTransition(s.highTemperatureTransition)
+                        any = true
+                    end
+                    if type(s.lowTemperatureTransition) == "string" then
+                        patch.LowTemperatureTransition = resolveTransition(s.lowTemperatureTransition)
+                        any = true
+                    end
+                    if any then
+                        elements.element(ent.id, patch)
+                        fixed = fixed + 1
+                    end
+                end
+            end
+            PBX.log(MODULE, "boot transition fixup: re-resolved " .. fixed ..
+                            " named transition(s) after every batch element had its own " ..
+                            "create job attempt")
+        end)
+    end)
 end
 
 do
-    local restored, skipped = queueSpecList(PBX.load(PERSIST), "persisted")
+    local persistedList = PBX.load(PERSIST)
+    local seedList = _G.PBX_MATERIALS_SEED
+
+    -- Every name across BOTH boot-time sources, computed up front (see validateTransition's
+    -- doc comment above for why this has to happen before either list is validated).
+    local pendingNames = namesInList(persistedList)
+    namesInList(seedList, pendingNames)
+
+    local restored, skipped, restoredSpecs = queueSpecList(persistedList, "persisted", pendingNames)
 
     -- SOURCE-CONTROLLED BASELINE (2026-09-0x, @multiplayer): pbx-custom-elements.json is a
     -- gitignored snapshot of ONE machine's own dev-tooling history (scripts/define_materials.py
@@ -929,8 +1034,10 @@ do
     -- present (from the persisted snapshot above, i.e. a dev machine with its own live edits)
     -- always wins over the seed -- queueSpecList's R.byName[spec.name] check gives whichever
     -- list is processed first priority, and persisted is processed first.
-    local seedQueued, seedSkipped = queueSpecList(_G.PBX_MATERIALS_SEED, "seed")
+    local seedQueued, seedSkipped, seedSpecs = queueSpecList(seedList, "seed", pendingNames)
     restored, skipped = restored + seedQueued, skipped + seedSkipped
+
+    scheduleTransitionFixup({ restoredSpecs, seedSpecs })
 
     PBX.log(MODULE, "registry " .. R.VERSION .. " loaded; queued " .. restored ..
                     " element(s) (persisted+seed), skipped " .. skipped)

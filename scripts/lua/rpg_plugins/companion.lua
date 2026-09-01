@@ -499,7 +499,7 @@ STEP.light = function(a)
 end
 
 -- ================================================================ AREA / BUILD TASKS (design-companion-core.md
--- §4): parametric, not prefab - the model (or a chat handler) supplies a rect/spec, this code generates the
+-- §4): parametric, not prefab - the caller (or a chat handler) supplies a rect/spec, this code generates the
 -- actual cell-by-cell work. This is what makes "cut all these trees" / "dig me a big hole" / "build me a
 -- house" possible instead of a single-point primitive.
 STEP.clearTrees = function(a)
@@ -786,7 +786,7 @@ C.cmd = C_cmd
 R.companionCmd = C_cmd
 -- enqueueChain: run a list of {name,args} in order, one at a time, only advancing when the previous step
 -- reports "success" (a "fail" anywhere drops the rest of the chain and reports why). This is how multi-step
--- asks ("gather -> return -> craft") get chained from either the chat templates or the model driver.
+-- asks ("gather -> return -> craft") get chained from either the chat templates or the caller driver.
 function C.enqueueChain(steps, from)
   if not steps or #steps == 0 then return false end
   C.queue = {}
@@ -831,7 +831,7 @@ end
 function R.companionHeartbeat() C.lastHeartbeat = R.frame; return true end
 -- companion_driver.py's fast chat-polling entry point: separate from core's R.chatPending so a slow model
 -- never races core's own ~0.5s fallback (see the drain-on-send in the R.hooks.chat handler below, and the
--- local timeout watchdog in the tick handler that answers from templates if the model takes too long).
+-- local timeout watchdog in the tick handler that answers from templates if the caller takes too long).
 function R.companionChatPending(consume)
   local out = {}
   for i, m in ipairs(C.chatQueue) do out[i] = { text = m.text, at = m.at } end
@@ -1104,10 +1104,10 @@ local function scriptedBrainTick()
 end
 
 -- ================================================================ no scripted flavor-narration by design
--- (the player 21:06, design-companion-core.md §5): "no templated chatter - the model speaks, and when it is
+-- (the player 21:06, design-companion-core.md §5): "no templated chatter - the caller speaks, and when it is
 -- unavailable he stays useful and QUIET." An earlier version of this file had the scripted brain narrate
 -- biome/depth/night/quest/ore-sighting flavor lines on its own; that is now deliberately removed. All of
--- that context still lives in C.index/R.companionState() for the model to comment on if and when it wants
+-- that context still lives in C.index/R.companionState() for the caller to comment on if and when it wants
 -- to - the scripted layer itself only ever speaks for a concrete reflex (self-defense, teleport-home) or a
 -- concrete task outcome (a plan step's own progress/success/failure report), never as ambient color.
 

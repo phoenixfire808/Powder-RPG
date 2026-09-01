@@ -126,7 +126,7 @@ end
 
 local eid, nameOf, has, say, nice, inv = R.eid, R.nameOf, R.has, R.say, R.nice, R.inv
 
-R.acqe = R.acqe or { machines = {}, dupPlaced = { PCLN = 0, PBCN = 0 }, reactorRecipesInstalled = false }
+R.acqe = R.acqe or { machines = {}, dupPlaced = { PCLN = 0, PBCN = 0 }, reactorRecipesInstalled = false, dmndRecipesInstalled = false }
 
 -- ================================================================ low-level build helpers (same
 -- erase-then-place convention as fieldtools.lua/automation.lua/acq_machines.lua)
@@ -375,15 +375,30 @@ local function tryPlaceDup(el, mx, my)
 end
 
 local DUP_RECIPES = {
-  { out = "PCLN", n = 1, need = { PTNM = 3, ZIRC = 3, DMND = 1 }, st = "advlab", txt = "Powered clone",
-    desc = "Duplicates whatever it's locked to while powered. Locks PERMANENTLY to Steel the instant you place it -- never ore, never anything that gates progression. One per world" },
   { out = "PBCN", n = 1, need = { PTNM = 2, ZIRC = 2, STEL = 4 }, st = "advlab", txt = "Powered breakable clone",
     desc = "As Powered clone, but shatters under high pressure on its own (a real safety valve built into the element itself). Locks PERMANENTLY to Steel on placement. One per world" },
   { out = "ISOFORGEKIT", n = 1, need = { PTNM = 3, ZIRC = 3, STEL = 8 }, st = "advlab", txt = "Isotope Forge",
     desc = "Two proton-transmutation cells: a slow, steady source of Polonium and a second route to Plutonium, independent of the platinum-catalyst recipe" },
+}
+-- DMND-gated subset of the above (@acq, 2026-09-02, fixing knowledge/audit-natural-pathways.md
+-- s9's "DMND is bootstrap-critical, with exactly zero margin" finding). PCLN and EXOFORGEKIT are
+-- this file's only recipes that spend DMND. DMND's entire deterministic one-time supply is 3 (two
+-- quest rewards, rpg.lua) and the diamond pick's own recipe needs exactly 3 -- the pick is what
+-- raises pick power to DMND's own R.MINEABLE tier 6, so DMND only becomes renewably mineable
+-- AFTER the pick exists. Gating these two behind R.tech.reactor alone (the pre-existing gate,
+-- still applied below) is NOT sufficient -- reactor-online (machines.lua's own power milestone)
+-- carries no dependency on ever having crafted the pick, so a player could reach reactor-online
+-- and spend their one-time 3 DMND on EXOFORGEKIT (a T6 sandbox curiosity, never required for
+-- anything, per its own desc) before ever building the pick, permanently losing the deterministic
+-- route to it -- the identical order-dependent trap items.lua/fieldtools.lua already fixed for
+-- every OTHER DMND-consuming recipe in the game. Same fix here: also require hasDiamondPick().
+local DUP_RECIPES_DMND = {
+  { out = "PCLN", n = 1, need = { PTNM = 3, ZIRC = 3, DMND = 1 }, st = "advlab", txt = "Powered clone",
+    desc = "Duplicates whatever it's locked to while powered. Locks PERMANENTLY to Steel the instant you place it -- never ore, never anything that gates progression. One per world" },
   { out = "EXOFORGEKIT", n = 1, need = { PTNM = 4, TUNG = 2, DMND = 2, ZIRC = 4 }, st = "advlab", txt = "Exotic Forge",
     desc = "T6 sandbox reward. A slow trickle of Singularity and Antimatter for players who finished the reactor tier and want the pure-physics toybox -- never required for anything" },
 }
+local function hasDiamondPick() return R.stats and R.stats.crafted and R.stats.crafted["diamond pick"] end
 
 -- ================================================================================================
 -- DRAY -- deliberately NOT given an acquisition path. Restating and agreeing with the existing
@@ -413,6 +428,10 @@ local function installRecipes()
   if R.tech and R.tech.reactor then
     for _, rc in ipairs(REACTOR_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
     for _, rc in ipairs(DUP_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
+    if hasDiamondPick() then
+      R.acqe.dmndRecipesInstalled = true
+      for _, rc in ipairs(DUP_RECIPES_DMND) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
+    end
   end
 end
 installRecipes()
@@ -421,17 +440,22 @@ installRecipes()
 -- second hook(R.hooks.tick,...) call would silently replace this one instead of adding to it --
 -- both jobs live in a single function on purpose): forge upkeep every frame, and a cheap
 -- (one boolean compare) poll for the reactor-online gate flipping true after this file already
--- installed its base recipes, same convention fieldtools.lua uses.
+-- installed its base recipes, same convention fieldtools.lua uses. A second cheap poll covers the
+-- DMND-gated subset (DUP_RECIPES_DMND, above) flipping true independently, since hasDiamondPick()
+-- can turn true either before or after R.tech.reactor.
 hook(R.hooks.tick, function()
   updateForges()
   if not R.acqe.reactorRecipesInstalled and R.tech and R.tech.reactor then
     R.acqe.reactorRecipesInstalled = true
     installRecipes()
   end
+  if not R.acqe.dmndRecipesInstalled and R.tech and R.tech.reactor and hasDiamondPick() then
+    installRecipes()
+  end
 end)
 
 hook(R.hooks.newworld, function()
-  R.acqe = { machines = {}, dupPlaced = { PCLN = 0, PBCN = 0 }, reactorRecipesInstalled = false }
+  R.acqe = { machines = {}, dupPlaced = { PCLN = 0, PBCN = 0 }, reactorRecipesInstalled = false, dmndRecipesInstalled = false }
   installRecipes()
 end)
 hook(R.hooks.sandbox, function() installRecipes() end)
@@ -464,3 +488,11 @@ hook(R.hooks.place, function(el, mx, my, fine)
 end)
 
 R.tlog("info", "acq_energy", "plugin loaded", { baseRecipes = #BASE_RECIPES, reactorRecipes = #REACTOR_RECIPES, dupRecipes = #DUP_RECIPES })
+
+-- ================================================================================================
+-- CHANGELOG LINE for the coordinator to land in rpg.lua's R.CHANGELOG (rpg.lua owns R.VERSION;
+-- this plugin does not touch it).
+-- ================================================================================================
+-- "Balance: Powered Clone and the Exotic Forge (both spend a Diamond) no longer show up in
+--  the crafting menu until you've built the diamond pick first -- it was possible to spend your
+--  only starting diamonds on either one and permanently lock yourself out of the pick."

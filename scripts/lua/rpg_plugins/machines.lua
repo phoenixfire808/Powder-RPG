@@ -107,7 +107,23 @@ local UNLOCK10, UNLOCK100 = 10, 100
 -- through a switch had its wattage bookkeeping silently wrong. Verified against the engine
 -- source before adding; this is the one-line fix @automation specified rather than applied,
 -- since machines.lua was not its file.
-local CONDUCTOR = { CU = true, METL = true, PSCN = true, NSCN = true, STEL = true, TRBN = true, TEG = true, SWCH = true }
+-- EXPANDED 2026-09-02: SWCH was one instance of a whole class -- checked every real
+-- engine element's PROP_CONDUCTS flag against POWDER_TOY_MATERIAL_INDEX.json and found this
+-- allowlist was missing 13 more real, static (TYPE_SOLID/static TYPE_PART) conductors a normal
+-- build routinely touches: GOLD/IRON ore veins under a base, BMTL (the conveyor/airline/wind-kit
+-- material), TTAN plate, TUNG, and the new electronics-chain items (INWR insulated wire, SLCN,
+-- TESC tesla coil, ETRD electrode) plus PTNM/RBDM/BREL/BRMT. Real per-particle spark propagation
+-- already flows through every one of these regardless of this table (that's engine physics, not
+-- Lua) -- this only fixes R.power.grids' wattage/brownout BOOKKEEPING to match what the engine is
+-- already doing, same fix shape as SWCH. Deliberately EXCLUDED: WATR/SLTW/MERC/RSST/LRBD (real
+-- conductors too, but liquids move -- counting them would make the logical grid drift as the fluid
+-- does, a materially different risk than a static wire); NBLE (gas, same mobility risk); NTCT/PTCT
+-- (real conductors but only above/below 100C -- conditional like SWCH, not unconditionally true,
+-- so blindly including them would overstate wattage the way omitting SWCH understated it -- left
+-- out rather than guessed at, flagging as a residual gap, not silently "fixed").
+local CONDUCTOR = { CU = true, METL = true, PSCN = true, NSCN = true, STEL = true, TRBN = true, TEG = true, SWCH = true,
+  GOLD = true, IRON = true, BMTL = true, TTAN = true, TUNG = true, INWR = true, SLCN = true, TESC = true, ETRD = true,
+  PTNM = true, RBDM = true, BREL = true, BRMT = true }
 local ROLE = {
   crank = "gen", wheel = "gen", solar = "gen", teg = "gen", turbine = "gen", reactor = "gen",
   rtg = "gen", lightning = "gen", gasturbine = "gen",
@@ -1654,12 +1670,17 @@ local function updateAutocraft()
     end
   end end
 end
+-- Wired to machines2.lua's `camera` alarm 2026-09-02 (@machines, design-machine-systems.md's own
+-- "highest-leverage open fix": camera's alarm was R.say text only, no mechanical coupling to
+-- anything). No cross-file call needed -- machines2.lua's updateCamera() sets the plain global
+-- R.secAlarm every tick (nil-safe, false when no powered camera sees a hostile); reading it here
+-- is the entire integration, zero new locals either side.
 local function updateTurret()
   for _, m in ipairs(R.machines) do if m.kind == "turret" or m.kind == "turret2" then
     m.cool = (m.cool or 0) - 1
     if gridPowered(m) and m.cool <= 0 and type(R.damageEnemiesAt) == "function" then
       local hits = R.damageEnemiesAt(m.x, m.y - 6, m.range or 150, m.dmg or 8, 2)
-      if hits and hits > 0 then m.cool = 30; m.lastFire = R.frame end
+      if hits and hits > 0 then m.cool = R.secAlarm and 15 or 30; m.lastFire = R.frame end
     end
   end end
 end

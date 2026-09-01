@@ -228,9 +228,50 @@ local function buildReplicore(mx, my)
   R.say("Replicator Core online, locked to " .. nice(REPLICORE_TARGET) .. " -- " .. REPLICORE_CHARGES
     .. " charges. Power the pad, keep the vent below it clear to harvest. Right-click with a Vibranium in hand to recharge once it burns out")
 end
+-- ORDER-DEPENDENT TRAP FIX: the Replicator Core is capped at ONE per world
+-- (buildReplicore above refuses a second build unconditionally, permanently, per-world) and its
+-- only recovery path is the right-click-with-VIBR handler below, which only fires once
+-- `m.burnedOut` is true. Before this fix, `burnedOut` was ONLY ever set by the charge-countdown
+-- branch here -- so if the housed CLNE particle were destroyed by anything OTHER than that
+-- countdown (a Disintegrator/Tunnel Borer/Support Cutter beam -- terraweapons.lua/items.lua,
+-- this same lane's own files -- all kill whatever particle they hit without the R.MINEABLE gate
+-- that protects a Replicator Core from ordinary pick-mining, rpg.lua:6386's own `R.actorMine`
+-- check; or any future destructive mechanic this file can't anticipate), the machine just sat
+-- there permanently inert forever: `burnedOut` never becomes true, `R.fieldtools.replicatorBuilt`
+-- stays true forever (buildReplicore refuses a rebuild unconditionally), and the recharge
+-- branch's own `m.burnedOut` guard never lets the player back in -- a silent, permanent loss of
+-- the game's FINAL UNLOCK from an entirely reasonable action (clearing space near your own base
+-- with a terrain weapon that doesn't know what it's standing next to). Detecting "the core is
+-- simply gone" and routing it into the exact same recoverable burnedOut state closes this.
+-- Same on-screen-gated, N-consecutive-misses pattern machines.lua's own updateMachineCores
+-- already uses for the identical class of problem (a transient tile-cache miss while scrolling
+-- reads identically to "actually destroyed" for one frame) -- reused here rather than
+-- reinvented, at the same ~25-frame check cadence, bounded to this file's own short machine list.
 local function updateReplicators()
+  -- destruction-detection sub-check, throttled to every 25 frames on its own (same cadence
+  -- machines.lua's own updateMachineCores uses) -- independent of the charge/power logic below,
+  -- which keeps its original every-tick cadence unchanged.
+  local checkDestroyed = (R.frame % 25 == 0)
   for _, m in ipairs(R.fieldtools.machines) do if m.kind == "replicator" and not m.burnedOut then
-    if poweredAt(m.pad.x, m.pad.y, 1) then
+    if checkDestroyed then
+      local cx, cy = m.x - R.cam.x, m.y - R.cam.y
+      if cx > R.M and cx < R.W - R.M and cy > R.M and cy < R.H - R.M then
+        if typeAt(m.x, m.y) ~= "CLNE" then
+          m.coreMiss = (m.coreMiss or 0) + 1
+          if m.coreMiss >= 3 then
+            m.coreMiss = nil
+            m.burnedOut = true
+            R.say("Replicator Core destroyed -- bring a Vibranium and right-click where it stood to rebuild it")
+            R.tlog("warn", "fieldtools", "replicator core destroyed externally (not by normal charge burnout)", { x = m.x, y = m.y })
+          end
+        else
+          m.coreMiss = nil
+        end
+      else
+        m.coreMiss = nil  -- off-screen carries no evidence either way -- do not accumulate a false miss while scrolled away
+      end
+    end
+    if not m.burnedOut and poweredAt(m.pad.x, m.pad.y, 1) then
       m.tick = (m.tick or 0) + 1
       if m.tick >= 600 then
         m.tick = 0
@@ -379,6 +420,18 @@ local DMND_GATED_RECIPES = {
 
 local function hasDiamondPick() return R.stats and R.stats.crafted and R.stats.crafted["diamond pick"] end
 
+-- REPLICOREKIT visibility (@balance, same pass as the destruction-detection fix above): once
+-- `R.fieldtools.replicatorBuilt` is true, `buildReplicore` unconditionally refuses to place a
+-- second one ("you already built it") -- but before this change the recipe stayed listed and
+-- craftable forever, so a player who didn't realise it was already built (or forgot) could spend
+-- a second full REPLICOREKIT's worth of VIBR/DMND/PTNM/ZIRC and then have the place action
+-- silently do nothing but print a chat line, with no refund. Not as severe as the destruction
+-- trap above (every one of those inputs is renewably obtainable by this point in the game, so
+-- it's wasted time/materials, not a permanent loss) but the same family of "the game already
+-- knows this can't work and doesn't say so before the player commits resources" problem, and a
+-- one-line filter closes it. VIBR itself (also in REACTOR_RECIPES, needed to recharge a
+-- burned-out/destroyed core) stays available always -- only REPLICOREKIT itself is hidden once
+-- built.
 local function installRecipes()
   for i = #R.RECIPES, 1, -1 do if R.RECIPES[i]._plugin == TAG then table.remove(R.RECIPES, i) end end
   for _, rc in ipairs(ADVLAB_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
@@ -386,13 +439,19 @@ local function installRecipes()
     for _, rc in ipairs(DMND_GATED_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
   end
   if R.tech and R.tech.reactor and hasDiamondPick() then
-    for _, rc in ipairs(REACTOR_RECIPES) do rc._plugin = TAG; table.insert(R.RECIPES, rc) end
+    for _, rc in ipairs(REACTOR_RECIPES) do
+      if rc.out ~= "REPLICOREKIT" or not R.fieldtools.replicatorBuilt then
+        rc._plugin = TAG; table.insert(R.RECIPES, rc)
+      end
+    end
   end
 end
 installRecipes()
 -- reactor-online / diamond-pick-owned can each flip true after this file already installed once
 -- (same tick-driven gate as machines.lua's own checkMilestones) -- poll cheaply, bounded to a
--- couple of boolean/table-field compares per frame, until each gate opens, then stop.
+-- couple of boolean/table-field compares per frame, until each gate opens, then stop. A third,
+-- identically cheap poll below does the same for replicatorBuilt flipping true, so the recipe
+-- list above updates the instant the core is placed, not just on the next reload/newworld.
 hook(R.hooks.tick, function()
   if not R.fieldtools.dmndRecipesInstalled and hasDiamondPick() then
     R.fieldtools.dmndRecipesInstalled = true
@@ -400,6 +459,10 @@ hook(R.hooks.tick, function()
   end
   if not R.fieldtools.reactorRecipesInstalled and R.tech and R.tech.reactor and hasDiamondPick() then
     R.fieldtools.reactorRecipesInstalled = true
+    installRecipes()
+  end
+  if R.fieldtools.replicatorBuilt and not R.fieldtools.replicoreRecipeHidden then
+    R.fieldtools.replicoreRecipeHidden = true
     installRecipes()
   end
 end)

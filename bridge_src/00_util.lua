@@ -26,7 +26,19 @@ PBX.MAX_WORKERS_PER_COLONY = 400
 PBX.MAX_COLONIES           = 8
 PBX.MAX_TASKS_PER_COLONY   = 16
 PBX.MAX_BLUEPRINT_CELLS    = 4096
-PBX.MAX_CUSTOM_ELEMENTS    = 160  -- raised 2026-08-26: TPT has 256 ids, ~213 stock; 40 leaves margin
+PBX.MAX_CUSTOM_ELEMENTS    = 160 -- raised 2026-09-01. The old value of 40 came from
+-- "TPT has 256 ids, ~213 stock; 40 leaves margin" -- correct arithmetic, wrong premise: it
+-- counted only the ONE-BYTE id range. elem.allocate (src/lua/LuaElements.cpp) prefers ids
+-- <=255 for save portability but ALREADY falls back to 256..PT_NUM-1, and PT_NUM is 512
+-- (PMAPBITS = 9). GameSave round-trips two-byte types too: it writes the high byte when
+-- `part.type & 0xFF00` and reads it back with `type |= partsData[i] << 8`. So ~299 ids were
+-- sitting unused behind a self-imposed cap.
+-- Why it mattered: the material catalogue wants 71 elements and machines/creatures compete
+-- for the same registry, so materials silently lost their slots -- the underground collapsed
+-- to a single rock type because BSLT and CNCR could not register. Measured effect of this
+-- change: live custom elements 40 -> 64, priority-1 materials 4/29 -> 28/29.
+-- Trade-off, deliberate: a save using a two-byte element id is not portable to stock TPT.
+-- This fork never shares saves upstream (ADR-002), so that cost is accepted.
 
 PBX.SIM_W, PBX.SIM_H   = 612, 384
 PBX.CELL_W, PBX.CELL_H = 153, 96

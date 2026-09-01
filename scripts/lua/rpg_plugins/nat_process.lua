@@ -330,19 +330,61 @@ local function rockErosionTick()
   end
 end
 
--- ================================================================ 4) STONE IMPACT DEBRIS --
--- LUA-AUTHORED, event-driven (R.hooks.mine, not a tick -- zero per-frame cost): every real-world
--- quarry produces gravel and dust chips as a direct byproduct of breaking rock with a tool, the
--- same "impact yields byproduct" shape the task brief names for WOOD->SAWD. Fires once per real
--- mining hit on STNE/ROCK, small independent chance each for a GRAV or DUST bonus straight to
--- inventory -- this is the FOUND-while-mining-something-else pathway; rockErosionTick above is the
--- separate found-lying-in-a-riverbed pathway. Both feed the same two R.MINEABLE tokens.
+-- ================================================================ 4) STONE IMPACT DEBRIS, and
+-- 4b) WOOD IMPACT DEBRIS (SAWD) -- LUA-AUTHORED, event-driven (R.hooks.mine, not a tick -- zero
+-- per-frame cost). ONE R.hooks.mine registration for this whole file (the hook() helper above
+-- dedups by TAG on the passed list -- a SECOND hook(R.hooks.mine, ...) call in this same file
+-- would silently REMOVE this one instead of adding to it, exactly the bug shape acq_energy.lua's
+-- own header already warns about for R.hooks.tick; caught before shipping here, not after -- both
+-- branches below have to live in this single function, not two separate hook() calls).
+--
+-- 4) STONE: every real-world quarry produces gravel and dust chips as a direct byproduct of
+-- breaking rock with a tool, the same "impact yields byproduct" shape the task brief names for
+-- WOOD->SAWD. Fires once per real mining hit on STNE/ROCK, small independent chance each for a
+-- GRAV or DUST bonus straight to inventory -- this is the FOUND-while-mining-something-else
+-- pathway; rockErosionTick above is the separate found-lying-in-a-riverbed pathway. Both feed the
+-- same two R.MINEABLE tokens.
+--
+-- 4b) WOOD (SAWD): ROOT CAUSE, VERIFIED by direct read of the live engine source, 2026-09-0X
+-- (@acq), confirming @progression's own INFERRED attribution (the v1.15.82 venting-speed clamp)
+-- was the WRONG mechanism, not the wrong conclusion -- SAWD really did stop being reachable at
+-- that commit, for a different, deeper reason than the clamp:
+--   D:/The-Powder-Toy/src/simulation/Simulation.cpp:~1219 (`if (rt == PT_WOOD)`) carries this
+--   fork's OWN prior engine change, its comment dated to the same investigation as rpg.lua's own
+--   v1.15.82 changelog entry: "RPG fork change: gases no longer abrade wood into sawdust... so
+--   restricting this to non-gas particles is both the fix and the more realistic rule." The code
+--   now reads `if (vel > 5 && !(elements[parts[i].type].Properties & TYPE_GAS))`. This is a SECOND,
+--   independent fix layered on top of rpg.lua's own Lua-side venting-speed clamp (3.2, well under
+--   the 5 threshold) -- either one alone would already stop gas-borne SAWD production, and now
+--   BOTH are live. The result: the ONLY SAWD source this game ever had (292 particles measured
+--   live pre-fix, per rpg.lua's own header, all from vented OXYG sandblasting tree trunks) is
+--   permanently gone, correctly, because it was never a real acquisition pathway to begin with --
+--   it was the venting bug's own side effect, and the fix that closed the bug (rightly; a gas
+--   molecule cannot mechanically abrade timber, exactly the engine comment's own reasoning) closed
+--   the only route with it. `scripts/check_reachable.py` catching this as the sole live FAIL
+--   (blocking FERTILISER, acq_forage.lua) is this checker doing its job, not a false alarm.
+-- FIX: give SAWD an honest, still-natural, DIFFERENT production route rather than re-opening the
+--   gas-abrasion bug -- solid/liquid/powder impacts on WOOD at speed still produce SAWD in the
+--   engine unmodified (the fork comment above says so explicitly: "Powders, liquids and solids
+--   hitting wood at speed still produce sawdust exactly as before"), but nothing in normal play
+--   reliably drives a solid particle into standing WOOD at vel>5. The honest, non-cheesy answer
+--   PhoenixFire808's own bar asks for is simpler and doesn't need engine chemistry at all: cutting
+--   a tree down with a real axe produces real sawdust, exactly like breaking rock with a real pick
+--   produces real gravel and dust chips (STONE, directly above -- same shape, same file, same
+--   hook). Fires once per real WOOD chop, small independent chance of a SAWD bonus straight to
+--   inventory. WOOD is core-mineable and renewable (trees are common world content, not a
+--   one-time reward), so this has no quantity-sufficiency risk the way a DMND-shaped fix would.
 hook(R.hooks.mine, function(el, n)
-  if el ~= "STNE" and el ~= "ROCK" then return end
   local reps = math.min(n or 1, 8)
-  for _ = 1, reps do
-    if random(1, 8) == 1 then R.give("GRAV", 1) end
-    if random(1, 20) == 1 then R.give("DUST", 1) end
+  if el == "STNE" or el == "ROCK" then
+    for _ = 1, reps do
+      if random(1, 8) == 1 then R.give("GRAV", 1) end
+      if random(1, 20) == 1 then R.give("DUST", 1) end
+    end
+  elseif el == "WOOD" then
+    for _ = 1, reps do
+      if random(1, 5) == 1 then R.give("SAWD", 1) end
+    end
   end
 end)
 
@@ -527,8 +569,17 @@ end)
 
 if R.tlog then R.tlog("info", TAG, "plugin loaded", {
   natural_routes = { "SLTW", "DSTW", "RIME", "ROCK", "GRAV", "DUST", "SLCN", "CRMC", "DRIC",
-    "ACID", "BASE", "GLOW", "SPNG", "PSTE", "GEL" },
+    "ACID", "BASE", "GLOW", "SPNG", "PSTE", "GEL", "SAWD" },
   excluded_by_judgement = { "NICE", "FRZZ" },
   closes_nat_world_mineable_request = { "ROCK", "CRMC", "SPNG", "DRIC", "RBDM", "SLCN", "DUST",
     "GRAV", "ACID", "BASE", "GLOW", "PSTE", "GEL", "SLTW", "DSTW" },
 }) end
+
+-- ================================================================================================
+-- CHANGELOG LINE for the coordinator to land in rpg.lua's R.CHANGELOG (rpg.lua owns R.VERSION;
+-- this plugin does not touch it).
+-- ================================================================================================
+-- "Fixed: sawdust (a Fertiliser ingredient) had become impossible to get after a recent fix
+--  stopped vented gas from sandblasting trees -- chopping wood down now has a small chance of
+--  turning up sawdust directly, the same way breaking stone already has a chance of turning up
+--  gravel or dust."

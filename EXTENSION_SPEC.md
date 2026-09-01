@@ -2,7 +2,7 @@
 
 This is the binding contract for the runtime-extension layer. It lets us add new
 elements, behaviours and autonomous creatures to The Powder Toy **without rebuilding
-`powder.exe`**, and exposes all of it as MCP tools.
+`powder.exe`**, and exposes all of it as scriptable automation tools.
 
 Every module below is written by a different author working in parallel. Code only
 against this document. Do not read or edit another module's file.
@@ -14,16 +14,16 @@ against this document. Do not read or edit another module's file.
 `autorun.lua` is a single file loaded once at TPT startup. TPT's Lua sandbox does not
 guarantee `require`/`dofile` from the build directory, so the extension is authored as
 separate source modules that are **concatenated** into the final `autorun.lua` by
-`D:/powder-toy/build_autorun.py` in filename order.
+`build_autorun.py` in filename order.
 
 ```
-D:/powder-toy/bridge_src/00_util.lua        (written, foundation - read it, do not edit)
-D:/powder-toy/bridge_src/10_registry.lua
-D:/powder-toy/bridge_src/20_behaviors.lua
-D:/powder-toy/bridge_src/30_colony.lua
-D:/powder-toy/bridge_src/40_worker.lua
-D:/powder-toy/bridge_src/50_tasks.lua
-D:/powder-toy/bridge_src/60_diag.lua
+bridge_src/00_util.lua        (written, foundation - read it, do not edit)
+bridge_src/10_registry.lua
+bridge_src/20_behaviors.lua
+bridge_src/30_colony.lua
+bridge_src/40_worker.lua
+bridge_src/50_tasks.lua
+bridge_src/60_diag.lua
 ```
 
 Build order at runtime: all `bridge_src` modules are injected **above** the existing
@@ -109,8 +109,8 @@ PBX.jobResult(jobId)   --> nil while pending, else { ok=bool, value=..., error=.
 deadlock on the very same lock. Any action whose work must be deferred returns
 `{ "job": <id>, "status": "pending" }` and the caller polls the built-in `jobStatus`
 action (`{action:"jobStatus", job:<id>}` → `status` `pending`|`done`, plus `succeeded`,
-`value`, `detail`). The MCP layer is responsible for polling and presenting a single
-settled result to the model. At most 8 jobs drain per tick.
+`value`, `detail`). The automation layer is responsible for polling and presenting a single
+settled result to the caller. At most 8 jobs drain per tick.
 
 ### 2.5 Per-tick hooks
 
@@ -141,7 +141,7 @@ Reading another module's state is allowed; writing it is not.
 ### 2.8 Persistence
 
 ```lua
-PBX.save(name, tbl)   -- writes D:/powder-toy/knowledge/<name>.json
+PBX.save(name, tbl)   -- writes knowledge/<name>.json
 PBX.load(name)        -- returns table or nil
 ```
 
@@ -264,33 +264,33 @@ means workers materialise it, which is the cheap mode for pure construction demo
 
 ---
 
-## 5. MCP layer (`D:/powder-toy/powder_ext/`)
+## 5. Automation layer (`powder_ext/`)
 
-The MCP server `D:/powder-toy/powder_toy_mcp.py` is a single file with a strict
+The automation server `powder_toy_mcp.py` is a single file with a strict
 registration contract (manifest entry + `Tool()` declaration + dispatch branch, all
-three checked by `_capability_manifest_check`). **No agent edits that file.** Instead:
+three checked by `_capability_manifest_check`). **Do not edit that file directly.** Instead:
 
 ```
-D:/powder-toy/powder_ext/__init__.py       (empty)
-D:/powder-toy/powder_ext/schemas.py
-D:/powder-toy/powder_ext/element_tools.py
-D:/powder-toy/powder_ext/colony_tools.py
-D:/powder-toy/powder_ext/selftest.py
+powder_ext/__init__.py       (empty)
+powder_ext/schemas.py
+powder_ext/element_tools.py
+powder_ext/colony_tools.py
+powder_ext/selftest.py
 ```
 
 `schemas.py` must expose:
 
 ```python
-TOOL_SCHEMAS: dict[str, dict]     # mcp tool name -> JSON Schema (additionalProperties False)
-TOOL_DESCRIPTIONS: dict[str, str] # mcp tool name -> one-line description
-TOOL_READONLY: dict[str, bool]    # mcp tool name -> whether it mutates the sim
+TOOL_SCHEMAS: dict[str, dict]     # tool name -> JSON Schema (additionalProperties False)
+TOOL_DESCRIPTIONS: dict[str, str] # tool name -> one-line description
+TOOL_READONLY: dict[str, bool]    # tool name -> whether it mutates the sim
 TOOL_ORDER: tuple[str, ...]       # stable registration order
 ```
 
 `element_tools.py` and `colony_tools.py` must each expose:
 
 ```python
-HANDLERS: dict[str, callable]     # mcp tool name -> handler(arguments: dict) -> dict
+HANDLERS: dict[str, callable]     # tool name -> handler(arguments: dict) -> dict
 ```
 
 Handlers talk to the bridge through the existing client:
@@ -299,13 +299,13 @@ Handlers talk to the bridge through the existing client:
 from powder_bridge.client import bridge_request   # verify the real symbol name first
 ```
 
-Read `D:/powder-toy/powder_bridge/client.py` and use whatever the existing MCP tools
+Read `powder_bridge/client.py` and use whatever the existing MCP tools
 use — mirror the call style in `powder_toy_mcp.py`, do not invent a new transport.
 Every handler returns a plain dict containing at minimum `ok`, `tool`, and either the
 bridge payload or `errors: [str]`. Validate arguments locally before hitting the bridge
 so a bad call fails fast with a useful message.
 
-MCP tool names (snake_case, these are what the model sees):
+Automation tool names (snake_case, these are what a caller sees):
 
 `define_element`, `list_custom_elements`, `update_element`, `delete_custom_element`
 `colony_create`, `colony_list`, `colony_status`, `colony_destroy`,
@@ -316,13 +316,13 @@ MCP tool names (snake_case, these are what the model sees):
 
 ## 6. Non-negotiables
 
-1. **Do not edit `D:/powder-toy/powder_toy_mcp.py`.** Integration is done centrally.
-2. **Do not edit `D:/powder-toy/scripts/demo_create_element.lua` or
-   `D:/The-Powder-Toy/build/autorun.lua`.** They are generated at deploy time.
+1. **Do not edit `powder_toy_mcp.py`.** Integration is done centrally.
+2. **Do not edit `scripts/demo_create_element.lua` or
+   `build/autorun.lua`.** They are generated at deploy time.
 3. **Do not restart, launch or kill `powder.exe`,** and do not call `clear_sim`,
    `draw_project`, `place_element`, `set_field_region` or any other simulation-mutating
    MCP tool. The canvas is shared and someone else is using it.
-4. **Do not write to `D:/powder-toy/knowledge/build-lessons.jsonl`.**
+4. **Do not write to `knowledge/build-lessons.jsonl`.**
 5. Only edit the one file you were assigned. If you need something from another
    module, code against this spec and assume it exists.
 6. Lua must be 5.1-compatible and must parse. Verify with

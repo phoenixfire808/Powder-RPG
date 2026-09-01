@@ -1,7 +1,7 @@
 # Powder Bridge Extension — User Guide
 
 This is the guide for *using* the Powder Bridge extension: the person or
-model calling its 15 MCP tools, not the person implementing them. If you
+external tooling calling the 15 automation tools, not the person implementing them. If you
 want the binding contract between the Lua and Python modules, read
 `EXTENSION_SPEC.md` instead — this document assumes that contract already
 holds and tells you what it lets you do.
@@ -13,14 +13,14 @@ runtime — with their own colour, physical properties, temperature behaviour,
 and an attached "behaviour kind" like glower/decayer/emitter/conductor — and
 spin up colonies of autonomous worker creatures that wander the sandbox,
 carry material, and build structures out of blocks you assign them, all
-without rebuilding or restarting `powder.exe`. Everything is exposed as MCP
+without rebuilding or restarting `powder.exe`. Everything is exposed as scriptable
 tools you call the same way you'd call any other tool in this project: you
 describe what you want (an element's properties, a colony's nest location, a
 task like "build a box of BRCK from (10,10) to (40,30)"), the extension does
 the work inside the running simulation, and you poll for progress until it's
 done.
 
-## The 15 MCP tools
+## The 15 automation tools
 
 There are four groups. Every example below shows a plausible call and a
 plausible response shape; field names come from `EXTENSION_SPEC.md` sections
@@ -331,7 +331,7 @@ If you see that shape of response:
    idempotent).
 
 Everything else about these tools behaves like a normal synchronous call;
-this is the only place "async" surfaces at the MCP layer.
+this is the only place "async" surfaces at the automation layer.
 
 ## End-to-end walkthrough
 

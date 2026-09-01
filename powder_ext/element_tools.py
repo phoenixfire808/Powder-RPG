@@ -24,7 +24,7 @@ take. The job only actually runs (and "drains") on the next ``event.TICK``,
 and at most 8 jobs drain per tick.
 
 That means *this* module is the only place that can turn "a job was queued"
-into "here is what happened" for the model. Each of the three mutating
+into "here is what happened" for the caller. Each of the three mutating
 handlers below calls the bridge, and if the response says
 ``status == "pending"``, hands the returned ``job`` id to ``_await_job``,
 which polls the bridge's built-in ``jobStatus`` action
@@ -615,7 +615,7 @@ def _handle_list_custom_elements(arguments: dict[str, Any]) -> dict[str, Any]:
         return _err(tool, ["arguments must be an object"])
     # No fields are required or recognized for this tool; extra keys are
     # ignored rather than rejected, since a stray empty-object call pattern
-    # from the model shouldn't be treated as a hard error here.
+    # from the caller shouldn't be treated as a hard error here.
 
     client = _get_client()
     try:

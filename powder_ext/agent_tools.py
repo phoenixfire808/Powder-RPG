@@ -2,7 +2,7 @@
 
 * ``world_state``  -- compact, accurate world summary for every model turn.
   Factorio Learning Environment found ~98% of agent failures were *state
-  tracking*, not code generation; the fix is to hand the model a fresh,
+  tracking*, not code generation; the fix is to hand the caller a fresh,
   compact state each step instead of making it remember.
 * ``next_task``    -- Voyager-style automatic curriculum over the graded playbook:
   lowest unpassed practice first; a failed attempt is decomposed into that
@@ -25,7 +25,7 @@
   (round 3 item 5, modeled on arXiv 2608.01050's Wix Helpmate pipeline):
   a *registry* module is "unavailable" when it references an element that is
   neither in the stock catalog nor currently a live custom element
-  (``blueprint_tools._custom_elements()``), so the model is told plainly what
+  (``blueprint_tools._custom_elements()``), so the caller is told plainly what
   it cannot use right now instead of being offered it and failing later.
 
 All handlers never raise (guarded), talk to the game only through
@@ -166,7 +166,7 @@ def world_state(arguments: dict[str, Any]) -> dict[str, Any]:
     hot = [e for e in data["elements"] if e["tmax"] >= 500]
     data["hot_spots"] = [{"el": e["el"], "tmax": e["tmax"], "box": e["box"]} for e in hot][:8]
     data["empty_rects"] = _empty_rects(data.get("grid16", []))
-    # one-paragraph text the model can read directly
+    # one-paragraph human-readable summary
     top = ", ".join(f"{e['el']}x{e['n']}@({e['box'][0]},{e['box'][1]})-({e['box'][2]},{e['box'][3]})" for e in data["elements"][:10])
     text = (f"{data['parts']} particles, {'paused' if data['paused'] else 'RUNNING'}; top: {top}. "
             f"Walls: {data['walls'] or 'none'}. Pressure {data['pressure']['min']}..{data['pressure']['max']}. "
@@ -509,7 +509,7 @@ def module_search(arguments: dict[str, Any]) -> dict[str, Any]:
 # gate_modules -- deterministic precondition/executability filter (research
 # round 3 item 5, modeled on arXiv 2608.01050's Wix Helpmate pipeline: a
 # semantic-match shortlist followed by a deterministic executability gate
-# against live state removed 59.4% of remaining candidates and the model
+# against live state removed 59.4% of remaining candidates and the caller
 # would otherwise have picked a blocked skill 7.8% of the time with no gate).
 # Only *registry* (JSON) modules can reference a not-yet-defined custom
 # element; builtin modules are Python functions over the stock catalog only

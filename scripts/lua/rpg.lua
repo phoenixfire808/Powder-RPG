@@ -451,7 +451,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.17.5"
+R.VERSION = "1.17.6"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -1368,7 +1368,7 @@ local function surfaceAt(wx)
   s = floor(120 + v * 100 - mountainAt(wx) * 900 - smooth1(wx, 380, 72) * 70 - bump)
   surfCache[wx] = s; return s
 end
--- biome width 900 inlined at its single use (200-locals budget, see CLAUDE.md)
+-- biome width 900 inlined at its single use (200-locals budget, see DEVELOPMENT.md)
 local MAP_TYPES = { "mixed", "forest", "desert", "snow", "swamp", "flat" }
 local MAP_TYPE_OK = { mixed = 1, forest = 1, desert = 1, snow = 1, swamp = 1, flat = 1 }
 local MAP_TYPE_LABEL = {
@@ -2683,7 +2683,7 @@ R.RECIPES = {
   { out="PSCN", n=2, need={CU=1, GLAS=1}, st="workbench", txt="P-silicon", desc="Semiconductor: passes sparks one way. Basis of circuits" },
   -- ADDED 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #1): NSCN ("N-silicon")
   -- is a real stock TPT element (src/simulation/elements/NSCN.cpp, TYPE_SOLID,
-  -- Falldown=0 -- verified safe per CLAUDE.md rule 4) but had zero sources anywhere
+  -- Falldown=0 -- verified safe per DEVELOPMENT.md rule 4) but had zero sources anywhere
   -- in this fork: not mined, not crafted, not looted -- only ever drawn as decorative
   -- build-geometry pixels inside two machines' own construction code, never given to
   -- the player. That permanently blocked MAGACCELKIT (needs 4xNSCN, machines2.lua).
@@ -4017,7 +4017,7 @@ wrap = function(text, width)                -- 6px per character (shared with ch
   return out
 end
 -- 8 = conservative drawText width for menu columns. Inlined rather than a top-level
--- local (see CLAUDE.md's 200-locals limit); R.MENU_CHAR_W below is the shared copy.
+-- local (see DEVELOPMENT.md's 200-locals limit); R.MENU_CHAR_W below is the shared copy.
 local function menuWrap(text, widthPx)
   local maxc = math.max(1, floor((widthPx - 4) / 8))
   local out, line = {}, ""
@@ -4034,7 +4034,7 @@ end
 
 -- Reachable from onDraw via the R table. Referencing the bare `menuWrap` local from
 -- inside onDraw resolves as a GLOBAL and is nil at runtime -- the exact failure mode
--- CLAUDE.md records for `wrap` (v1.15.35) and `drawMenu` (v1.15.33). Because onDraw is
+-- DEVELOPMENT.md records for `wrap` (v1.15.35) and `drawMenu` (v1.15.33). Because onDraw is
 -- not pcall-wrapped, that error aborts the entire remaining HUD every frame while
 -- lastErr stays nil, so the bridge cannot see it. Draw code must use R.menuWrap.
 R.menuWrap = menuWrap
@@ -4164,7 +4164,7 @@ for _, sec in ipairs(R.MENU_SECTIONS) do
 end
 -- (a dead `local HELP` controls table lived here; nothing referenced it -- the Esc
 -- menu builds its own CONTROLS column. Removed to reclaim a top-level local slot,
--- see CLAUDE.md's 200-locals limit note.)
+-- see DEVELOPMENT.md's 200-locals limit note.)
 local MX, MY, MW, MH = 8, 18, 596, 340          -- inside R.SAFE
 local MENU_DIV_X = MX + floor(MW * 0.50)        -- 50/50 split; controls use one full-width column
 local CTRL_X, CTRL_W = MX + 10, MENU_DIV_X - MX - 18
@@ -4736,7 +4736,17 @@ local function onDraw()
     graphics.fillRect(b.x, b.y, b.w, b.h, 40, 60, 44, 255); graphics.drawRect(b.x, b.y, b.w, b.h, 140, 255, 160, 255)
     graphics.drawText(b.x + 6, b.y + 3, "Later", 220, 255, 225, 255)
   end
-  if R.changesPromptOpen and R.localChanges then
+  -- The WHAT'S NEW panel used to draw over EVERYTHING -- the HUD, the hotbar, and the guide's
+  -- entire content pane -- and it opens announcing something like "132 updates since you last
+  -- played". Reviewed as a real screenshot 2026-09-02: it was the first thing anyone saw and it
+  -- buried the actual game behind a wall of text, including making the guide unreadable if you
+  -- opened it before dismissing.
+  -- Every change still gets its own line (that is a standing rule and it is not being weakened);
+  -- what changes is that the panel yields to whatever you are actually trying to look at. If a
+  -- real panel is open, the changelog steps aside and waits rather than covering it.
+  if R.changesPromptOpen and (R.invOpen or R.menuOpen or (R.guideOpen or (R.ui and R.ui.bagOpen))) then
+    -- suppressed this frame; still open, still one keypress from being read
+  elseif R.changesPromptOpen and R.localChanges then
     local info = R.localChanges
     local ux, uw = 80, W - 160
     local lines = {}

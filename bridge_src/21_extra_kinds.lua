@@ -5,7 +5,7 @@
 -- eight built-ins (conductor, creature, decayer, emitter, glower, grower, inert,
 -- pheromone).
 --
--- REDUNDANT-BUT-HARMLESS as of 2026-09-01 (@behaviors): 20_behaviors.lua now
+-- REDUNDANT-BUT-HARMLESS as of 2026-09-01: 20_behaviors.lua now
 -- implements these same seven kinds natively (ported from the same source
 -- these three scripts/lua/*_kinds.lua files came from -- content verified
 -- byte-identical against a captured copy at knowledge/_newplayer_audit/

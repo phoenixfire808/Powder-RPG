@@ -887,6 +887,7 @@ local function buildCamera(mx, my)
   R.say("Security camera placed - power it to watch for real hostiles nearby")
 end
 local function updateCamera()
+  local anyAlarm = false
   for _, m in ipairs(R.machines2) do if m.kind == "camera" then
     m.alarm = false
     if poweredAt(m.pad.x, m.pad.y, 1) and R.enemyList then
@@ -896,10 +897,17 @@ local function updateCamera()
       end
     end
     if m.alarm then
+      anyAlarm = true
       m.cool = (m.cool or 0) - 1
       if m.cool <= 0 then R.say("ALARM - hostile detected near the camera!"); m.cool = 90 end
     end
   end end
+  -- Real mechanical coupling, not just a text toast (design-machine-systems.md's top-ranked open
+  -- gap, 2026-09-02 @machines): a plain global flag machines.lua's turret/turret2 read every tick
+  -- to halve their fire cooldown while any powered camera anywhere has a hostile in view -- "the
+  -- base is on alert, weapons hot," cheap (one boolean, no per-turret distance scan) and honest
+  -- about being base-wide rather than pretending a per-turret radius check that isn't there.
+  R.secAlarm = anyAlarm
 end
 
 -- ---------------------------------------------------------------- Signpost (passive, purely informational -
@@ -1006,7 +1014,11 @@ end)
 -- ================================================================ crafting: R.RECIPES + R.ITEMS + BUILDERS + place
 R.ITEMS = R.ITEMS or {}
 R.ITEMS.FERTILISER = R.ITEMS.FERTILISER or { col = { 110, 80, 50 }, desc = "Ground plant matter + stone dust. Boosts crop growth." }
-R.ITEMS.GUNPOWDER = R.ITEMS.GUNPOWDER or { col = { 60, 60, 65 }, desc = "Milled coal dust. A crafting reagent for future ammo." }
+-- desc updated 2026-09-02: was "a crafting reagent for future ammo" -- items.lua's
+-- KINETIC_AMMO table now actually loads this into any kinetic gun (musket/shotgun/nail gun/rail
+-- gun), so the promise is kept; the stale "future" wording would have told a player who already
+-- has the ammo system that this item still does nothing.
+R.ITEMS.GUNPOWDER = R.ITEMS.GUNPOWDER or { col = { 60, 60, 65 }, desc = "Milled coal dust. Load it into any kinetic gun as ammunition." }
 
 local BUILDERS2 = {
   ELECTROLYSISKIT = buildElectro,

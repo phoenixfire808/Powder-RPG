@@ -6,16 +6,11 @@
 -- drawRect/fillRect/drawCircle/fillCircle/getColors/getHexColor/setClipRect. Every icon here is a
 -- list of primitive draw calls, compiled once and cached, never a loaded asset.
 --
--- OWNERSHIP: this is a brand-new plugin. It does not edit rpg.lua or any other rpg_plugins/*.lua
--- file (thirteen lanes touched them tonight -- AGENTS.md). It owns exactly the R.icon.* namespace.
--- NOT YET in R.PLUGINS -- same situation telemetry.lua documented and the same fix applies: send
--- the coordinator this one-line patch (insert "icons" right after "telemetry" so anything loaded
--- after it can use R.icon.* immediately, and it depends on nothing):
---   R.PLUGINS = { "telemetry", "icons", "world", "enemies", "machines", "machines2", "items",
---     "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink",
---     "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special",
---     "acq_forage", "acq_machines", "nat_process" }
--- Until that lands, load it for testing with: PBX.state.rpg.reloadPlugin("icons")
+-- OWNERSHIP: does not edit rpg.lua or any other rpg_plugins/*.lua file. It owns exactly the
+-- R.icon.* namespace. IN R.PLUGINS since 2026-09-01 (second entry, right after "telemetry", so
+-- anything loaded after it can use R.icon.* immediately) -- corrected 2026-09-02, this comment had
+-- drifted stale ("NOT YET in R.PLUGINS") for a full day after the wiring actually landed; verified
+-- live against rpg.lua's own R.PLUGINS = {...} literal, not assumed from an old comment.
 --
 -- ================================================================ THE FORMAT
 -- An icon is a GRID x GRID grid (GRID=16) of characters, one per cell, plus a palette mapping
@@ -33,9 +28,11 @@
 --     pal = { R = {230,60,60} },
 --   })
 --
--- The ~30 hand-authored icons below (tools/stations/materials -- the highest-traffic things) are
--- instead built with the small numeric-coordinate helpers further down (lineC/rectc/thickLine on
--- a 16x16 canvas) rather than typed as literal grids: several of them share one silhouette across
+-- The 64 hand-authored icons below (tools/stations/materials/foraged food/first weapons/early
+-- machines -- the highest-traffic things, count verified 2026-09-02 by counting ICON.defineCanvas
+-- calls directly, not carried over from an earlier draft) are instead built with the small
+-- numeric-coordinate helpers further down (lineC/rectc/thickLine on a 16x16 canvas) rather than
+-- typed as literal grids: several of them share one silhouette across
 -- tiers (5 picks, 3 swords) recoloured per tier, which a coordinate function expresses as one call
 -- per tier instead of 16 hand-typed rows apiece, and is far less error-prone to get exactly right
 -- without a screenshot loop. Both paths compile to the exact same internal representation
@@ -184,7 +181,7 @@ end
 -- addSpeckle's bright ore treatment) -- raises the long-tail procedural fallback (@iconart pass,
 -- 2026-09-02: PhoenixFire808's bar is "everything has to look super good", and a flat bevel with
 -- no texture at all was the honest gap in an otherwise-total function) without touching any of the
--- ~30 hand-authored icons above, which never pass a seed and render byte-identical to before.
+-- 64 hand-authored icons above, which never pass a seed and render byte-identical to before.
 local function drawChunk(c, base, seed)
   local out, hi = darken(base, 0.55), lighten(base, 0.45)
   rectc(c, 2, 3, 13, 13, out)
@@ -501,7 +498,7 @@ function ICON.resolve(code)
   return skey
 end
 
--- ================================================================ ~60 hand-authored icons (highest-traffic things,
+-- ================================================================ 64 hand-authored icons (highest-traffic things,
 -- extended 2026-09-02 by @iconart with the first-hour food/weapon/machine icons -- see that pass's
 -- comment further down for what was added and why)
 local function pickCanvas(head, handle)
@@ -1136,7 +1133,7 @@ do
     return tonumber(a) * 1000000 + tonumber(b) * 1000 + tonumber(c)
   end
   local ENTRIES = {
-    { ver = "1.17.1", note = "Icons (@icons_engine): new procedural icon system -- every material and machine can "
+    { ver = "1.17.1", note = "Icons: new procedural icon system -- every material and machine can "
       .. "now draw a real distinctive icon instead of a flat colour swatch (ore gets speckle, liquid "
       .. "gets a meniscus, gas gets scatter, powder gets granules, metal gets a shine), plus ~30 "
       .. "hand-drawn icons for the picks, swords, stations, core materials, water, food and torch. "

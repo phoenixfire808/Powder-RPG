@@ -38,7 +38,19 @@ PBX.MAX_WORKERS_PER_COLONY = 400
 PBX.MAX_COLONIES           = 8
 PBX.MAX_TASKS_PER_COLONY   = 16
 PBX.MAX_BLUEPRINT_CELLS    = 4096
-PBX.MAX_CUSTOM_ELEMENTS    = 160  -- raised 2026-08-26: TPT has 256 ids, ~213 stock; 40 leaves margin
+PBX.MAX_CUSTOM_ELEMENTS    = 160 -- raised 2026-09-01. The old value of 40 came from
+-- "TPT has 256 ids, ~213 stock; 40 leaves margin" -- correct arithmetic, wrong premise: it
+-- counted only the ONE-BYTE id range. elem.allocate (src/lua/LuaElements.cpp) prefers ids
+-- <=255 for save portability but ALREADY falls back to 256..PT_NUM-1, and PT_NUM is 512
+-- (PMAPBITS = 9). GameSave round-trips two-byte types too: it writes the high byte when
+-- `part.type & 0xFF00` and reads it back with `type |= partsData[i] << 8`. So ~299 ids were
+-- sitting unused behind a self-imposed cap.
+-- Why it mattered: the material catalogue wants 71 elements and machines/creatures compete
+-- for the same registry, so materials silently lost their slots -- the underground collapsed
+-- to a single rock type because BSLT and CNCR could not register. Measured effect of this
+-- change: live custom elements 40 -> 64, priority-1 materials 4/29 -> 28/29.
+-- Trade-off, deliberate: a save using a two-byte element id is not portable to stock TPT.
+-- This fork never shares saves upstream (ADR-002), so that cost is accepted.
 
 PBX.SIM_W, PBX.SIM_H   = 612, 384
 PBX.CELL_W, PBX.CELL_H = 153, 96
@@ -576,8 +588,8 @@ _G.PBX_MATERIALS_SEED = {
     { name = "LHE", group = "MATL", description = "Liquid helium-4: boils at 4.2K, density 125 kg/m3, k=0.02 W/mK. No native freezing point at 1 atm.", colour = 14217471, menuSection = 7, type = "LIQUID", properties = {  }, temperature = 4, highTemperature = 4.22, highTemperatureTransition = "NBLE", hardness = 0, weight = 3, gravity = 0.15, diffusion = 1, heatConduct = 1, behavior = { ["kind"] = "inert", ["params"] = {  } } },
     { name = "MG", group = "MATL", description = "Magnesium metal: melts 650 C; once ignited (~630 C) burns at ~3100 C in air producing MgO ash (STNE) and intense white light. 2026-08-26: FIRE-branch now consumes a real O2 neighbour (needs=O2=NONE).", colour = 13225940, menuSection = 9, type = "SOLID", properties = { "PROP_CONDUCTS", "PROP_HOT_GLOW" }, temperature = 293.15, highTemperature = 3373.15, highTemperatureTransition = "LAVA", hardness = 20, weight = 100, flammable = 0, heatConduct = 200, behavior = { ["kind"] = "reactive", ["params"] = { ["rules"] = "FIRE>STNE,SELF:900:.35:O2=NONE:FIRE;PLSM>STNE,SELF:900:.5::FIRE" } } },
     { name = "MWOL", group = "MATL", description = "Mineral (rock) wool batt: k=0.04 W/mK, non-combustible, fibers melt/slag ~1100C.", colour = 14731384, menuSection = 9, type = "SOLID", properties = {  }, temperature = 293.15, highTemperature = 1373.15, highTemperatureTransition = "LAVA", hardness = 45, weight = 100, flammable = 0, heatConduct = 3, behavior = { ["kind"] = "inert", ["params"] = {  } } },
-    { name = "NA", group = "MATL", description = "Sodium metal: melts 98 C, boils 883 C; reacts violently with water -> H2 + NaOH(aq) + ~600 K, ignites the hydrogen.", colour = 14211304, menuSection = 9, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 371.15, highTemperatureTransition = "243", hardness = 5, weight = 100, flammable = 300, heatConduct = 215, behavior = { ["kind"] = "reactive", ["params"] = { ["rules"] = "WATR>NONE,SLTW:600:.6::H2;DSTW>NONE,SLTW:600:.6::H2" } } },
-    { name = "NAK", group = "POWER", description = "Liquid sodium coolant (fast-reactor primary loop): excellent heat carrier (140 W/mK), boils 883 C, burns in air (flammable).", colour = 14277862, menuSection = 7, type = "LIQUID", properties = {  }, temperature = 393.15, highTemperature = 1156.15, highTemperatureTransition = "SMKE", lowTemperature = 371.15, lowTemperatureTransition = "SALT", hardness = 0, weight = 25, gravity = 0.3, diffusion = 0, flammable = 400, heatConduct = 220, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "NA", group = "MATL", description = "Sodium metal: melts 98 C, boils 883 C; reacts violently with water -> H2 + NaOH(aq) + ~600 K, ignites the hydrogen.", colour = 14211304, menuSection = 9, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 371.15, highTemperatureTransition = "LAVA", hardness = 5, weight = 100, flammable = 300, heatConduct = 215, behavior = { ["kind"] = "reactive", ["params"] = { ["rules"] = "WATR>NONE,SLTW:600:.6::H2;DSTW>NONE,SLTW:600:.6::H2" } } },
+    { name = "NAK", group = "POWER", description = "Liquid sodium coolant (fast-reactor primary loop): excellent heat carrier (140 W/mK), boils 883 C, burns in air (flammable).", colour = 14277862, menuSection = 7, type = "LIQUID", properties = {  }, temperature = 393.15, highTemperature = 1156.15, highTemperatureTransition = "SMKE", hardness = 0, weight = 25, gravity = 0.3, diffusion = 0, flammable = 400, heatConduct = 220, behavior = { ["kind"] = "inert", ["params"] = {  } } },
     { name = "NAS", group = "MATL", description = "Molten sodium-sulfur (NaS) battery couple: operates 300-350C, freezes solid below ~300C, sodium boils 883C.", colour = 13138474, menuSection = 7, type = "LIQUID", properties = {  }, temperature = 598.15, highTemperature = 1156.15, highTemperatureTransition = "SMKE", lowTemperature = 573.15, lowTemperatureTransition = "SALT", hardness = 0, weight = 64, gravity = 0.25, diffusion = 0, heatConduct = 25, behavior = { ["kind"] = "reactive", ["params"] = { ["rules"] = "WATR>NONE,SLTW:500:.3::FIRE;DSTW>NONE,SLTW:500:.3::FIRE" } } },
     { name = "NBTI", group = "MATL", description = "Niobium-titanium alloy: superconducts below Tc=9.3K, density 6000 kg/m3, k~9 W/mK at room temp, melts ~1950C.", colour = 12633288, menuSection = 1, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 2223.15, highTemperatureTransition = "LAVA", hardness = 75, weight = 100, heatConduct = 33, behavior = { ["kind"] = "conductor", ["params"] = { ["delay"] = 0 } } },
     { name = "PCMP", group = "MATL", description = "Paraffin-wax PCM (RT58-type): melts 58C, latent heat ~200 kJ/kg. Absorbs/releases heat at constant temperature.", colour = 15591126, menuSection = 9, type = "SOLID", properties = {  }, temperature = 293.15, highTemperature = 523.15, highTemperatureTransition = "SMKE", hardness = 50, weight = 100, flammable = 200, heatConduct = 7, behavior = { ["kind"] = "pcm", ["params"] = { ["latent"] = 200, ["meltK"] = 331.15, ["rate"] = 4 } } },
@@ -589,7 +601,7 @@ _G.PBX_MATERIALS_SEED = {
     { name = "SIC", group = "MATL", description = "Silicon carbide: density 3210 kg/m3, k=120 W/mK, decomposes/sublimes ~2700C. Semiconductor; used in power electronics.", colour = 2829104, menuSection = 9, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 2973.15, highTemperatureTransition = "LAVA", hardness = 3, weight = 100, heatConduct = 140, behavior = { ["kind"] = "inert", ["params"] = {  } } },
     { name = "SIPV", group = "MATL", description = "Monocrystalline silicon PV cell: ~22% sunlight-to-electricity efficiency, melts 1414C, k=150 W/mK. Attacked only by HF.", colour = 1714762, menuSection = 1, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 1687.15, highTemperatureTransition = "LAVA", hardness = 5, weight = 100, heatConduct = 161, behavior = { ["kind"] = "photovoltaic", ["params"] = { ["chance"] = 0.88, ["heat"] = 0.5, ["perSpark"] = 3 } } },
     { name = "STEL", group = "POWER", description = "SA-508 reactor pressure-vessel steel: conducts, 40 W/mK, melts 1500 C, hardness 80.", colour = 9080984, menuSection = 9, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 1773.15, highTemperatureTransition = "LAVA", hardness = 80, weight = 100, heatConduct = 100, behavior = { ["kind"] = "conductor", ["params"] = { ["delay"] = 0 } } },
-    { name = "TEG", group = "POWER", description = "Thermoelectric generator (Bi2Te3): above 100 C it pulses SPRK into touching conductors every 20 frames, shedding 2 K per pulse. Waste-heat recovery / power saving.", colour = 4172394, menuSection = 2, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 858.15, highTemperatureTransition = "BMTL", hardness = 40, weight = 100, heatConduct = 80, behavior = { ["kind"] = "teg", ["params"] = { ["drop"] = 2, ["onTemp"] = 373.15, ["period"] = 20 } } },
+    { name = "TEG", group = "POWER", description = "Thermoelectric generator (Bi2Te3): above 100 C it pulses SPRK into touching conductors every 20 frames, shedding 2 K per pulse. Waste-heat recovery / power saving.", colour = 4172394, menuSection = 2, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 858.15, highTemperatureTransition = "LAVA", hardness = 40, weight = 100, heatConduct = 80, behavior = { ["kind"] = "teg", ["params"] = { ["drop"] = 2, ["onTemp"] = 373.15, ["period"] = 20 } } },
     { name = "TRBN", group = "POWER", description = "Steam turbine stage: condenses adjacent WTRV to DSTW (25%/frame) and sparks touching conductors per unit of work; tmp = cumulative work. Steel body, melts 1400 C.", colour = 7241360, menuSection = 2, type = "SOLID", properties = { "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 1673.15, highTemperatureTransition = "LAVA", hardness = 70, weight = 100, heatConduct = 100, behavior = { ["kind"] = "turbine", ["params"] = { ["chance"] = 0.25, ["cool"] = 60, ["input"] = "WTRV", ["output"] = "DSTW" } } },
     { name = "UO2", group = "POWER", description = "Uranium dioxide fuel pellet: slow spontaneous fission (NEUT emitter), melts 2865 C, poor heat conductor (8 W/mK). Clad it in ZIRC.", colour = 2829104, menuSection = 10, type = "SOLID", properties = { "PROP_NEUTPENETRATE", "PROP_RADIOACTIVE" }, temperature = 293.15, highTemperature = 3138.15, highTemperatureTransition = "LAVA", hardness = 90, weight = 100, heatConduct = 30, behavior = { ["kind"] = "emitter", ["params"] = { ["count"] = 1, ["emits"] = "NEUT", ["interval"] = 120, ["speed"] = 0, ["temperature"] = 0 } } },
     { name = "ZIRC", group = "POWER", description = "Zircaloy-4 cladding: neutron-transparent, conducts heat (22 W/mK) and electricity, melts 1852 C.", colour = 11844804, menuSection = 9, type = "SOLID", properties = { "PROP_NEUTPENETRATE", "PROP_CONDUCTS" }, temperature = 293.15, highTemperature = 2125.15, highTemperatureTransition = "LAVA", hardness = 60, weight = 100, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
@@ -861,7 +873,22 @@ end
 --- name, or a number) and re-resolved at apply time, so a spec persisted as
 --- "WATR" still means water after a restart.  -1 / "NT" is no transition;
 --- 0 / "NONE" destroys the particle.
-local function validateTransition(raw, key)
+---
+--- `pendingNames`, when given, is a set (UPPERNAME -> true) of every element
+--- name in the current boot batch (see queueSpecList below).  A batch entry
+--- is validated before ANY entry's elements.allocate() has run (allocation is
+--- deferred, see the module header), so two custom elements naming each
+--- other -- NA -> NAK, NAK -> NA -- can never both resolve through
+--- elements.exists no matter which is checked first: neither is live yet.
+--- Without this, that combination fails validation for BOTH names and drops
+--- both elements from the boot entirely, which is strictly worse than the
+--- dangling-id bug this format replaced (empirically reproduced 2026-09-02,
+--- @phase, see scripts/gen_materials_seed.py _EXPLICIT_CORRECTIONS' NA/NAK
+--- entries). A target present in `pendingNames` is accepted on trust that its
+--- own batch entry will define it; queueSpecList's post-batch transition
+--- fixup (below) corrects any reference that was still unresolved -- fell
+--- back to NT -- at the moment its own element was actually created.
+local function validateTransition(raw, key, pendingNames)
     if type(raw) == "number" then
         local n, e = PBX.vInt(raw, key, -1, 65535)
         if e then return nil, e end
@@ -876,7 +903,10 @@ local function validateTransition(raw, key)
     local up = string.upper(raw)
     if up == "NT" or up == "NONE_TRANSITION" then return NT, nil end
     local _, e = PBX.vElem(up)
-    if e then return nil, key .. ": " .. e end
+    if e then
+        if pendingNames and pendingNames[up] then return up, nil end
+        return nil, key .. ": " .. e
+    end
     return up, nil
 end
 
@@ -891,7 +921,7 @@ local function resolveTransition(v)
     return id or NT
 end
 
-local function validateField(f, raw)
+local function validateField(f, raw, pendingNames)
     if f.kind == "str" then
         return PBX.vStr(raw, f.key, f.max)
     elseif f.kind == "int" then
@@ -901,7 +931,7 @@ local function validateField(f, raw)
     elseif f.kind == "menu" then
         return validateMenuSection(raw)
     elseif f.kind == "trans" then
-        return validateTransition(raw, f.key)
+        return validateTransition(raw, f.key, pendingNames)
     end
     return nil, f.key .. " has no validator"
 end
@@ -1068,7 +1098,7 @@ end
 --- 20_behaviors.lua has not been concatenated in yet and every kind would
 --- otherwise look unknown; the recreation job resolves the kind for real one
 --- tick later.
-local function validateSpec(req, base, lenientBehavior)
+local function validateSpec(req, base, lenientBehavior, pendingNames)
     local spec, changed = {}, {}
 
     local function note(key, oldv, newv)
@@ -1128,7 +1158,7 @@ local function validateSpec(req, base, lenientBehavior)
         local raw = req[f.key]
         if raw == nil and f.alias then raw = req[f.alias] end
         if raw ~= nil then
-            local v, e = validateField(f, raw)
+            local v, e = validateField(f, raw, pendingNames)
             if e then return nil, nil, e end
             note(f.key, base and base[f.key], v)
             spec[f.key] = v
@@ -1486,14 +1516,34 @@ local function scheduleRecreate(spec)
     end)
 end
 
+-- Names of every element in `list` (a plain array of raw spec tables), upper-cased,
+-- merged into `into` (created if omitted). Used to build the pending-names set below --
+-- deliberately a full pre-scan rather than "names seen so far", so a same-batch
+-- transition reference resolves regardless of which of the two entries appears first.
+local function namesInList(list, into)
+    into = into or {}
+    if type(list) == "table" then
+        for i = 1, #list do
+            local raw = list[i]
+            if type(raw) == "table" and type(raw.name) == "string" then
+                into[string.upper(raw.name)] = true
+            end
+        end
+    end
+    return into
+end
+
 -- Queue every entry in `list` (a plain array of raw spec tables, e.g. straight out of
 -- PBX.load(PERSIST) or the source-controlled seed) whose name is not already claimed in
--- R.byName. Returns (queued, skipped). `label` is only for the warn-log text below.
--- Shared by both boot-time sources so a hand-edited persistence file and the
--- source-controlled seed are held to the identical validation bar.
-local function queueSpecList(list, label)
+-- R.byName. Returns (queued, skipped, queuedSpecs). `label` is only for the warn-log text
+-- below. `pendingNames` (UPPERNAME -> true) is every name across the whole boot batch --
+-- see the do-block below -- and lets a transition target validate against a sibling entry
+-- that has not been created yet. Shared by both boot-time sources so a hand-edited
+-- persistence file and the source-controlled seed are held to the identical validation bar.
+local function queueSpecList(list, label, pendingNames)
     local queued, skipped = 0, 0
-    if type(list) ~= "table" then return 0, 0 end
+    local queuedSpecs = {}
+    if type(list) ~= "table" then return 0, 0, queuedSpecs end
     for i = 1, #list do
         local raw = list[i]
         -- Re-validate on load: the source is plain data (JSON on disk, or a Lua literal
@@ -1502,7 +1552,7 @@ local function queueSpecList(list, label)
         -- resolvable this early, hence lenientBehavior.
         local ok, spec = pcall(function()
             if type(raw) ~= "table" then error("not a table", 0) end
-            local s, _, err = validateSpec(raw, nil, true)
+            local s, _, err = validateSpec(raw, nil, true, pendingNames)
             if err then error(err, 0) end
             return s
         end)
@@ -1522,13 +1572,80 @@ local function queueSpecList(list, label)
             R.byName[spec.name] = { id = nil, spec = spec, hasUpdate = false }
             scheduleRecreate(spec)
             queued = queued + 1
+            queuedSpecs[#queuedSpecs + 1] = spec
         end
     end
-    return queued, skipped
+    return queued, skipped, queuedSpecs
+end
+
+-- Post-batch transition fixup (@phase escalation, 2026-09-02): scheduleRecreate defers one
+-- job per spec, so within a single boot batch it is possible for spec A's job to run before
+-- spec B's -- if A's transition names B, A's elements.element() call resolves it while B is
+-- still unallocated and resolveTransition's safe fallback (NT, "no transition") silently
+-- wins. That is quieter than the validation-time rejection the pendingNames set above fixes,
+-- but just as wrong: A would boot with the reference to B silently dropped. Fixed by
+-- re-resolving and re-writing every string-named transition field, for every spec actually
+-- queued this boot, in ONE job appended after every scheduleRecreate job from both lists --
+-- PBX.defer's queue is strict FIFO (00_util.lua pumpJobs: table.remove(jobQueue, 1)), so
+-- deferring this after both queueSpecList calls return guarantees it runs after every entry
+-- in the batch has had its own create job attempt, regardless of how many ticks that takes.
+-- Re-applying an already-correct transition (e.g. a target that was already live, like LAVA)
+-- is a harmless no-op write, so this does not need to track which references were pending.
+local function scheduleTransitionFixup(specLists)
+    local specs = {}
+    for j = 1, #specLists do
+        local list = specLists[j]
+        for i = 1, #list do specs[#specs + 1] = list[i] end
+    end
+    local hasNamedTransition = false
+    for i = 1, #specs do
+        local s = specs[i]
+        if type(s.highTemperatureTransition) == "string" or type(s.lowTemperatureTransition) == "string" then
+            hasNamedTransition = true
+            break
+        end
+    end
+    if not hasNamedTransition then return end
+
+    PBX.defer(function()
+        PBX.guard(MODULE, function()
+            local fixed = 0
+            for i = 1, #specs do
+                local s = specs[i]
+                local ent = R.byName[s.name]
+                if ent and ent.id ~= nil and elements.exists(ent.id) then
+                    local patch, any = {}, false
+                    if type(s.highTemperatureTransition) == "string" then
+                        patch.HighTemperatureTransition = resolveTransition(s.highTemperatureTransition)
+                        any = true
+                    end
+                    if type(s.lowTemperatureTransition) == "string" then
+                        patch.LowTemperatureTransition = resolveTransition(s.lowTemperatureTransition)
+                        any = true
+                    end
+                    if any then
+                        elements.element(ent.id, patch)
+                        fixed = fixed + 1
+                    end
+                end
+            end
+            PBX.log(MODULE, "boot transition fixup: re-resolved " .. fixed ..
+                            " named transition(s) after every batch element had its own " ..
+                            "create job attempt")
+        end)
+    end)
 end
 
 do
-    local restored, skipped = queueSpecList(PBX.load(PERSIST), "persisted")
+    local persistedList = PBX.load(PERSIST)
+    local seedList = _G.PBX_MATERIALS_SEED
+
+    -- Every name across BOTH boot-time sources, computed up front (see validateTransition's
+    -- doc comment above for why this has to happen before either list is validated).
+    local pendingNames = namesInList(persistedList)
+    namesInList(seedList, pendingNames)
+
+    local restored, skipped, restoredSpecs = queueSpecList(persistedList, "persisted", pendingNames)
 
     -- SOURCE-CONTROLLED BASELINE (2026-09-0x, @multiplayer): pbx-custom-elements.json is a
     -- gitignored snapshot of ONE machine's own dev-tooling history (scripts/define_materials.py
@@ -1543,8 +1660,10 @@ do
     -- present (from the persisted snapshot above, i.e. a dev machine with its own live edits)
     -- always wins over the seed -- queueSpecList's R.byName[spec.name] check gives whichever
     -- list is processed first priority, and persisted is processed first.
-    local seedQueued, seedSkipped = queueSpecList(_G.PBX_MATERIALS_SEED, "seed")
+    local seedQueued, seedSkipped, seedSpecs = queueSpecList(seedList, "seed", pendingNames)
     restored, skipped = restored + seedQueued, skipped + seedSkipped
+
+    scheduleTransitionFixup({ restoredSpecs, seedSpecs })
 
     PBX.log(MODULE, "registry " .. R.VERSION .. " loaded; queued " .. restored ..
                     " element(s) (persisted+seed), skipped " .. skipped)
@@ -2809,7 +2928,7 @@ do
 -- eight built-ins (conductor, creature, decayer, emitter, glower, grower, inert,
 -- pheromone).
 --
--- REDUNDANT-BUT-HARMLESS as of 2026-09-01 (@behaviors): 20_behaviors.lua now
+-- REDUNDANT-BUT-HARMLESS as of 2026-09-01: 20_behaviors.lua now
 -- implements these same seven kinds natively (ported from the same source
 -- these three scripts/lua/*_kinds.lua files came from -- content verified
 -- byte-identical against a captured copy at knowledge/_newplayer_audit/

@@ -31,7 +31,7 @@ Model setup (not done by this script - it never downloads anything):
     Ollama:    `ollama pull qwen2.5:3b-instruct` (or any small instruct model) and run `ollama serve`
                (defaults to http://localhost:11434). Also pin with CUDA_VISIBLE_DEVICES=1 if you run the
                server yourself rather than the Windows service.
-Either way: load the model on demand before running this script, and unload/stop the server when the
+Either way: load the caller on demand before running this script, and unload/stop the server when the
 colonist doesn't need it - nothing here keeps a model resident in the background.
 """
 from __future__ import annotations
@@ -51,7 +51,7 @@ from powder_bridge.client import PowderClient  # noqa: E402
 LAB_TOKEN_PATH = "D:/powder-toy/lab_instance/ddir/powder-bridge.token"
 LAB_PORT = 9877
 
-# Commands the model is allowed to issue, and how far its coordinates may be clamped from the player.
+# Commands the caller is allowed to issue, and how far its coordinates may be clamped from the player.
 # Mirrors STEP.* in companion.lua - keep in sync if that table grows.
 ALLOWED_CMDS = {
     "follow", "stay", "say", "goto", "mine", "mineNearest", "chop", "fetch", "place", "craft",

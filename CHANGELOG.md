@@ -5,21 +5,21 @@ release notes.
 
 ## v1.15.28
 
-- Blood (@bug): damage spawns vivid red BLD spray over several frames (outward from facing
+- Blood : damage spawns vivid red BLD spray over several frames (outward from facing
   direction); BLD colour 0xFF1020.
-- Companion (@feature): Enter-chat always runs Aster's command parser even with model driver;
+- Companion : Enter-chat always runs Aster's command parser even with model driver;
   broad intent fallbacks (mine/gather/craft/light/shaft/quest/bring me); manual tasks block
   scripted follow until chain finishes.
-- HUD (@bug): fixed top-left rows (HP / Day / air+food / T+P); survival warmth/events out of
+- HUD : fixed top-left rows (HP / Day / air+food / T+P); survival warmth/events out of
   HP band; version readout bottom-left.
-- Trees (@feature): rain routes down trunk (`treeWaterVeinsTick`); trunk WOOD no longer
+- Trees : rain routes down trunk (`treeWaterVeinsTick`); trunk WOOD no longer
   instantly absorbs resting rain.
-- Liquid settle + env gradients (@feature): resting WATR soaks soil; depth-thinning O2,
+- Liquid settle + env gradients : resting WATR soaks soil; depth-thinning O2,
   surface OXYG/pressure seeding, H2/GAS rise, CO2 pools, breathing consumes OXYG.
 
 ## v1.15.26
 
-- Vehicles (@vehicles): minecart + rail + mine-lift kits on the workbench/anvil tree. Rail kit:
+- Vehicles : minecart + rail + mine-lift kits on the workbench/anvil tree. Rail kit:
   LMB-drag snapped track (flat / 45° / vertical shaft). Minecart: place on track, V to board,
   D/A drive, S brake/dismount via R.mount/R.ride. Mine lift: vertical shaft cage with
   grid-powered call buttons. V only steals brush-shape when riding or next to a vehicle.
@@ -34,7 +34,7 @@ release notes.
 
 ## v1.15.25
 
-- Companion (@feature): refreshIndex now reports nearby LAVA/FIRE/ACID to the model index; chat
+- Companion : refreshIndex now reports nearby LAVA/FIRE/ACID to the companion's world index; chat
   templates for 'cut trees', 'dig hole', and 'build house' emit multi-step enqueueChain plans;
   buildRoom refuses to start if the player is inside the rect; digArea/buildRoom speak start +
   halfway milestones.

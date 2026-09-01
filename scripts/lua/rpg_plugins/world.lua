@@ -66,7 +66,7 @@ local HASBMTL = has("BMTL")
 -- (grepped world.lua/rpg.lua, zero hits; both are on knowledge/_wave/unobtainable-stock-
 -- elements.txt despite design-material-progression.md §4 chain 2 claiming FRZZ was "already
 -- placed by worldgen per the index" -- that claim does NOT hold against a real grep, exactly
--- the kind of unverified claim CLAUDE.md's INDEX.md discipline warns about; corrected here by
+-- the kind of unverified claim DEVELOPMENT.md's INDEX.md discipline warns about; corrected here by
 -- placing both for real rather than propagating it). RIME verified TYPE_SOLID/falldown=0 (SAFE)
 -- via POWDER_TOY_MATERIAL_INDEX.json; FRZZ is TYPE_PART/falldown=1 (same class as CLST/SALT --
 -- placed as a vein-shaped pocket, never bulk fill, same reasoning as the HASMERC block above).
@@ -1002,9 +1002,18 @@ local function strataAt(wx, wy, d, icy, cold)
   -- with the surrounding strata rather than looking like unrelated noise.
   if cold and hash3(band, 817, 6) > 0.74 then return "ICE" end
   local pick = hash3(band, 815, 3)
-  -- desert purpose: exposed sedimentary/fossil-bearing layers under the sand - real fired brick, banded and common,
-  -- reads as ancient strata (and matches the desert's brick ruins). Fades in with desert weight, not a hard switch.
-  if pick < 0.30 * biomeWeight(wx, "desert") and has("BRCK") then return "BRCK" end
+  -- BRICK REMOVED FROM DESERT STRATA 2026-09-02. This is the code path the earlier
+  -- "brick only comes from ruins and the furnace" change MISSED -- @regress caught it by
+  -- sampling a real downloaded build and finding brick still generating, 190 of 196 hits
+  -- inside the desert, 8.3% of all rock, which directly contradicted the shipped release
+  -- notes. The old comment here justified it as "exposed sedimentary/fossil-bearing layers
+  -- ... real fired brick, banded", which is the same mistake in different words: fired brick
+  -- is a kiln product and does not occur as strata, in a desert or anywhere else.
+  -- Granite replaces it. It is a genuine natural rock, desert ranges really are granitic, it
+  -- is already mineable at tier 2, and check_terrain_solid.py reports GRNT: SAFE (ADR-003).
+  -- The banded desert read this was going for is preserved -- just with a rock instead of
+  -- masonry.
+  if pick < 0.30 * biomeWeight(wx, "desert") and has("GRNT") then return "GRNT" end
   -- DEPTH-TIERED PALETTE (PhoenixFire808, verbatim: "I don't like the concrete as in the world" --
   -- knowledge/research-worldgen-design.md has the full layer table). CNCR (ROCK2) used to be a flat
   -- 32% of every non-desert stone pixel at EVERY depth, so it was speckled uniformly from the first
@@ -1122,6 +1131,14 @@ local function deepOreAt(wx, wy, d)
   -- NOTE: that calibration was measured under the OLD buggy reachability (valley columns
   -- only) -- re-measured post-fix below; per-pixel rate inside the eligible band is unchanged
   -- by this fix, only the eligible-column FRACTION grew (14% -> effectively all columns).
+  -- CORRECTION 2026-09-02 (@worldgen, re-measured live against Drew's own running session,
+  -- 17,590 post-fix samples, d=1650-1900 excluding the bedrock margin): DEUT=100 vs DU/URAN=53,
+  -- i.e. DEUT actually generates at ~1.9x URAN's own rate here, not "close to" 1x as the line
+  -- above still claims -- @m3_audit_worldgen's 2026-09-02 audit already flagged this exact
+  -- staleness (measured 1.7x from an earlier sample) and it holds again now. Not re-tuned:
+  -- still reads as a real, plentiful "sibling ore sharing a biome" per the design doc's own
+  -- bar, just not equal-rate -- correcting the claim, not the behaviour, per INDEX.md's
+  -- dated-claim discipline (a number without a date/method is not a fact).
   if HASDEUT and d > 420 * dm and vein(wx, wy, 1350, 89, 0.884, 16, 0.49) then return "DEUT" end
   -- ISZS: solid twin of ISOZ (SAFE, TYPE_SOLID/falldown=0), placed as the actual
   -- mineable vein per the design's own "solid form, safer to transport" framing.
@@ -1977,6 +1994,10 @@ end
 -- runs once per frame after the core's flat sky/darkness overlay and before the player sprite (see README).
 -- Surface-only by design: an underground cave-wall backdrop was tried and pulled per the player's call (16:18) - it read
 -- as "whack" over TPT's black empty space. Just the sky parallax hills/treeline and night fireflies remain.
+-- Per-column trunk-edge extents, keyed by world x. Invalidated wholesale on newworld (seed
+-- change) and whenever a tree is felled, alongside this file's other generator caches.
+local trunkEdgeCache = {}
+function R.clearTrunkEdgeCache() trunkEdgeCache = {} end
 local function drawTreeAccents(camx, camy, W, H, frame, night)
   local moist = R.treeMoisture or {}
   local raining = R.weather and R.weather.rain
@@ -1997,7 +2018,28 @@ local function drawTreeAccents(camx, camy, W, H, frame, night)
       for edge = 0, tw - 1 do
         local wx = x0 + edge
         if wx == x0 or wx == x0 + tw - 1 then
-          if vegShapeAt(wx, wy) == "WOOD" then
+          -- TRUNK-EDGE CACHE (2026-09-02). This called vegShapeAt() once per pixel per frame
+          -- for every visible trunk edge, and @draw measured the whole world draw hook at
+          -- 11.8ms EMA / 17.0ms max in a forest -- dropping ~9x to 1.3ms in a treeless desert,
+          -- which located essentially the entire cost here rather than in the strata tint or
+          -- structure deco (both already cached and budget-capped).
+          -- A trunk edge is a CONTIGUOUS vertical run of WOOD, so the whole per-pixel query
+          -- collapses to one lo/hi range computed once per column. Same idiom as this file's
+          -- own blendCache/strataTintCache, and cleared by the same newworld hook, so a seed
+          -- change or a felled tree cannot leave a stale range behind.
+          local tr = trunkEdgeCache[wx]
+          if tr == nil then
+            local lo, hi
+            for probe = top, s + 2 do
+              if vegShapeAt(wx, probe) == "WOOD" then
+                if not lo then lo = probe end
+                hi = probe
+              end
+            end
+            tr = lo and { lo, hi } or false
+            trunkEdgeCache[wx] = tr
+          end
+          if tr and wy >= tr[1] and wy <= tr[2] then
             local sx = wx - camx
             if sx >= 0 and sx < W then
               local shade = night > 0.3 and 50 or 68
@@ -2334,4 +2376,5 @@ hook(R.hooks.newworld, function()
   mshaftCache, ruinCache, sCache = {}, {}, {}
   strataTintCache = {}
   strataWaveCache = {}
+  trunkEdgeCache = {}
 end)

@@ -10,7 +10,7 @@ Round 3 additions:
   * samples are deduplicated by *structure* (canonical JSON of `parts`,
     ignoring per-part `id`s) before counting -- arXiv 2308.01825 (the RFT
     paper) explicitly dedups this way rather than keep-first/keep-best, to
-    avoid overrepresenting whatever the model converges on first; a duplicate
+    avoid overrepresenting whatever the caller converges on first; a duplicate
     is still logged to attempts.jsonl for audit but excluded from the pass@k
     counts and from attempts-sft.jsonl.
   * each task's pass@1 carries a 95% Wilson score interval (a practical
@@ -74,7 +74,7 @@ def _strip_ids(node):
 def canonical_signature(bp: dict | None) -> str | None:
     """Canonical JSON of a blueprint's `parts`, ignoring per-part ids -- the
     structural key samples are deduplicated on. None when `bp` has no usable
-    `parts` (e.g. the model never produced valid JSON).
+    `parts` (e.g. the caller never produced valid JSON).
     """
     if not isinstance(bp, dict) or not isinstance(bp.get("parts"), list):
         return None
