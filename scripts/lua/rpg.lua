@@ -372,7 +372,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.17.0"
+R.VERSION = "1.17.1"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -1092,14 +1092,22 @@ function R.applyUpdate()
   bat:write("@echo off\r\n")
   bat:write("cd /d \"%~dp0\"\r\n")
   bat:write(":wait\r\n")
-  bat:write("tasklist /FI \"IMAGENAME eq PowderToyRPG.exe\" 2>NUL | find /I \"PowderToyRPG.exe\" >NUL\r\n")
-  bat:write("if not errorlevel 1 (\r\n")
-  bat:write("  timeout /t 1 /nobreak >NUL\r\n")
-  bat:write("  goto wait\r\n")
-  bat:write(")\r\n")
+  -- FIXED 2026-09-02: this waited only for "PowderToyRPG.exe", but the v1.17.0
+  -- redistributable ships the binary as "PowderRPG.exe". The wait loop matched
+  -- nothing, fell straight through, and Expand-Archive then tried to overwrite a
+  -- RUNNING, file-locked .exe -- so the update silently failed every time. Wait for
+  -- every name this game has shipped under before touching any files.
+  for _, exeName in ipairs({ "PowderRPG.exe", "PowderToyRPG.exe", "powder.exe" }) do
+    bat:write("tasklist /FI \"IMAGENAME eq " .. exeName .. "\" 2>NUL | find /I \"" .. exeName .. "\" >NUL\r\n")
+    bat:write("if not errorlevel 1 (\r\n")
+    bat:write("  timeout /t 1 /nobreak >NUL\r\n")
+    bat:write("  goto wait\r\n")
+    bat:write(")\r\n")
+  end
   bat:write("powershell -NoProfile -Command \"Expand-Archive -Path 'update.zip' -DestinationPath '.' -Force\"\r\n")
   bat:write("del update.zip\r\n")
-  bat:write("start \"\" \"%~dp0Play.bat\"\r\n")
+  -- Relaunch the .exe directly; Play.bat is only a fallback and may be absent.
+  bat:write("if exist \"%~dp0PowderRPG.exe\" ( start \"\" \"%~dp0PowderRPG.exe\" ) else ( start \"\" \"%~dp0Play.bat\" )\r\n")
   bat:write("del \"%~f0\"\r\n")
   bat:close()
   say("Update downloaded -- restarting now")
@@ -6151,7 +6159,7 @@ function R.zoomOff() R.zoomLocked = nil; pcall(ren.zoomEnabled, false); return t
 function R.mount(v) if not v then return false end; v.mounted = R.frame; R.ride = v; say("Riding - press S to get off"); return true end
 function R.dismount() local v = R.ride; R.ride = nil; if v then R.P.y = (v.y or R.P.y) - 8; R.P.vy = -1 end; say("Dismounted"); return true end
 R.hooks.mount = R.hooks.mount or {}
--- "telemetry" FIRST, deliberately: it installs R.tlog and the project-wide error capture,
+-- "telemetry", "icons" FIRST, deliberately: it installs R.tlog and the project-wide error capture,
 -- and every plugin loaded after it can then log its own load failures. Loading it last
 -- would mean the diagnostic layer is absent for exactly the failures most worth catching.
 -- acq_* acquisition plugins appended 2026-09-02. Each gives a family of stock Powder Toy

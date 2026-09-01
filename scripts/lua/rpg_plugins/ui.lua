@@ -35,6 +35,25 @@ U.catalogCollapsed = U.catalogCollapsed or {}
 U.submitHistory = U.submitHistory or {}
 R.uiPanelOpen = U.bagOpen or U.questOpen or U.controlsOpen or false
 
+-- ================================================================ icon draw (defensive against @icons_engine)
+-- Every place this file used to draw a flat R.colourOf() swatch now goes through here instead.
+-- R.icon.draw(id, x, y, size[, alpha]) is @icons_engine's contract (rpg_plugins/icons.lua, built
+-- in parallel this wave) -- when it lands, every one of these call sites lights up as a real
+-- procedural icon with ZERO further edits here. Until then (or if a draw call errors), the
+-- pcall falls through to the original flat-colour swatch so this file ships and looks correct
+-- standalone. Never call graphics.* directly for a material/item swatch anywhere else in this
+-- file -- always through drawMatIcon, so the whole UI upgrades in one place.
+local function drawMatIcon(code, x, y, size, alpha)
+  alpha = alpha or 255
+  if R.icon and R.icon.draw then
+    local ok = pcall(R.icon.draw, code, x, y, size, alpha)
+    if ok then return end
+  end
+  local r, g, b = R.colourOf(code)
+  graphics.fillRect(x, y, size, size, r, g, b, alpha)
+  graphics.drawRect(x, y, size, size, 0, 0, 0, math.min(alpha, 150))
+end
+
 -- R.invSlots is the positional/arrangement store for the bag grid (drag-drop, stack splits); R.inventory stays
 -- the single authoritative total per the "core is source of truth" rule - a sync pass below reconciles the two
 -- every time the bag is drawn. Pushed onto R.PLUGIN_SAVE_KEYS so save.lua persists arrangement generically.
@@ -380,7 +399,7 @@ local function buildCraftRows(filter)
     byCat[cat] = byCat[cat] or {}
     local t = byCat[cat]
     t[#t + 1] = { kind = kind, label = label, need = need, ok = ok, dim = not okst, desc = desc,
-      st = stk, have = have, fn = fn, gate = (not okst) and (R.STATIONS[stk] or stk) or nil }
+      st = stk, have = have, fn = fn, gate = (not okst) and (R.STATIONS[stk] or stk) or nil, out = outid }
   end
   for k, rc in ipairs(R.RECIPES) do
     mk("recipe", rc.n .. " " .. rc.txt, rc.need, rc.st or "hand", rc.desc, nil, function() R.craft(k) end, rc.out)
@@ -664,8 +683,7 @@ local function drawInvCell(x, y, el, n, hover)
   graphics.fillRect(x, y, CELL, CELL, fr, fg, fb, 255)
   graphics.drawRect(x, y, CELL, CELL, hover and 255 or 90, hover and 220 or 90, hover and 80 or 100, 255)
   if el and n and n > 0 then
-    local r, g, b = R.colourOf(el)
-    graphics.fillRect(x + 4, y + 4, CELL - 8, CELL - 8, r, g, b, 255)
+    drawMatIcon(el, x + 3, y + 3, CELL - 6)
     if n > 1 then
       local txt = tostring(n)
       local tw = textW(txt)
@@ -690,11 +708,11 @@ local ACC_COLORS = {
 }
 local function itemsVisibleRows() return math.max(1, floor((BPY + BPH - ITEMS_BOTTOM_RESERVE - ITEMS_Y0) / ITEMS_ROWH)) end
 local function drawSlotRow(x, y, w, el, n)
-  local r, g, b = R.colourOf(el); local a = n > 0 and 255 or 100
-  graphics.fillRect(x, y + 2, 8, 8, r, g, b, a)
+  local a = n > 0 and 255 or 100
+  drawMatIcon(el, x, y + 1, 11, a)
   local nm = niceName(el)
-  graphics.drawText(x + 11, y, nm, a, a, a == 255 and 235 or 120, 255)
-  local codeX = x + 11 + textW(nm) + 6
+  graphics.drawText(x + 14, y, nm, a, a, a == 255 and 235 or 120, 255)
+  local codeX = x + 14 + textW(nm) + 6
   local code = "(" .. el .. ")"
   graphics.drawText(codeX, y, code, a == 255 and 150 or 90, a == 255 and 150 or 90, a == 255 and 160 or 100, 255)
   local cx = codeX + textW(code) + 8
@@ -780,8 +798,7 @@ local function drawHandCursor()
     graphics.drawText(x + 7, y + 8, "drop on EQUIPPED to equip, BAG (or elsewhere) to unequip", 170, 190, 220, 255)
     return
   end
-  local r, g, b = R.colourOf(U.hand.el)
-  graphics.fillRect(x - 5, y - 5, 10, 10, r, g, b, 255); graphics.drawRect(x - 5, y - 5, 10, 10, 255, 255, 255, 220)
+  drawMatIcon(U.hand.el, x - 5, y - 5, 10); graphics.drawRect(x - 5, y - 5, 10, 10, 255, 255, 255, 220)
   graphics.drawText(x + 7, y - 4, niceName(U.hand.el) .. " x" .. U.hand.n, 255, 240, 200, 255)
   graphics.drawText(x + 7, y + 8, "L place/merge  R place 1  drop on DEL to delete", 170, 190, 220, 255)
 end
@@ -980,10 +997,10 @@ local function drawBagRecipesTab()
   graphics.drawText(x0, y0, "Filter by material - click a chip to toggle:", 255, 220, 80, 255)
   if U.matChipOverflow then graphics.drawText(x0 + (BPW - 20) - 90, y0, "wheel: more mats", 150, 150, 160, 255) end
   forEachMatChip(x0, y0 + 12, BPW - 20, function(m, mx, my, w, h)
-    local sel = (U.filterMat == m); local r, g, b = R.colourOf(m)
+    local sel = (U.filterMat == m)
     graphics.fillRect(mx, my, w, h, sel and 70 or 26, sel and 74 or 30, sel and 40 or 46, 255)
     graphics.drawRect(mx, my, w, h, sel and 255 or 90, sel and 220 or 90, sel and 80 or 100, 255)
-    graphics.fillRect(mx + 2, my + 2, 8, 8, r, g, b, 255)
+    drawMatIcon(m, mx + 2, my + 2, 8)
     local nm = niceName(m)
     graphics.drawText(mx + 12, my + 1, nm, sel and 255 or 190, sel and 230 or 190, sel and 120 or 200, 255)
     graphics.drawText(mx + 12 + textW(nm) + 4, my + 1, m, sel and 170 or 110, sel and 170 or 110, sel and 130 or 120, 255)
@@ -1020,13 +1037,20 @@ local function drawBagRecipesTab()
       local cr, cg, cb = 150, 150, 150
       if r.ok then cr, cg, cb = 140, 255, 140 elseif r.dim then cr, cg, cb = 100, 100, 110 end
       if r.have then cr, cg, cb = 255, 220, 80 end
-      graphics.drawText(x0, y + 1, (r.have and "* " or "") .. r.label, cr, cg, cb, 255)
-      local ix = x0 + 150
+      -- output icon leads the row -- "a recipe you can read at a glance" means seeing WHAT it
+      -- makes before reading the name text at all. Only real material/item outputs (r.out) get
+      -- one; picks/swords (r.out nil) keep the plain text-only row.
+      local textX0 = x0
+      if r.out then drawMatIcon(r.out, x0, y, 12, r.ok and 255 or 150); textX0 = x0 + 15 end
+      graphics.drawText(textX0, y + 1, (r.have and "* " or "") .. r.label, cr, cg, cb, 255)
+      -- ingredient icons start 15px further right when the row has a leading output icon, so a
+      -- long label ("5 Reinforced Steel Bar") drawn from the now-indented textX0 can't run into them
+      local ix = x0 + (r.out and 165 or 150)
       local needList = {}; for el, n in pairs(r.need) do needList[#needList + 1] = { el, n } end
       table.sort(needList, function(a, b) return a[1] < b[1] end)
       for _, p in ipairs(needList) do
-        local el, n = p[1], p[2]; local rr, gg, bb = R.colourOf(el); local have = R.inv(el) >= n
-        graphics.fillRect(ix, y + 1, 8, 8, rr, gg, bb, have and 255 or 120)
+        local el, n = p[1], p[2]; local have = R.inv(el) >= n
+        drawMatIcon(el, ix, y + 1, 8, have and 255 or 120)
         -- Missing ingredients showed only the amount required, so "what do I still need
         -- for this" meant leaving the panel to go count your inventory. Show the shortfall
         -- inline as have/need ("2/6 Wood") when short, and just the requirement ("6 Wood")
@@ -1564,7 +1588,27 @@ local function drawSubmitButton()
   end
   if hov then drawCursorTip("Submit something", { "Share a build, report a bug, or suggest an idea.", "Click here or press Y any time - takes a few seconds." }) end
 end
-R.drawHotbarOverlay = function() drawSubmitButton() end
+-- Block-slot (6-0) hotbar icons -- core's own drawHotbar() (rpg.lua) draws a flat R.colourOf()
+-- swatch for these slots because that file predates icons entirely and is @survival's this wave,
+-- not this lane's to edit. R.drawHotbarOverlay runs AFTER drawHotbar() paints the tray (see the
+-- comment above submitBtnRect), so repainting the exact same 16x16 region here with drawMatIcon
+-- is how this lane upgrades the hotbar without touching rpg.lua at all: identical fallback look
+-- today (same colour+outline), a real icon the instant icons.lua lands. The count badge is
+-- redrawn on top afterward since its bottom-right corner overlaps that 16x16 box.
+local function drawHotbarIcons()
+  for slot = 6, 10 do
+    local x = HB_X0 + (slot - 1) * (HB_SLOT + HB_GAP)
+    local v = R.hotbar[slot]
+    if v and not v:find("^tool:") then
+      local a = R.inv(v) > 0 and 255 or 70
+      drawMatIcon(v, x + 7, HB_Y0 + 6, 16, a)
+      local n = R.inv(v); local txt = n > 999 and "999+" or tostring(n)
+      graphics.fillRect(x + HB_SLOT - 4 - #txt * 6, HB_Y0 + HB_SLOT - 10, #txt * 6 + 3, 9, 0, 0, 0, 190)
+      graphics.drawText(x + HB_SLOT - 2 - #txt * 6, HB_Y0 + HB_SLOT - 9, txt, 255, 255, 255, a)
+    end
+  end
+end
+R.drawHotbarOverlay = function() drawHotbarIcons(); drawSubmitButton() end
 
 -- Confirmation feedback: R.say() alone lands in the 5-entry chat log that fades in ~14s and can
 -- get pushed out by the next unrelated message, so a successful submission looked identical to

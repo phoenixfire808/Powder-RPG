@@ -12,6 +12,20 @@ local function hook(list, fn)
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
+-- ================================================================ icon draw (defensive against @icons_engine,
+-- same contract/fallback as ui.lua's own drawMatIcon -- duplicated rather than shared across plugin files
+-- since there is no cross-plugin require() in this loader, only the shared R table).
+local function drawMatIcon(code, x, y, size, alpha)
+  alpha = alpha or 255
+  if R.icon and R.icon.draw then
+    local ok = pcall(R.icon.draw, code, x, y, size, alpha)
+    if ok then return end
+  end
+  local r, g, b = R.colourOf(code)
+  graphics.fillRect(x, y, size, size, r, g, b, alpha)
+  graphics.drawRect(x, y, size, size, 0, 0, 0, math.min(alpha, 150))
+end
+
 -- ================================================================ persistent state (survives reloadPlugin)
 local G = R.guide or {}
 R.guide = G
@@ -1306,8 +1320,15 @@ hook(R.hooks.drawHUD, function()
 
   local entries = getEntries()
   local listY0 = BY + 15
-  local rowH = 11
+  local rowH = 12
   local listAreaW = COL2W - SBW - 2
+  -- true for every category whose entries are real R.colourOf()-resolvable codes (materials/ores/
+  -- SC_* material tabs/machines/weapons/terrain/wearables/vehicles/stations) -- the same code-shaped
+  -- set isTakeable() recognises, minus its nil-id early-out (which would always fail here since we're
+  -- asking about the CATEGORY, not one row's id).
+  local iconable = G.cat ~= nil and (MAT_SECTION_CATS[G.cat] or isMachineCat(G.cat) or G.cat == "materials" or G.cat == "ores"
+    or G.cat == "weapons" or G.cat == "terrain" or G.cat == "wearables" or G.cat == "vehicles" or G.cat == "stations")
+  local textX0 = iconable and (COL2X + 12) or (COL2X + 2)
   local visRows = math.max(1, math.floor((BOT - listY0) / rowH))
   G.listScroll = math.max(0, math.min(G.listScroll, math.max(0, #entries - visRows)))
   for i = 1, visRows do
@@ -1321,7 +1342,7 @@ hook(R.hooks.drawHUD, function()
       elseif hov then graphics.fillRect(COL2X, y, listAreaW, rowH, 32, 34, 54, 255) end
       -- e.obtainable is only set for material/ore entries (buildEntries, precomputed from the cached
       -- acquisition index - never a per-row recompute); nil for every other category, which draws as before.
-      local label = e.label:sub(1, 22)
+      local label = e.label:sub(1, iconable and 19 or 22)
       local r_, g_, b_
       if e.obtainable == false then
         label = label .. " (?)"
@@ -1329,7 +1350,8 @@ hook(R.hooks.drawHUD, function()
       else
         r_, g_, b_ = sel and 255 or (hov and 230 or 205), sel and 220 or (hov and 225 or 205), sel and 120 or (hov and 160 or 215)
       end
-      graphics.drawText(COL2X + 2, y + 1, label, r_, g_, b_, 255)
+      if iconable and e.id then drawMatIcon(e.id, COL2X + 1, y + 1, 9, e.obtainable == false and 130 or 255) end
+      graphics.drawText(textX0, y + 1, label, r_, g_, b_, 255)
       G.listRects[#G.listRects + 1] = { COL2X, y, COL2X + listAreaW, y + rowH, cat = G.cat, id = e.id }
     end
   end
@@ -1370,10 +1392,40 @@ hook(R.hooks.drawHUD, function()
   local pageY0 = BY + 15
   local lineH = 12
   local pageAreaW = COL3W - SBW - 2
+  -- Larger detail-page icon (PhoenixFire808: "everything has to look super good", item 2 of this
+  -- lane's brief -- "a larger icon on detail pages"). Same code-shaped category set as the entry
+  -- list's own `iconable` check above. Every page* builder's first line is always the title
+  -- (`R.nice(id)` + dim `[CODE]`, verified by reading pageMaterialOrOre/pageItemCode/pageStation) --
+  -- drawn here beside the icon instead of through the generic per-line loop below, which then
+  -- starts from line 2 (skipFirst) so nothing double-draws.
+  local iconCode = nil
+  if G.id and G.cat and (MAT_SECTION_CATS[G.cat] or isMachineCat(G.cat) or G.cat == "materials" or G.cat == "ores"
+     or G.cat == "weapons" or G.cat == "terrain" or G.cat == "wearables" or G.cat == "vehicles"
+     or (G.cat == "stations" and G.id ~= "hand")) then
+    iconCode = G.id
+  end
+  local skipFirst = 0
+  if iconCode then
+    local ICONSZ = 26
+    drawMatIcon(iconCode, COL3X, pageY0, ICONSZ)
+    local titleLine = pageLines[1]
+    if titleLine then
+      local cx = COL3X + ICONSZ + 6
+      local ty = pageY0 + math.floor((ICONSZ - 9) / 2)
+      for _, seg in ipairs(titleLine) do
+        local w = #seg.t * 6
+        local col = seg.c or VALCOL
+        graphics.drawText(cx, ty, seg.t, col[1], col[2], col[3], 255)
+        cx = cx + w
+      end
+      skipFirst = 1
+    end
+    pageY0 = pageY0 + ICONSZ + 4
+  end
   local visLines = math.max(1, math.floor((BOT - pageY0) / lineH))
-  G.pageScroll = math.max(0, math.min(G.pageScroll, math.max(0, #pageLines - visLines)))
+  G.pageScroll = math.max(0, math.min(G.pageScroll, math.max(0, #pageLines - skipFirst - visLines)))
   for i = 1, visLines do
-    local ln = pageLines[i + G.pageScroll]
+    local ln = pageLines[i + G.pageScroll + skipFirst]
     if ln then
       local y = pageY0 + (i - 1) * lineH
       local cx = COL3X
@@ -1389,5 +1441,5 @@ hook(R.hooks.drawHUD, function()
       end
     end
   end
-  G.pageBar = drawScrollbar(COL3X + pageAreaW + 2, pageY0, BOT - pageY0, #pageLines, visLines, G.pageScroll, "page")
+  G.pageBar = drawScrollbar(COL3X + pageAreaW + 2, pageY0, BOT - pageY0, #pageLines - skipFirst, visLines, G.pageScroll, "page")
 end)

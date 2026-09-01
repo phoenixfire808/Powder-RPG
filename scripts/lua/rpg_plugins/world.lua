@@ -992,7 +992,12 @@ local function strataAt(wx, wy, d, icy, cold)
   -- Iron Belt (60*SOIL_DEPTH_MUL) -> Uranium Shelf (420*SOIL_DEPTH_MUL) run, so the material change
   -- and the HUD's depth-band name change land at roughly the same place. Same single hash3 tap as
   -- before -- zero added noise evaluations, safe against the file's own 18.37ms/invocation cost note.
-  local cncrShare = 0.08 + 0.32 * min(1, max(0, (d - 60 * SOIL_DEPTH_MUL) / (360 * SOIL_DEPTH_MUL)))
+  -- REBALANCED 2026-09-02: PhoenixFire808, looking at his own world -- "I feel like I should be
+  -- seeing a lot more rock and less concrete". Measured shares at depth BEFORE this change:
+  -- CNCR 40%, BSLT 34%, stock ROCK 18%, BRCK 8% -- concrete was the single most common stone in
+  -- the game. The earlier depth-ramp fixed concrete being UNIFORM but left it DOMINANT.
+  -- Now 3% shallow -> 15% deep: concrete reads as a deep-rock accent, not the ground itself.
+  local cncrShare = 0.03 + 0.12 * min(1, max(0, (d - 60 * SOIL_DEPTH_MUL) / (360 * SOIL_DEPTH_MUL)))
   local brckAccent = 0.08   -- thin sedimentary banding, everywhere (not just desert) -- a second real material, not a monoculture
   if pick < brckAccent and has("BRCK") then return "BRCK" end
   if pick < brckAccent + cncrShare then return ROCK2 end
@@ -1002,7 +1007,11 @@ local function strataAt(wx, wy, d, icy, cold)
   -- check_terrain_solid.py: TYPE_SOLID/falldown=0, SAFE for bulk fill. A genuinely common,
   -- everywhere-underground find (per the task brief's own "ROCK" listing) -- placed as a real
   -- share of ordinary strata, distinct from the BSLT-alias default, everywhere (not biome-gated).
-  local rockShare = 0.18
+  -- Raised 0.18 -> 0.30 in the same pass. This is the stock ROCK element, literally named rock,
+  -- and it is what he expects to be hitting underground. Combined with the concrete cut, depth
+  -- shares become roughly BSLT 47% / ROCK 30% / CNCR 15% / BRCK 8% -- rock-dominant, with
+  -- concrete as a band you notice rather than a monoculture you wade through.
+  local rockShare = 0.30
   if pick < brckAccent + cncrShare + rockShare then return "ROCK" end
   return ROCK
 end
@@ -1243,7 +1252,11 @@ local function rockAt(wx, wy, surf, d, biome)
     -- after DMND/TTAN/BRMT/PTNM (same ordering oreAt already used) so it doesn't compete with
     -- them for the same cells.
     local dore = deepOreAt(wx, wy, d); if dore then return dore end
-    return ROCK2
+    -- Hell-zone bulk fill changed ROCK2 (concrete) -> ROCK (the BSLT alias) 2026-09-02.
+    -- The whole hell zone defaulting to concrete was a large, unnoticed source of the
+    -- "too much concrete" complaint, and basalt is the correct material for a volcanic
+    -- depth band anyway -- it is literally what cooled lava becomes.
+    return ROCK
   end
   -- Snow biome used to return icy strata for the ENTIRE d<480 band and skip oreAt
   -- completely, so a snow region was a 480px ore-free ice slab. Measured before this
