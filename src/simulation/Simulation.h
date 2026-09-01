@@ -144,6 +144,16 @@ public:
 
 	float fvx[YCELLS][XCELLS];
 	float fvy[YCELLS][XCELLS];
+
+	// Active-cell / dirty-rectangle culling (@culling, 2026-09-0X). One entry per CELL-sized
+	// (4x4px) chunk, the same grid bmap/pv/vx/vy/hv already use. chunkAwake is what
+	// UpdateParticles reads THIS frame; chunkAwakeNext accumulates every wake signal seen
+	// during the in-progress frame (movement, temp change, type transition, particle
+	// creation/death/type-change) and is swapped into chunkAwake once a full pass over
+	// [0, parts.active) completes. See WakeChunk() and UpdateParticles() in Simulation.cpp
+	// for the full read/write contract and knowledge/PERF-REPORT.md for the design writeup.
+	uint8_t chunkAwake[YCELLS][XCELLS];
+	uint8_t chunkAwakeNext[YCELLS][XCELLS];
 	int Element_LOLZ_lolz[XRES/9][YRES/9];
 	int Element_LOVE_love[XRES/9][YRES/9];
 	int Element_PSTN_tempParts[std::max(XRES, YRES)];
@@ -208,6 +218,12 @@ public:
 	int FloodINST(int x, int y);
 	void detach(int i);
 	bool part_change_type(int i, int x, int y, int t);
+	// Marks the CELL-chunk containing (x,y) and its 8 neighbours awake for the NEXT
+	// UpdateParticles pass (deferred, not immediate -- see chunkAwake/chunkAwakeNext above).
+	// Called from every particle creation/death/type-change choke point; safe to call
+	// generously (e.g. on a create_part attempt that ultimately fails) since a spurious
+	// wake only costs a little extra work next frame, never a correctness bug.
+	void WakeChunk(int x, int y);
 	//int InCurrentBrush(int i, int j, int rx, int ry);
 	//int get_brush_flags();
 	int create_part(int p, int x, int y, int t, int v = -1);

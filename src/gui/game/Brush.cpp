@@ -175,9 +175,35 @@ void Brush::RenderLine(Graphics *g, ui::Point position1, ui::Point position2) co
 	g->XorLine(position1, position2);
 }
 
-void Brush::RenderPoint(Graphics *g, ui::Point position) const
+void Brush::RenderPoint(Graphics *g, ui::Point position, float scale) const
 {
-	g->XorImage(outline.data(), RectBetween(position - effectiveRadius, position + effectiveRadius));
+	if (scale <= 1.0f)
+	{
+		g->XorImage(outline.data(), RectBetween(position - effectiveRadius, position + effectiveRadius));
+		return;
+	}
+	// Nearest-neighbor upscale: walk every destination (screen) pixel the
+	// scaled brush covers and sample the one cached outline pixel it maps back
+	// to, XOR-ing it in individually (XorImage itself has no notion of scale --
+	// it always reads its source 1:1 against the rect it's given).
+	ui::Point srcSize = effectiveRadius * 2 + Vec2{ 1, 1 };
+	ui::Point scaledRadius(int(std::lround(effectiveRadius.X * scale)), int(std::lround(effectiveRadius.Y * scale)));
+	ui::Point topLeft = position - scaledRadius;
+	ui::Point dstSize = scaledRadius * 2 + Vec2{ 1, 1 };
+	for (int y = 0; y < dstSize.Y; y++)
+	{
+		int sy = int(y / scale);
+		if (sy >= srcSize.Y)
+			sy = srcSize.Y - 1;
+		for (int x = 0; x < dstSize.X; x++)
+		{
+			int sx = int(x / scale);
+			if (sx >= srcSize.X)
+				sx = srcSize.X - 1;
+			if (outline[{ sx, sy }])
+				g->XorPixel(topLeft + Vec2{ x, y });
+		}
+	}
 }
 
 void Brush::RenderFill(Graphics *g, ui::Point position) const

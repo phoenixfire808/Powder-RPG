@@ -102,7 +102,12 @@ local WATT_LIGHTNING = 22   -- flat, only while R.weather.rain is true and the r
 local TICKS_PER_COAL = 900  -- ~15s of real burn time per real COAL cell in the bed (tuned live 19:58, see hub)
 -- ember refresh every 6 frames: same cadence R.torches uses to keep its FIRE particle alive (inlined below)
 local UNLOCK10, UNLOCK100 = 10, 100
-local CONDUCTOR = { CU = true, METL = true, PSCN = true, NSCN = true, STEL = true, TRBN = true, TEG = true }
+-- SWCH added 2026-09-02 (@lead, found by @automation): a switched-on SWCH really does
+-- conduct spark in the engine, but it was missing from this allowlist -- so any grid routed
+-- through a switch had its wattage bookkeeping silently wrong. Verified against the engine
+-- source before adding; this is the one-line fix @automation specified rather than applied,
+-- since machines.lua was not its file.
+local CONDUCTOR = { CU = true, METL = true, PSCN = true, NSCN = true, STEL = true, TRBN = true, TEG = true, SWCH = true }
 local ROLE = {
   crank = "gen", wheel = "gen", solar = "gen", teg = "gen", turbine = "gen", reactor = "gen",
   rtg = "gen", lightning = "gen", gasturbine = "gen",
@@ -498,6 +503,48 @@ local function buildDoor(mx, my)
   R.machines[#R.machines + 1] = { kind = "door", x = wx, y = gy, core = { x = wx - 1, y = gy }, blocks = blocks, pad = { x = wx + 3, y = gy }, open = false }
   R.say("Door built - touch a live wire to the pad beside it to raise the door; it drops when the spark fades")
 end
+
+-- Worldgen object instantiation (requested by the worldgen lane). Structures are stamped per-pixel
+-- from a grid and have no runtime identity, so a "door" cell in a building had nowhere to become a
+-- real door. world.lua calls this ONCE per accepted placement (guarded: `if R.spawnStructMachine`),
+-- so a missing/older machines.lua degrades to an inert decorative stamp rather than erroring.
+--
+-- It deliberately does NOT call buildDoor: that setAt()s camera-relative particles and R.say()s a
+-- message, both wrong here -- worldgen runs far from the player, over terrain the grid has already
+-- stamped. This creates the RECORD only.
+--
+-- `src` is a deterministic identity (cat:cellIdx:gx,gy) and carries the whole save/reload story.
+-- The world regenerates from a seed while R.machines persists, so sRoll re-fires on every reload:
+-- without the dedupe the record duplicates, and without the R.structSpent tombstone a building the
+-- player demolished comes back. Both are cheap linear scans over a small list, once per placement.
+R.structSpent = R.structSpent or {}   -- src -> true, for objects the player has already torn down
+function R.spawnStructMachine(kind, wx, wy, src, fields)
+  if kind ~= "door" then return false end            -- see the PRESSURE note below; unknown kind is not an error
+  if src then
+    if R.structSpent[src] then return false end
+    for _, m in ipairs(R.machines) do if m.src == src then return false end end
+  end
+  local f = fields or {}
+  -- INVARIANT: core must be a cell the grid ALWAYS fills and that open/close never moves. buildDoor
+  -- uses the frame post beside the panel for exactly this reason -- if the core were a door block,
+  -- opening the door would read as an empty core and the reaper would delete the machine.
+  local core = f.core or { x = wx - 1, y = wy }
+  local blocks = f.blocks
+  if not blocks then
+    blocks = {}
+    for dy = 0, 5 do local y = wy - dy
+      blocks[#blocks + 1] = { x = wx, y = y }; blocks[#blocks + 1] = { x = wx + 1, y = y }
+    end
+  end
+  R.machines[#R.machines + 1] = { kind = "door", x = wx, y = wy, core = core, blocks = blocks,
+    pad = f.pad or { x = wx + 3, y = wy }, open = false, src = src }
+  return true
+end
+-- WHY WORLDGEN EMITS DOORS ONLY: syncFastMode below scans ALL of R.machines for a PRESSURE_KINDS
+-- member with no distance check, so a single worldgen boiler anywhere the player had ever explored
+-- would force the air simulation on globally at ~25% fps forever. recomputePower's flood fill has
+-- the same unbounded-growth problem. Both need a proximity gate BEFORE any pressure-bearing or
+-- powered kind becomes worldgen-eligible; until then this refuses everything else by construction.
 
 local function buildPump(mx, my)
   local wx, wy = mx + R.cam.x, my + R.cam.y
@@ -1792,7 +1839,14 @@ local function updateVentfan()
       if dx > -4 and dx < W + 4 and dy > -4 and dy < H + 4 then
         for i = 0, 5 do
           local p = sim.partID(dx + i, dy)
-          if p and BADGAS[R.nameOf(sim.partProperty(p, "type"))] then sim.partProperty(p, "vx", 2.4) end
+          if p and BADGAS[R.nameOf(sim.partProperty(p, "type"))] then
+            -- VENTFAN-NO-OP BUG (2026-08-31): this loop pushed gas along the duct (vx=2.4)
+            -- but never removed it -- unlike the sibling scrubber (which sim.partKill's
+            -- BADGAS directly), the fan measurably relocated CO2/SMKE and never reduced the
+            -- real particle count, despite its own item text claiming it "vents" gas. Kill it
+            -- at the duct's far cell so gas actually exits instead of just drifting in place.
+            if i == 5 then sim.partKill(p) else sim.partProperty(p, "vx", 2.4) end
+          end
         end
       end
     end
@@ -2008,6 +2062,9 @@ local function updateMachineCores()
         m.coreMiss = (m.coreMiss or 0) + 1
         if m.coreMiss >= 3 then
           local td = TEARDOWN[m.kind]; if td then pcall(td, m) end
+          -- Tombstone a worldgen-spawned object so sRoll doesn't resurrect it on the next reload:
+          -- terrain regenerates from the seed, so "the player demolished this" can only live in the save.
+          if m.src then R.structSpent[m.src] = true end
           if R.cratePanel == m then R.cratePanel = nil end
           if R.machinePanel == m then R.machinePanel = nil; R.uiPanelOpen = false end
           R.say(m.kind .. " destroyed"); table.remove(R.machines, i)
@@ -2352,7 +2409,7 @@ local BASE_RECIPES = {
   { out = "TEGKIT", n = 1, need = need("TEG", 2, "CNCR", 2), st = "anvil", txt = "Thermoelectric generator",
     desc = "A concrete housing exposing two real TEG faces. TEG already pulses SPRK into conductors once it crosses 100C (power_kinds.lua) - this just gives it a mount and a wire stud. Sit its hot face against lava or a fire." },
   { out = "BELLOWSKIT", n = 1, need = need("WOOD", 8), st = "hand", txt = "Bellows",
-    desc = "the player 20:38: a cheap hand-operated pump, no power needed. Stand next to it and hold F - it refills a carried air bladder (FLASK) fast and pushes real OXYG down its short duct, exactly what a shallow early dig needs before any generator exists." },
+    desc = "A cheap hand-operated pump, no power needed. Stand next to it and hold F - it refills a carried air bladder (FLASK) fast and pushes real OXYG down its short duct, exactly what a shallow early dig needs before any generator exists." },
   { out = "AIRLINEKIT", n = 10, need = need("BMTL", 2), st = "workbench", txt = "Air line",
     desc = "Hold right mouse and drag to lay a real duct, the same continuous-line trick WIRECOIL uses for wire. Every intact stretch of it registers as a real oxygen source along its length - and a segment that gets mined out or blown up genuinely cuts the air off beyond that point, not just a flag." },
   { out = "WINDKIT", n = 1, need = need("METL", 8, "BMTL", 3), st = "anvil", txt = "Wind turbine",
@@ -2364,7 +2421,7 @@ local BASE_RECIPES = {
   { out = "GASDETECTORKIT", n = 1, need = need("METL", 2, "LEDL", 1), st = "workbench", txt = "Gas detector",
     desc = "No power needed. Watches real CO2/smoke right next to it and the real ambient methane level (R.gas.ch4) near the player, and blinks + warns when either crosses a dangerous real threshold." },
   { out = "LEADSHIELDKIT", n = 2, need = need("LEAD", 4), st = "anvil", txt = "Lead shielding panel",
-    desc = "The roadmap's long-standing ask: a placeable wall of real 35 W/mK lead. Keep it between yourself and a uranium vein or an active reactor - LEAD is already the catalog's real gamma-shielding material, this just makes it a build-able panel instead of only a raw bar." },
+    desc = "A placeable wall of real 35 W/mK lead. Keep it between yourself and a uranium vein or an active reactor - LEAD is the real gamma-shielding material here, and this makes it a build-able panel instead of only a raw bar." },
 }
 local TIER10_RECIPES = {
   { out = "COMPRESSORKIT", n = 1, need = need("STEL", 8, "CU", 4, "PSCN", 2), st = "anvil", txt = "Compressor",
@@ -2431,6 +2488,13 @@ local TIERR_RECIPES = {
     desc = "Unlocked once a reactor goes online. Longer range, heavier hits - the reward for finishing the power tech tree." },
   { out = "RTGKIT", n = 1, need = need("UO2", 2, "LEAD", 6, "B4C", 2, "TEG", 1, "CU", 1), st = "anvil", txt = "RTG",
     desc = "Unlocked once a reactor goes online - you've proven you can handle fissile material safely. A sealed UO2 pellet's real neutron emission is captured by a tight B4C shell (real heating-per-capture) and read off a touching TEG: always-on power, no day/night, no grid dependency, exactly like a real deep-space RTG." },
+  -- ADDED 2026-09-02 (@matimpl, design-material-progression.md S4 chain 6): SHD4 is the top rung of the
+  -- Shield ladder (SHLD/SHD2/SHD3 live in rpg.lua's R.RECIPES, reachable at research/advlab tier) -- this
+  -- is the one tier the design doc deliberately gates on "reactor online", same shape as TURRETKIT2/RTGKIT
+  -- right above, so it installs through this same R.tech.reactor-gated table instead of a raw materials
+  -- consumable (PLUT breeding) this pass didn't implement.
+  { out = "SHD4", n = 1, need = need("SHD3", 2, "TTAN", 4, "GOLD", 3), st = "advlab", txt = "Shield tier 4",
+    desc = "Unlocked once a reactor goes online. The strongest defensive field material in the game -- tempered under sustained reactor heat." },
 }
 installRecipes = function()
   for i = #R.RECIPES, 1, -1 do if R.RECIPES[i]._plugin == TAG then table.remove(R.RECIPES, i) end end
@@ -2447,6 +2511,13 @@ R.tech = R.tech or { peakW = 0, unlock10 = false, unlock100 = false, reactor = f
 R.power = R.power or { grids = {} }
 installRecipes()
 hook(R.hooks.newworld, function()
+  -- R.machines MUST be cleared here. It was the only plugin registry that wasn't (machines2.lua:1108
+  -- clears R.machines2, vehicles/survival/world/guide all clear theirs), so every machine from the
+  -- previous world survived "Create World" at stale coordinates and was executed by every update*
+  -- until the off-screen-tolerant reaper eventually collected it. R.machinePanel is nil'd for the
+  -- same reason machines2 nils R.machine2Panel: it holds a machine reference and gates R.uiPanelOpen,
+  -- so a panel for a machine that no longer exists would stay open over the new world.
+  R.machines = {}; R.machinePanel = nil; R.uiPanelOpen = false; R.structSpent = {}
   R.tech = { peakW = 0, unlock10 = false, unlock100 = false, reactor = false }
   R.power = { grids = {} }
   installRecipes()
@@ -2462,7 +2533,7 @@ end)
 -- NOT pushed: R.power.grids is fully derived (recomputed every 15 frames from R.machines + live wire pixels)
 -- and its member lists alias the same tables as R.machines - persisting it would just duplicate/tangle that dump.
 R.PLUGIN_SAVE_KEYS = R.PLUGIN_SAVE_KEYS or {}
-for _, k in ipairs({ "machines", "tech" }) do
+for _, k in ipairs({ "machines", "tech", "structSpent" }) do
   local seen = false
   for _, kk in ipairs(R.PLUGIN_SAVE_KEYS) do if kk == k then seen = true end end
   if not seen then table.insert(R.PLUGIN_SAVE_KEYS, k) end

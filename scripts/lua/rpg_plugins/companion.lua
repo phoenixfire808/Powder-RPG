@@ -1158,8 +1158,200 @@ local function reviveNear()
   sayC("Back on my feet!")
 end
 
+-- ================================================================ perf telemetry (@perf)
+-- He asked directly: "get back stats about how fast the game is running and what could be lagging."
+-- Extends the existing R.perf EMA machinery (rpg.lua:1000-1034, tag->ms/skip, already driving the
+-- adaptive throttler) rather than replacing it -- this module only ADDS: real measured frame period
+-- (never a requested step count -- knowledge/PERF-REPORT.md records 500 requested frames producing
+-- about 3 real ones), a distribution (median/p95/worst, not just a mean -- the spikes are the lag),
+-- particle count BY TYPE, live air-sim state (both the R.fast flag and the real sim.airMode()), and
+-- which hooks are currently throttled. Both an in-game panel (toggle key "i") and an append-only log
+-- file (perf-log.jsonl, written into the game's own ddir -- same relative-path convention as
+-- feedback.txt/rpg-save.json -- so it opens with any text editor, no agent required).
+--
+-- COST DISCIPLINE: a full sim.parts() type tally measured 13-24ms live against both the lab and his
+-- real session (knowledge/PERF-REPORT.md, 2026-09-01 @perf section) -- close to or above the entire
+-- 16.7ms frame budget by itself. Running that every frame would BE the lag it exists to diagnose, so
+-- it is throttled to once every PERFHUD_COMPOSITION_FRAMES real ticks; the frame-period sample and
+-- log write are cheap (a handful of table writes) and run every tick / every PERFHUD_LOG_FRAMES ticks
+-- respectively. This module's own per-tick cost is measured and shown in the panel (R.PERFHUD.selfMs)
+-- so "is the telemetry itself a cost" is answered with a live number, not a promise.
+local PERFHUD_LOG_PATH = "perf-log.jsonl"
+local PERFHUD_BUF_MAX = 240              -- ring buffer of real tick-to-tick os.clock() deltas, ms
+local PERFHUD_STATS_FRAMES = 60          -- recompute median/p95/worst this often (real ticks)
+local PERFHUD_COMPOSITION_FRAMES = 1200  -- full particle-type tally this often -- see cost note above
+local PERFHUD_LOG_FRAMES = 300           -- append one log line this often
+
+R.PERFHUD = R.PERFHUD or {
+  on = false,                   -- panel toggle (key "i")
+  buf = {},                     -- ring buffer of real frame deltas (ms), oldest first
+  lastClock = nil,
+  stats = nil,                  -- {n,mean,median,p95,worst,best}, refreshed every PERFHUD_STATS_FRAMES
+  lastStatsAt = 0,
+  composition = nil,            -- {total,top={{name,n,pct}},atFrame,tookTicks}, refreshed every PERFHUD_COMPOSITION_FRAMES
+  lastCompositionAt = -PERFHUD_COMPOSITION_FRAMES,  -- so the first tick starts a scan, not after a full wait
+  scan = nil,                    -- in-progress incremental sim.parts() scan: {f,s,var,counts,total,startedAt}, see perfScanStep
+  lastLogAt = -PERFHUD_LOG_FRAMES,
+  selfMs = 0,                   -- EMA of this module's own per-tick cost
+}
+
+local function perfStatsOf(buf)
+  local n = #buf
+  if n < 2 then return { n = n, mean = 0, median = 0, p95 = 0, worst = 0, best = 0 } end
+  local sorted = {}
+  for i = 1, n do sorted[i] = buf[i] end
+  table.sort(sorted)
+  local sum = 0; for i = 1, n do sum = sum + sorted[i] end
+  return {
+    n = n, mean = sum / n,
+    median = sorted[floor(n * 0.5) + 1] or sorted[n],
+    p95 = sorted[math.ceil(n * 0.95)] or sorted[n],
+    worst = sorted[n], best = sorted[1],
+  }
+end
+
+-- minimal JSON string escaping, matching ui.lua's jsonStr convention (our own values are plugin
+-- tags/element names -- no exotic chars in practice, but this stays correct if that ever changes).
+local function perfJsonStr(s)
+  s = tostring(s):gsub('[\\"]', "\\%0"):gsub("\n", "\\n")
+  return '"' .. s .. '"'
+end
+
+-- INCREMENTAL by design, not a single blocking pass: a straight-through `for i in sim.parts() do`
+-- tally measured 13-24ms for ~80-112k live particles (knowledge/PERF-REPORT.md, 2026-09-01 @perf
+-- section) called stand-alone over the bridge -- and calling that SAME blocking scan from inside a
+-- real tick hook produced a live, reproduced "Script not responding" freeze on the lab instance
+-- (frame counter stuck, bridge connection resets) when it landed in the same tick as fresh terrain
+-- streaming after a teleport into unexplored ground. Root cause not fully isolated (a second, calmer
+-- attempt did not reproduce it), but the mechanism is plausible and the fix is cheap: `sim.parts()`
+-- returns a real (f, s, var) Lua iterator triple, steppable by hand (verified live), so the scan is
+-- spread across many ticks at a small bounded cost per tick instead of one large blocking call ever
+-- entering a single tick's Lua budget. This is the actual fix, not just a lower-frequency guess.
+local function perfScanStart()
+  local f, s, var = sim.parts()
+  R.PERFHUD.scan = { f = f, s = s, var = var, counts = {}, total = 0, startedAt = R.frame or 0 }
+end
+
+local PERFHUD_SCAN_CHUNK = 2000   -- particles visited per tick while a scan is in progress (~0.4ms/tick at the measured per-particle cost)
+
+local function perfScanStep(PH)
+  local sc = PH.scan
+  if not sc then return end
+  for _ = 1, PERFHUD_SCAN_CHUNK do
+    local id = sc.f(sc.s, sc.var)
+    if id == nil then
+      local list = {}
+      for nm, c in pairs(sc.counts) do list[#list + 1] = { nm, c } end
+      table.sort(list, function(a, b) return a[2] > b[2] end)
+      local top = {}
+      for i = 1, min(6, #list) do top[i] = { name = list[i][1], n = list[i][2], pct = sc.total > 0 and (100 * list[i][2] / sc.total) or 0 } end
+      PH.composition = { total = sc.total, top = top, atFrame = R.frame or 0, tookTicks = (R.frame or 0) - sc.startedAt }
+      PH.scan = nil
+      return
+    end
+    sc.var = id
+    local nm = R.nameOf(sim.partProperty(id, "type")) or "?"
+    sc.counts[nm] = (sc.counts[nm] or 0) + 1
+    sc.total = sc.total + 1
+  end
+end
+
+local function perfThrottledTags()
+  local out = {}
+  for tag, rec in pairs(R.perf or {}) do if (rec.skip or 1) > 1 then out[#out + 1] = tag .. "(1/" .. rec.skip .. ")" end end
+  table.sort(out)
+  return out
+end
+
+local function perfWriteLog(PH)
+  local f = io.open(PERFHUD_LOG_PATH, "a")
+  if not f then return end
+  local st = PH.stats or perfStatsOf(PH.buf)
+  local topStr = {}
+  if PH.composition then
+    for _, e in ipairs(PH.composition.top) do
+      topStr[#topStr + 1] = string.format('{"name":%s,"n":%d,"pct":%.1f}', perfJsonStr(e.name), e.n, e.pct)
+    end
+  end
+  local hookStr = {}
+  for tag, rec in pairs(R.perf or {}) do
+    hookStr[#hookStr + 1] = string.format('{"tag":%s,"ms":%.3f,"skip":%d}', perfJsonStr(tag), rec.ms, rec.skip or 1)
+  end
+  local throttledStr = {}
+  for _, t in ipairs(perfThrottledTags()) do throttledStr[#throttledStr + 1] = perfJsonStr(t) end
+  local okAir, air = pcall(sim.airMode)   -- real engine value; legal here -- this runs inside a genuine tick event
+  local line = "{" ..
+    '"ts":' .. perfJsonStr(os.date("!%Y-%m-%dT%H:%M:%SZ")) .. "," ..
+    '"frame":' .. tostring(R.frame or 0) .. "," ..
+    '"fps":' .. string.format("%.1f", st.mean > 0 and (1000 / st.mean) or 0) .. "," ..
+    '"frameMs":{"mean":' .. string.format("%.2f", st.mean) .. ',"median":' .. string.format("%.2f", st.median) ..
+      ',"p95":' .. string.format("%.2f", st.p95) .. ',"worst":' .. string.format("%.2f", st.worst) .. ',"n":' .. st.n .. "}," ..
+    '"parts":' .. tostring(sim.partCount()) .. "," ..
+    '"partsTop":[' .. table.concat(topStr, ",") .. "]," ..
+    '"airFast":' .. tostring(R.fast == true) .. ',"airModeReal":' .. tostring(okAir and air or "null") .. "," ..
+    '"hooks":[' .. table.concat(hookStr, ",") .. "]," ..
+    '"throttled":[' .. table.concat(throttledStr, ",") .. "]," ..
+    '"telemetrySelfMs":' .. string.format("%.4f", PH.selfMs) ..
+  "}"
+  f:write(line .. "\n")
+  f:close()
+end
+
+local function drawPerfPanel()
+  local PH = R.PERFHUD
+  local st = PH.stats or perfStatsOf(PH.buf)
+  local x, y = R.W - 210, 4
+  local lines = {}
+  lines[#lines + 1] = string.format("PERF (i to hide)  frame %d", R.frame or 0)
+  lines[#lines + 1] = string.format("fps %.1f  ms mean %.1f med %.1f", st.mean > 0 and 1000 / st.mean or 0, st.mean, st.median)
+  lines[#lines + 1] = string.format("p95 %.1f  worst %.1f  best %.1f", st.p95, st.worst, st.best)
+  local okAir, air = pcall(sim.airMode)
+  lines[#lines + 1] = string.format("parts %d   air: R.fast=%s real=%s", sim.partCount(), tostring(R.fast == true), okAir and tostring(air) or "?")
+  local rows = {}
+  for tag, rec in pairs(R.perf or {}) do rows[#rows + 1] = { tag, rec.ms, rec.skip or 1 } end
+  table.sort(rows, function(a, b) return a[2] > b[2] end)
+  for i = 1, min(4, #rows) do
+    local r = rows[i]
+    lines[#lines + 1] = string.format("  %-10s %6.2fms%s", r[1], r[2], r[3] > 1 and (" skip" .. r[3]) or "")
+  end
+  if PH.composition then
+    lines[#lines + 1] = string.format("parts by type (@f%d):", PH.composition.atFrame)
+    for i = 1, min(4, #PH.composition.top) do
+      local e = PH.composition.top[i]
+      lines[#lines + 1] = string.format("  %-8s %6d (%.0f%%)", e.name, e.n, e.pct)
+    end
+  end
+  lines[#lines + 1] = string.format("telemetry cost: %.3fms/tick", PH.selfMs)
+  local h = 10 + #lines * 11
+  graphics.fillRect(x - 4, y - 2, 208, h, 10, 12, 16, 190)
+  graphics.drawRect(x - 4, y - 2, 208, h, 90, 160, 200, 160)
+  for i, ln in ipairs(lines) do graphics.drawText(x, y + (i - 1) * 11, ln, 190, 230, 210, 255) end
+end
+
 -- ================================================================ tick
 hook(R.hooks.tick, function()
+  do
+    local okPH, errPH = pcall(function()
+      local PH = R.PERFHUD
+      local t0 = os.clock()
+      if PH.lastClock then
+        local dt = (t0 - PH.lastClock) * 1000
+        if dt >= 0 and dt < 5000 then   -- guard against hot-reload/pause gaps corrupting the buffer
+          local buf = PH.buf
+          buf[#buf + 1] = dt
+          if #buf > PERFHUD_BUF_MAX then table.remove(buf, 1) end
+        end
+      end
+      PH.lastClock = t0
+      local frame = R.frame or 0
+      if frame - PH.lastStatsAt >= PERFHUD_STATS_FRAMES then PH.lastStatsAt = frame; PH.stats = perfStatsOf(PH.buf) end
+      if not PH.scan and frame - PH.lastCompositionAt >= PERFHUD_COMPOSITION_FRAMES then PH.lastCompositionAt = frame; perfScanStart() end
+      if PH.scan then perfScanStep(PH) end
+      if frame - PH.lastLogAt >= PERFHUD_LOG_FRAMES then PH.lastLogAt = frame; perfWriteLog(PH) end
+      PH.selfMs = PH.selfMs * 0.9 + (os.clock() - t0) * 1000 * 0.1
+    end)
+    if not okPH then R.lastErr = "companion.lua perfhud tick: " .. tostring(errPH) end
+  end
   if C.needsPlace then
     C.x = (R.P and R.P.x or 0) - (R.P and R.P.face or 1) * 12; C.y = (R.P and R.P.y or 100); C.vx, C.vy = 0, 0
     C.needsPlace = false
@@ -1259,6 +1451,8 @@ local function drawCompanion()
   end
 end
 hook(R.hooks.draw, function() local ok, err = pcall(drawCompanion); if not ok then R.lastErr = "companion.lua draw: " .. tostring(err) end end)
+hook(R.hooks.key, function(k) if k == "i" and not R.chatOpen then R.PERFHUD.on = not R.PERFHUD.on; return true end end)
+hook(R.hooks.drawHUD, function() if R.PERFHUD.on then local ok, err = pcall(drawPerfPanel); if not ok then R.lastErr = "companion.lua perfhud draw: " .. tostring(err) end end end)
 
 -- ================================================================ compact state for the local-model driver
 -- Kept small on purpose (a few hundred tokens once JSON-encoded) - see knowledge/design-companion-protocol.md.

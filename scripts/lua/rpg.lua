@@ -64,10 +64,10 @@ R.ITEMS = { FLASK = { col = {150, 220, 235}, desc = "Air bladder: fills itself i
             -- placed at all (fell through to eid("RESEARCH"), which is nil, no-op).
             RESEARCH = { col = {60, 120, 140}, desc = "Research Bench: place it near your workbench to unlock advanced material recipes" },
             ADVLAB = { col = {70, 90, 110}, desc = "Advanced Lab: place it near your Research Bench to unlock its recipes" } }
-R.NAMES = { GOO="Dirt", GRNT="Granite", GRSS="Grass", PLNT="Plant", WOOD="Wood", SAND="Sand", ICE="Ice", SNOW="Snow", CLST="Clay",
+R.NAMES = { GOO="Dirt", GRNT="Granite", BSLT="Granite", GRSS="Grass", PLNT="Plant", WOOD="Wood", SAND="Sand", ICE="Ice", SNOW="Snow", CLST="Clay",
   COAL="Coal", BCOL="Coal dust", IRON="Iron ore", METL="Iron bar", STEL="Steel", GOLD="Gold", CU="Copper", DU="Uranium ore", URAN="Uranium",
   DMND="Diamond", QRTZ="Quartz", TTAN="Titanium", BRCK="Brick", GLAS="Glass", INSL="Insulation", WATR="Water", DSTW="Pure water", LAVA="Lava",
-  BRMT="Bronze", BMTL="Scrap metal", PSCN="P-silicon", NSCN="N-silicon", LEDL="LED lamp", WIFI="Wireless", B4C="Control rod", TRBN="Turbine",
+  BRMT="Bronze", BMTL="Scrap metal", PSCN="P-silicon", NSCN="N-silicon", TUNG="Tungsten", LEDL="LED lamp", WIFI="Wireless", B4C="Control rod", TRBN="Turbine",
   TEG="Thermo-gen", UO2="Fuel pellet", STNE="Stone", OIL="Oil", FIRE="Fire", GLOW="Glow", WORKBENCH="Workbench", FURNACE="Furnace kit", ANVIL="Anvil",
   -- Found 2026-08-29: R.nice()'s only fallback for an element with no entry here is
   -- the raw string itself -- there's no real-engine-name lookup. RESEARCH/ADVLAB
@@ -75,7 +75,14 @@ R.NAMES = { GOO="Dirt", GRNT="Granite", GRSS="Grass", PLNT="Plant", WOOD="Wood",
   -- and GRPH (a real stock element, added round 4) showed its bare code with no
   -- fallback at all. STNE proves R.NAMES is genuinely the only mechanism for a
   -- readable name here, not something GRPH would get automatically over time.
-  RESEARCH="Research Bench", ADVLAB="Advanced Lab", GRPH="Graphite" }
+  RESEARCH="Research Bench", ADVLAB="Advanced Lab", GRPH="Graphite",
+  -- ADDED 2026-09-02 (@matimpl, design-material-progression.md): names for every material this pass
+  -- made obtainable -- without an entry here R.nice() falls back to the raw code (see STNE note above).
+  SLCN="Silicon powder", SWCH="Switch", INWR="Insulated wire", TESC="Tesla coil", ETRD="Electrode", DSTW="Distilled water",
+  GUN="Gunpowder (raw)", TNT="TNT", FUSE="Fuse", IGNC="Ignition cord", FSEP="Fuse powder", TRON="Tron", THRM="Thermite", NITR="Nitroglycerin",
+  PSTN="Piston", FRME="Frame", ACEL="Accelerator", DCEL="Decelerator", FRAY="Force emitter", RPEL="Repeller", PPIP="Powered pipe",
+  SHLD="Shield tier 1", SHD2="Shield tier 2", SHD3="Shield tier 3", SHD4="Shield tier 4",
+  DTEC="Detector", LDTC="Linear detector", PSNS="Pressure sensor", TSNS="Temperature sensor", SPNG="Sponge", VOID="Void", PVOD="Powered void", VENT="Vent" }
 function R.nice(el) if not el then return "?" end; if el:find("^tool:") then return el:sub(6) end; return R.NAMES[el] or (R.ITEMS[el] and (el:sub(1,1) .. el:sub(2):lower())) or el end
 local nice = R.nice
 local function descOf(name) if R.ITEMS[name] then return R.ITEMS[name].desc end; local t = eid(name); if not t then return "" end; local ok, d = pcall(elem.property, t, "Description"); return ok and tostring(d) or "" end
@@ -115,10 +122,40 @@ end
 function R.toggleSandbox()
   R.sandbox = not R.sandbox
   if R.sandbox then
-    pcall(R.sandboxFill)
-    pcall(R.setTptMenus, true)
-    say("SANDBOX ON — free materials, no damage, TPT menus on")
-  else say("SANDBOX OFF — survival rules") end
+    -- Unlock capability, do NOT stock the bag. Sandbox means "nothing is restricted",
+    -- not "you now own 999 of all 120 materials" -- that buried the inventory grid in
+    -- identical 999 cells and made taking a specific item from the guide pointless.
+    -- Crafting still works with an empty bag: canAfford/spend/nearStation all bypass on
+    -- the R.sandbox flag itself, not on holding materials.
+    pcall(R.sandboxUnlock)
+    -- Deliberately does NOT touch R.tptMenus. Sandbox and the native TPT
+    -- menus are independent toggles: entering sandbox used to yank the side
+    -- palettes on unasked, and the only way back was toggling TPT menus by
+    -- hand every single time. Whatever the TPT menu state was, it stays.
+    say("SANDBOX ON — no damage, free crafting, take what you want from the guide (L)")
+  else
+    -- Leaving sandbox should not dump a wall of 999s into a survival run. Clear only stacks
+    -- sitting at exactly the sandbox stock value -- a real gathered stack is essentially
+    -- never exactly 999, and anything you deliberately took from the guide and then spent
+    -- down is below it and survives.
+    -- ponytail: exact-999 marker heuristic; give sandbox-granted items a real flag if this
+    -- ever misfires on a legitimately hoarded 999 stack.
+    local cleared = 0
+    local crafted = (R.stats and R.stats.crafted) or {}
+    for k, v in pairs(R.inventory or {}) do
+      -- 999 is the sandbox stock marker. Kits are also cleared when you never actually
+      -- crafted them -- those came from a sandbox grant (some from the old vehicle hook
+      -- that has since been removed entirely), and leaving them behind means carrying
+      -- stock from a mechanism that no longer exists. Anything you really crafted has a
+      -- R.stats.crafted record and survives; gathered raw materials are not R.ITEMS and
+      -- are never touched.
+      if v > 0 and (v == 999 or (R.ITEMS[k] and not crafted[k])) then
+        R.inventory[k] = 0; cleared = cleared + 1
+      end
+    end
+    if cleared > 0 then pcall(R.rebuildHotbar) end
+    say("SANDBOX OFF — survival rules" .. (cleared > 0 and ("  (cleared " .. cleared .. " sandbox stacks)") or ""))
+  end
   return R.sandbox
 end
 -- Top-right HUD quick toggles (layout refreshed each draw/click).
@@ -156,7 +193,11 @@ function R.drawQuickBar()
     if hov then er, eg, eb = 255, 230, 120 end
     graphics.drawRect(b.x, b.y, b.w, b.h, er, eg, eb, 255)
     local tw = #b.label * 6
-    graphics.drawText(b.x + floor((b.w - tw) / 2), b.y + 4, b.label, on and 255 or 200, on and 255 or 210, on and 240 or 220, 255)
+    -- math.floor, not the file-local `floor`: that local is declared at line ~929, far BELOW
+    -- this function, so referencing it here compiled as a nil GLOBAL and this drawText threw
+    -- every single frame -- which is why the SANDBOX/TPT/GUIDE quick buttons were clickable
+    -- but completely invisible. Same class as drawMenu/wrap/menuWrap/give/LIFESUPPORT_RANGE.
+    graphics.drawText(b.x + math.floor((b.w - tw) / 2), b.y + 4, b.label, on and 255 or 200, on and 255 or 210, on and 240 or 220, 255)
   end
 end
 function R.quickBarClick(x, y)
@@ -208,7 +249,23 @@ end
 -- with zero setup); also POSTed to R.FEEDBACK_WEBHOOK if one is filled in
 -- (a Discord channel webhook URL, say) so reports show up automatically
 -- instead of someone having to remember to send the file over.
-R.FEEDBACK_WEBHOOK = "https://discord.com/api/webhooks/1543391892128006235/0Bk5UVk0-O-McNWYhc3--YyqxsT2XEmuMmCfw-BOBb1leh10yMQfRMFyPpp0o_9uE1re"
+-- SECRET, NOT IN SOURCE (changed 2026-09-01). This line used to hold the literal
+-- Discord webhook URL, and rpg.lua is TRACKED AND PUSHED to the public repo
+-- (github.com/phoenixfire808/Powder-RPG, branch rpg-and-realism) -- it was committed in
+-- 51241e68 and was still live in HEAD, so anyone who cloned the repo could post into the
+-- Discord channel. That URL is burned and must be regenerated in Discord.
+-- The webhook now loads from a gitignored file next to the game instead, so a fresh URL
+-- can never be committed by accident. Put the new URL, alone on one line, in:
+--     D:/The-Powder-Toy/build/feedback_webhook.txt
+R.FEEDBACK_WEBHOOK = ""
+do
+  local wf = io.open("feedback_webhook.txt", "r")
+  if wf then
+    local url = (wf:read("*l") or ""):gsub("%s+$", "")
+    wf:close()
+    if url:match("^https://") then R.FEEDBACK_WEBHOOK = url end
+  end
+end
 R.feedbackOpen = false
 R.feedbackText = R.feedbackText or ""
 R.pendingHttp = R.pendingHttp or {}   -- keeps async http.post() handles alive until they finish
@@ -227,6 +284,43 @@ function R.submitFeedback(text)
     end
   end
   say("Feedback saved" .. ((R.FEEDBACK_WEBHOOK ~= "") and " and sent - thanks!" or " - thanks!"))
+end
+-- STAMP SUBMISSIONS -> DISCORD (added 2026-09-01).
+-- Community submissions were being written ONLY to build/stamp_submissions/manifest.jsonl,
+-- i.e. to the submitting player's own disk, so for anyone who downloads the game the
+-- submission never reaches PhoenixFire808 at all. This routes them to the same Discord
+-- webhook the F8 feedback box already uses: no server, no hosting cost, and Discord supplies
+-- notification and moderation for free.
+-- Dual-audience format: a readable summary to skim in the channel, then the exact manifest
+-- JSON line in a fenced block so it can be pasted straight into manifest.jsonl or parsed.
+function R.submitStampToDiscord(rec)
+  if type(rec) ~= "table" then return false, "bad record" end
+  local url = R.FEEDBACK_WEBHOOK or ""
+  if url == "" then return false, "no webhook configured" end
+  if not (http and http.post) then return false, "http unavailable" end
+  local cat  = tostring(rec.category or "other")
+  local ctx  = tostring(rec.context or "")
+  local id   = tostring(rec.id or "?")
+  local w    = tonumber(rec.w) or 0
+  local h    = tonumber(rec.h) or 0
+  local els  = rec.elements_str or ""
+  local line = tostring(rec.manifest_line or "")
+  local head = (cat == "bug" and "BUG REPORT")
+            or (cat == "suggestion" and "SUGGESTION")
+            or ("DESIGN SUBMISSION (" .. cat .. ")")
+  local body = "**" .. head .. "**\n"
+    .. "> " .. ctx:gsub("\n", "\n> ") .. "\n"
+    .. "id `" .. id .. "` | size " .. w .. "x" .. h
+    .. (els ~= "" and (" | elements: " .. els) or "")
+    .. " | seed " .. tostring(R.seed) .. " | day " .. tostring(R.day)
+    .. " | v" .. tostring(R.VERSION) .. "\n"
+    .. "```json\n" .. line .. "\n```"
+  local okj, payload = pcall(json.stringify, { content = body })
+  if not okj then return false, "encode failed" end
+  local ok2, handle = pcall(http.post, url, payload, { { "Content-Type", "application/json" } })
+  if not ok2 or not handle then return false, tostring(handle) end
+  R.pendingHttp[#R.pendingHttp + 1] = handle
+  return true
 end
 -- Poll/release pending webhook requests so the async handle doesn't get
 -- garbage-collected (which cancels it) before the request actually finishes.
@@ -264,7 +358,21 @@ end
 --   Ready-to-run build. ...
 -- The "Version:" line drives update detection; the "Changes:" ... "Ready-
 -- to-run" span is exactly what the in-game changelog dialog shows.
-R.VERSION = "1.15.82"
+-- CUSTOM ELEMENT CAP (2026-09-01). PBX.MAX_CUSTOM_ELEMENTS lives in the bridge
+-- (bridge_src/00_util.lua -> autorun.lua), which only loads at game START -- so raising it
+-- there cannot take effect without a restart, and a runtime override is wiped by the next
+-- core reload. Setting it here means every hot-reload of rpg.lua restores it, no restart.
+-- Why 160 and not 40: the old 40 came from "TPT has 256 ids, ~213 stock; 40 leaves margin",
+-- which counted only the ONE-BYTE id range. elem.allocate already falls back to ids
+-- 256..PT_NUM-1 (PT_NUM = 512, PMAPBITS = 9) and GameSave round-trips two-byte types, so
+-- ~299 ids were sitting unused behind a self-imposed cap. With 40, the 71-material catalogue
+-- lost the competition for slots against machines/creatures and the underground collapsed to a
+-- single rock type -- BSLT and CNCR simply could not register.
+-- Measured: cap 40 -> 160 took live custom elements 40 -> 60+ and priority-1 materials 4/29 -> 28/29.
+if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
+  PBX.MAX_CUSTOM_ELEMENTS = 160
+end
+R.VERSION = "1.16.6"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -280,6 +388,176 @@ R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 -- they all show up together next time, exactly like the GitHub one does
 -- across skipped releases.
 R.CHANGELOG = {
+  { ver = "1.16.6", notes = {
+    "New AUTOMATION tier (@automation): Life sensor, Velocity sensor and Delay conductor are now craftable at the Research Bench; Ray Emitter and Particle Ray Emitter at the Advanced Lab. The game has had Powder Toy's whole logic and sensor toolkit sitting unused this entire time -- it is now a real tech tier you can build with.",
+    "New: sensor calibration -- right-click any placed temperature, pressure, life, velocity or delay sensor and set its real trigger threshold with the scroll wheel. The physics was always being simulated; now you can read it.",
+    "New buildable kit: Thermal Alarm -- a real temperature sensor wired to a lamp that trips when something hotter than its threshold comes near (default 100C).",
+    "New buildable kit: Pressure Switch -- a real pressure sensor latched to a switch, so you can finally automate the boiler-steam-turbine chain instead of babysitting it.",
+    "New buildable kit: Sensor Vault Door -- a detector calibrated to a material (gold by default) that opens only for the right thing.",
+    "Guide (@guide): added a MATERIAL BROWSER -- 12 category tabs covering every element the game can give you, with what it is, where it occurs, and what tool tier digs it.",
+    "Guide (@guide): added a PROGRESSION view -- the full tier ladder with your current tier computed live, so you can see what the next one actually unlocks.",
+    "Guide (@guide): fixed the progression view claiming you were at the top tier while in sandbox with nothing built.",
+    "Power (@lead): switches now count as real conductors. A switched-on SWCH genuinely conducts in the engine but the power grid was not counting it, so any circuit routed through a switch silently mis-reported its wattage.",
+  } },
+  { ver = "1.16.5", notes = {
+    "Fixed a real deadlock: Thermite and Nitroglycerin rounds were already selectable as ammo for kinetic weapons (the musket, shotgun, nail gun, rail gun, harpoon and more) but could never actually be obtained -- go smelt Thermite at a lit furnace (Iron bar + Coal) or brew Nitroglycerin there too (Dirt, GOO), and load them into any kinetic gun for real incendiary/explosive rounds.",
+    "New Electronics tier at the Workbench and Research Bench: Switch (on/off circuit gating), Insulated Wire, Silicon powder (smelted from Sand), Tesla Coil and Electrode -- go test wiring a Switch into a grid branch to kill power to just part of it.",
+    "New Demolition tier: craft raw Gunpowder from Clay at the furnace, then TNT (Gunpowder + Salt) for real one-shot blast mining -- also added Fuse, Ignition Cord and Fuse Powder for controlled-delay charges, and Tron seeking-ammo at the Research Bench.",
+    "Fixed Salt being produced by the Salt Evaporator and Desalinator but impossible to actually mine up -- go pick up the Salt crystals in the evaporator's pan with your pick, same as any other ore.",
+    "New Force-Field Automation tier at the Research Bench: real Piston + Frame (pushes a mass of particles, not just loose powder), plus Accelerator/Decelerator/Force-emitter/Repeller for contactless material handling, and a switchable Powered Pipe.",
+    "New Shield Defense ladder: craft Shield tier 1 at the Research Bench, tier 2 on top of that, tier 3 at the Advanced Lab, and tier 4 once your reactor goes online -- four real, placeable barrier tiers that grow around a spark and absorb damage before breaking.",
+    "New Sensor/Automation Safety tier at the Research Bench: Detector, Linear Detector, Pressure Sensor and Temperature Sensor for wiring real early-warning alarms and shutoffs -- plus a cheap Sponge, Void, Powered Void and Vent for early flood-control and waste disposal.",
+  } },
+  { ver = "1.16.4", notes = {
+    "Mountains (@lead): you can finally climb over them. The world always generated real terrain up to about 755px above sea level, but the camera was clamped at 300px -- so you hit an invisible ceiling less than half way up a mountain that was actually there. Raised to 900px, with the companion pathfinder raised to match so it will follow you up.",
+    "Materials (@lead): the underground had quietly collapsed to a single rock type. The game wants 71 materials but the custom-element registry was capped at 40 -- a self-imposed limit that only counted half the ids the engine actually allows -- so Basalt, Concrete, Copper, Steel, Lead, Zirconium and Quartz were all failing to register and every stone fell back to plain Brick. Cap raised; those are all back, and priority materials went from 4 of 29 live to 28 of 29.",
+    "Terrain (@worldgen): rock strata are now tinted by depth and topsoil carries embedded rock flecks, so the underground reads as layered ground instead of one flat colour.",
+  } },
+  { ver = "1.16.3", notes = {
+    "Flat world (@lead): New World -> Map type now has a \"Flat (no terrain)\" option. No hills, no caves, no biome noise, no trees, no structures -- just solid ground and you, standing on it. Cycle Map type past Swamp to reach it. Good for messing about, testing machines, or building without the world in the way.",
+  } },
+  { ver = "1.16.2", notes = {
+    "Magnetic Accelerator (@deadlock): the anvil recipe was permanently uncraftable -- it needed N-silicon, which nothing in the game ever gave you. N-silicon is now craftable at the Workbench (Gold + Glass), same as its P-silicon counterpart right next to it.",
+    "Tungsten Sniper (@deadlock): both the build cost AND the ammo needed Tungsten, which nothing in the game ever gave you -- the gun could never be built, and if it somehow existed it could never be fired. Tungsten is now craftable at the lit Furnace (Steel + Coal).",
+    "Diamond pick (@deadlock): the anvil recipe needed 4 Diamond, but the two quest rewards that give Diamond only ever add up to 3 -- one short, permanently, unless you got lucky with a rare chest drop. Reduced the recipe to 3 Diamond so finishing the Titanium and Steel-pick quests is always enough on its own.",
+    "Refined gold (@deadlock): removed the furnace recipe that turned 1 Gold + 1 Coal into 1 Gold -- it did nothing but burn your coal, since mined gold and 'refined' gold were always the same item.",
+  } },
+  { ver = "1.16.1", notes = {
+    "Multiplayer (@multiplayer): new 'Multiplayer' button on the title screen -- host your own game or join a friend's using a shared session code (nobody can join without it).",
+    "Multiplayer (@multiplayer): in-game chat now works across a multiplayer session -- press Enter to talk exactly like always, and your friend sees it and can reply.",
+    "Multiplayer (@multiplayer): a guest's inventory and progress now saves and reloads with the session instead of resetting every time they rejoin -- the host still owns the actual world.",
+    "Deep-zone crafting (@survival): titanium plates, uranium fuel pellets, and both the reactor and RTG power kits are craftable again. All four needed a material that nothing in the game ever actually gave you (a leftover token from before uranium ore existed under its current name); they now draw on the same uranium ore you already mine.",
+    "World (@world): fixed PhoenixFire808's own report of 'giant iron blocks in the middle of stuff' -- underground vaults and shrines were spawning much closer to the surface than they were designed to, so they read as a broken metal box dropped into normal dirt. They now stay buried at the depth they were built for.",
+    "World (@world): trees no longer read as buried in the ground or floating with exposed roots, and dirt no longer speckles with stray air pockets near tree bases -- both traced to the same root cause (ground height was tested from the wrong spot for wide trunks), now fixed at every column under a tree instead of just its anchor point.",
+    "World (@world): desert sand is solid ground again -- it now sits as a shallow loose layer over solid rock instead of a bottomless pit of falling sand, and caves can no longer open up directly underneath the sand cap. Verified in the world generator itself; go check out a fresh desert and let us know how it looks in person.",
+    "Camera zoom (@camera): Ctrl+Up / Ctrl+Down to zoom in on your character, up to 4x, actually works now -- it shipped a few versions back but the engine half wasn't linked in yet. It is now.",
+    "Sandbox mode (@ux): turning sandbox on no longer force-hides your normal TPT menus and toolbar -- that's its own independent setting now, so however you left it stays how it is.",
+    "New (@ui): press Y anywhere in normal play to submit something straight to the dev team -- drag-select a region of the world and send it in as a proposed machine, plant, cave, terrain, building or item design, or just press Enter with nothing selected to file a quick bug report or suggestion, no screenshot needed.",
+    "Quest log (@ui): the granite/stone-pick quest hints no longer hardcode a cost that can drift out of date -- they now always show the real live numbers, the same bug class that caused the granite deadlock in the first place, just in the hint text this time.",
+    "Internal cleanup (@world): removed a leftover developer debug-export tool from world generation. No effect on play.",
+  } },
+  { ver = "1.15.109", notes = {
+    "Granite/stone pick (@survival, straight off PhoenixFire808's report -- 'granite seemed uneasy to find so that's a huge problem'): GRNT was a phantom token. It was never placed by worldgen (genBase() only ever returns soil/COAL/IRON/CU/GOLD/QRTZ/DU-URAN/DMND/TTAN/ROCK -- no GRNT), never output by any recipe or machine, and its only two sources in the whole game were two one-time quest rewards (16 GRNT lifetime, total -- less than the Furnace kit's own need of 20). The stone pick and Furnace kit needed GRNT to craft, so both were permanently uncraftable for every player, blocking the entire tool tier and everything gated behind it (iron/steel/diamond picks, the anvil, research bench, advanced lab). Retargeted both recipes' need= from GRNT to the existing ROCK local (the real, always-solid fallback rock worldgen fills the underground with, resolved to BSLT in this build) and the two quest rewards that used to hand out dead GRNT now hand out ROCK instead, right before the quests that need it. Separately: ROCK/BSLT itself was missing from R.MINEABLE, so even the correct material was hard-blocked from being mined at all ('cannot be mined') -- a second, independent bug. Added a BSLT entry to R.MINEABLE/R.HARD at the same tier GRNT used to have, so the wood pick can mine it slowly (matching its own flavor text) and the stone pick mines it at full speed. Gave BSLT the display name 'Granite' (R.NAMES) so existing quest/UI text describing 'Granite' is now accurate without touching any other file. No bootstrap deadlock: the wood pick (power=1, craftable from WOOD alone) can mine tier-2 BSLT under the tier<=power+1 rule. rpg.lua R.PICKS/R.RECIPES/R.QUESTS/R.MINEABLE/R.HARD/R.NAMES.",
+  } },
+  { ver = "1.15.108", notes = {
+    "Oxygen (@survival): confirmed the 2026-08-31 breathing fix is live and working -- with real OXYG particles in your breath circle (or open unsealed air), oxygen refills all the way to 100, not partway. Verified live: forced a character down to 30-40 oxygen, watched it climb back to exactly 100 in real elapsed frames.",
+    "Ventfan (@survival): the ventfan machine never actually reduced gas. It pushed CO2/SMKE along its duct (vx=2.4) but, unlike the scrubber next to it, never killed the particle -- so it relocated gas forever and never removed any, despite its own item text promising it \"vents\" gas. It now kills the gas particle once it reaches the far end of the duct, so gas actually leaves instead of drifting in place. `rpg_plugins/machines.lua` updateVentfan.",
+  } },
+  { ver = "1.15.107", notes = {
+    "Buildings (@world): the cabin, watchtower, miners' camp, sealed vault, cistern, shrine, mineshaft junction, crystal chamber and reactor room have been re-authored at 3 to 5 times their old grid detail, and they are now buildings you go inside rather than silhouettes you walk past. The cabin has three ground-floor rooms off a central hall with a workbench hearth, a stairwell and an upper storey; the watchtower has a guard room at the bottom, a climbable shaft with staircase landings and a lookout at the top; the vault is an airlock -- outer door, antechamber, blast door, vault. Several of them previously had no way in at all: the cistern and the shrine were sealed rooms with no entrance, so the cistern's drowning hazard could never actually be met by a player who had no way to reach the water.",
+    "Buildings (@world): doors are real doors. A 'door' used to be literally a missing wall cell -- there was no door object anywhere in the game's worldgen. Structures now carry a door token and a control pad that the terrain itself stamps, and the first time the generator commits to a placement it creates a genuine door machine at that spot: spark its pad from a powered grid and the slab lifts clear, let the spark fade and it drops back and seals the opening. Every opening is checked offline to be at least 6px wide and 12px tall against the 4x10px player, and the interior behind it is flood-filled to prove you can actually get in and stand up.",
+    "Buildings (@world): several structures were impassable in the direction they existed for. The mineshaft junction's support posts were full-height columns spanning the gallery, the shrine's pillars and the cistern's standpipes walled their own rooms in half, and at 12px per cell each of those is a solid barrier to a 4px-wide player. Posts, pillars and pipes are now stubs and arches that you walk past.",
+    "Buildings (@world): a very dense structure no longer takes the full landmark scale on top of its extra detail. The re-authored cabin at the old scale would have been 600x440px on a 612x384 screen -- larger than the view it appears in. Extra authored detail now buys thinner walls and a readable floor plan at a roughly constant landmark footprint instead of a bigger box.",
+    "Buildings (@world): cabin windows no longer fall out of the walls. The window material resolves to coloured glass, which in this build is a POWDER -- so each window was a 15x15px block of loose glass that would slump out of the wall on the first tick and leave a hole straight into the house. They are ordinary solid glass now, and the generator refuses to write any building whose shell depends on a material that falls.",
+    "Guide (@world): a new Structures category lists every structure the library actually loaded this session, with its real world-pixel size stated against your own 4x10px size, its biomes and depth band, how big each of its doorways is, whether that door has a control pad, and a running count of the worldgen door machines instantiated as you explore.",
+  } },
+  { ver = "1.15.106", notes = {
+    "Crafting (@machines2): all 25 second-tier machine kits are craftable again -- the electrolysis cell, acid synthesizer, evaporator, fertiliser mixer, gunpowder mill, check valve, pressure vessel, reservoir, condenser, sump, sorter, splitter, vacuum, silo, quarry, gravity manipulator, portal, magnetic accelerator, cryo chamber, weather machine, lighting rail, camera, signpost, proximity gate and decorative panel. Every one of them had a complete recipe and a working builder, but crafting refuses any recipe whose output is neither a defined item nor a real element, and that file defined items only for its two loose reagents. So all 25 appeared normally in the crafting menu, took the click, and silently refused -- no error, nothing in the log, which is why it went unnoticed. Item definitions are now derived from the recipes themselves, so a kit added later cannot drift out of sync again.",
+    "Machines (@core): building a new world no longer carries the old world's machines into it. Every other system cleared its own registry on Create World; the main machine list was the one that did not, so machines from the previous world survived at coordinates that no longer meant anything and were run by every update until the reaper eventually collected them. An open machine panel belonging to a machine that no longer exists is closed at the same time.",
+    "Structures (@world): props no longer spawn inside buildings. Each structure category kept its own independent placement cache with no knowledge of the others, so a small detail prop laid down every 120px would routinely land inside a 300px cabin and draw straight through its wall. Categories now check each other's footprints before placing. Structures already could not overlap within a category, and could not grow trees through walls; this closes the last case.",
+    "Structures (@world): groundwork for buildings whose doors and fittings are real objects rather than decoration. Worldgen can now turn an authored cell into a genuine machine record once per building, with the identity tracking needed to survive saving, reloading and demolition -- a door you break stays broken instead of returning the next time the world regenerates around it.",
+  } },
+  { ver = "1.15.105", notes = {
+    "Structures (@world): houses and landmarks are far bigger, and buildings you can actually enter. The structure library was harvested from community stamps and one authored grid cell mapped to one world pixel, so measured against the real player box (4px wide, 10px tall) the small cabin was 15x17px -- the entire house was 1.7 player-heights. It was not merely small, it was unenterable: the interior is four grid rows, so a 10px character did not fit inside the building at all, and its only wall gap was 2px against a 4px-wide player. A grid cell now covers many world pixels, which takes the cabin to roughly 300x340px -- a third of the screen wide, with an 80px interior and a walkable doorway. The proportions were always right; only the size was wrong.",
+    "Structures (@world): scale is driven by how much detail a structure was authored with, rather than one flat multiplier. A dense grid like the cabin (255 cells) takes the full landmark scale and keeps its roof, chimney and windows readable; a sparse one does not, because every cell becomes a solid block -- verified by rendering, a 3x8 signpost at full scale was a featureless 60x160 slab. Props stay props, landmarks become landmarks, and the authored size relationships between them are preserved.",
+    "Structures (@world): buildings no longer grow trees through their walls. Vegetation and structures were independent generation passes with no arbitration between them, so a canopy could occupy the same space as a roof. Structures now win: the ground inside a building's footprint, plus a margin wide enough for the surrounding canopies, is cleared -- which is what building on a site means. Structures also can no longer overlap each other; each one is now confined to its own placement cell, which is the minimum-spacing rule the library always specified and never had.",
+    "Structures (@world): fixed a placement bug that would have put buildings across cliffs. The ground-flatness test compared a width measured in grid cells against a distance measured in world pixels -- harmless while those were the same number, but after scaling it was checking 15px away for a 300px-wide building. It now measures the real footprint, samples across it rather than at one corner, and uses a fixed ground-movement budget instead of one proportional to width, which on a large building had grown permissive enough to allow a 105px drop.",
+  } },
+  { ver = "1.15.104", notes = {
+    "Vehicles (@vehicles): press E to board or get off a vehicle, and stand near one to see a pulsing outline plus a prompt naming every control -- the bike gave no clue how to ride it before. E only takes over when a vehicle is actually in range and no panel is open, so it still opens your bag everywhere else. V is now purely brush-shape again: boarding no longer competes for it.",
+    "Vehicles: ground vehicles no longer look jittery. Terrain height is whole-pixel and 68% of neighbouring surface columns differ, so at full speed the collision box genuinely steps every frame -- real physics, ugly to watch. The body now eases while the wheels stay planted on the true ground line with a visible strut between them, which reads as suspension instead of the whole machine snapping up and down. Collision itself is unchanged.",
+    "Vehicles: sandbox mode unlocks vehicles instead of dumping seven kits into your bag. Take what you want from the guide's Vehicles category instead.",
+    "Vehicles: hovering a vehicle can now report what it is and how it is doing (fuel, cargo, damage, whether it is on rails), and every vehicle recipe is tagged so the guide lists them automatically.",
+  } },
+  { ver = "1.15.103", notes = {
+    "Camera (@camera): Ctrl+Up / Ctrl+Down zoom the camera in and out on your character, up to 4x. This is a real world zoom -- the whole simulation is scaled -- not the old magnifier box that was removed for being confusing and getting stuck. The HUD, panels and text stay sharp at normal size because they are drawn after the world image, and Ctrl+Down always walks it back to normal so it can never trap you. Plain arrow keys still nudge the camera exactly as before. NOTE: the engine half of this is compiled but not yet linked -- the running game holds powder.exe open -- so the keys report that a rebuild is pending until the game is next restarted.",
+  } },
+  { ver = "1.15.102", notes = {
+    "Bag (@ux): fixed a live crash that blanked part of the inventory panel -- \"attempt to index local s\". The bag grid is a fixed 60 cells and hands back any slot 1-60, but the slot table was only ever grown as items appeared, and the one-time pre-fill at load does not survive a new world (core resets it on regen). With 3 items carried, the draw asked for slots 4-60 and indexed nil. The table is now padded to full size every draw, so the fixed-size invariant the grid already assumed is actually guaranteed for every consumer -- draw, hover, click-to-drop, sort and trash -- rather than guarded one read site at a time.",
+    "Sandbox (@ux): entering sandbox no longer stuffs 999 of every material into your bag. Sandbox now means unrestricted, not pre-filled: no damage, free crafting, every station and accessory unlocked and the best tools, but an empty bag you fill deliberately -- take what you actually want from the guide (L). Crafting is unaffected by the empty bag because the cost/station checks already bypass on the sandbox flag itself rather than on holding materials. Also removed a background task that quietly refilled every stack back to 999 every 30 frames, which made a tidy sandbox bag impossible.",
+    "Sandbox (@ux): turning sandbox OFF now clears the sandbox-stocked stacks instead of dumping 999 of everything into a survival run."
+  } },
+  { ver = "1.15.101", notes = {
+    "World gen (@world): FIXED trees spawning buried in the ground on any world after the first. The world generator keeps eleven per-column caches (trees, biome blending, caves, lakes, structures and more) and had no new-world handler at all, while the core only ever cleared its own two. So every Create World filled the terrain from NEW surface heights while the tree cache still held each tree's ground level from the PREVIOUS seed -- leaving trunks pinned to a surface that no longer existed, buried in the new ground with their canopies cut off. Every one of those caches is now cleared on world generation. This was a latent bug rather than a new one; the rolling-hills terrain only made it visible, by moving the surface far enough between seeds that a stale tree base is off by tens of pixels instead of a few.",
+    "World gen (@world): dirt no longer reads as warped and full of holes. The new horizontal galleries had no minimum depth, so gallery level one was carving large voids straight through the topsoil -- measured 29.2% air in forest soil just below the surface, i.e. ground that was nearly a third holes. Galleries now start below the soil layer, the same rule the cavern system already followed. Same measurement after: 19.1% air, and dirt 64% to 71% solid. Worth noting for the record that this was never the pixel-scale noise it looked like -- isolated single air pixels measured 0.08%, so it was always big voids in the wrong layer.",
+  } },
+  { ver = "1.15.100", notes = {
+    "Breathing (@systems): if there is real oxygen within your character's breath radius, your air now refills all the way to full instead of only partway. Breathing is not a dosage curve -- either there is air to breathe or there isn't. A single stray particle drifting past still doesn't count as an atmosphere, and having no oxygen and no machine is still just as lethal as before."
+  } },
+  { ver = "1.15.99", notes = {
+    "Desert (@world): FIXED an entire biome dissolving on spawn -- \"all of the sand fell through the earth\". The desert was the only biome whose whole soil column was made of SAND, which is a falling powder with no structural integrity (verified live: Falldown=1, not TYPE_SOLID), and after the topsoil deepening that column was 108-172px -- eleven to seventeen player-heights of loose powder. Every other biome already used a static solid (forest and swamp use dirt, snow uses ice, both Falldown=0). The caves did not cause this: the desert was always unsupported and simply had nowhere to fall until the new galleries and aquifer voids opened real space beneath it. Real deserts are a shallow skin of loose sand over sandstone, so that is what it is now -- a 10-20px sand cap, still genuinely loose so dunes and pouring behave correctly, over solid rock that holds the biome up. Measured over 21 interior desert columns: the soil column went from effectively all falling powder to 7.4% sand over 64.8% solid.",
+    "Desert (@world): added scripts/check_biome_soil_solid.py, which reads every material's real Falldown and TYPE_SOLID from the running game and fails if any biome has a contiguous falling-powder column tall enough to collapse into a cave. This is the same failure class as the earlier stone-subsoil regression, so it now has a mechanical check instead of relying on anyone remembering. Whole-world audit passes: desert 19px max contiguous fall, swamp 8px, forest 5px, snow 1px.",
+  } },
+  { ver = "1.15.98", notes = {
+    "Guide / database (L key): the Machines section was one flat list hiding roughly ninety craftables, because the guide identified weapons and machines from two hand-copied lists naming 12 weapons and 8 machines -- written back when those were the real totals. There are now 121 craftable items and 174 recipes, so almost everything built since fell through into Machines as an undifferentiated dump, and genuinely new things (vehicles, terrain weapons, wearable armour) had nowhere of their own to appear at all.",
+    "Both lists are deleted. Every craftable is now sorted from live game data, rebuilt whenever the recipe count changes, so anything any plugin adds from here on files itself correctly with no list left to maintain: crafting stations come from the station table, terrain weapons and weapons from the tag each plugin already stamps on its own recipes, wearable armour from the 'Worn passively' line every passive item's own description opens with, and machines from the station that builds them.",
+    "Machines are split into one section per build station (Workbench, Furnace, Anvil, Research, Advanced Lab), so the category column doubles as a progression ladder -- everything buildable at the bench you already have sits above the ones you cannot reach yet. A tier holding nothing of its own is hidden rather than shown empty.",
+    "New sections: Vehicles, Terrain Weapons, and Wearables & Armor.",
+    "Machine and item pages go deeper: what it costs and where it is built, how many it yields per craft, whether you actually have that station placed yet, how many of that machine are standing in the world right now, and every recipe that consumes the item. Wearables state plainly that carrying one is enough and there is no slot to equip.",
+  } },
+  { ver = "1.15.97", notes = {
+    "Gases in water (@systems): oxygen and other gases could not enter a water pixel at all -- the engine blocks any particle from moving into something heavier than itself, and oxygen weighs 1 against water's 30, so gas simply bounced off every liquid surface. Bubbles now rise through water properly by displacing it. Gas through leaves is a separate, harder problem and is deliberately NOT changed yet -- see the notes; doing it wrong either corrupts the world or makes tree canopies drift apart."
+  } },
+  { ver = "1.15.96", notes = {
+    "Vehicles (@vehicles): mine lifts, locomotives and drill trains no longer lose grid power the moment you look away. Power was detected by scanning for real SPRK particles on screen, and that check returns false for anything off-screen -- so scrolling away from a powered mine lift made it read as unpowered and free-fall down its own shaft, and stalled a locomotive mid-route, purely because the camera moved. The last on-screen reading is now cached and reused while off-screen.",
+    "Vehicles: new Prospector (anvil) -- a free-roaming miner that drives anywhere the ground allows and bores a narrow shaft ahead of it, crediting every block. Built as the Bulldozer's configuration with a narrower, deeper blade rather than a second mining system.",
+    "Vehicles: fixed a latent bug where any newly added tech-gated recipe would never appear. The unlock flag persists across a plugin reload, so once tech had ever unlocked the install condition was false forever afterwards and later additions were stranded -- the Prospector was invisible in crafting until this was found.",
+    "Vehicles: the rail fleet was drawn smaller than the player riding it -- handcar 8px, minecart 9px, mine lift 9px, cargo wagon 10px, against a 12px character. Scaled up to 12-13px so you can actually see yourself aboard.",
+  } },
+  { ver = "1.15.95", notes = {
+    "Terrain (@world): a new world now OPENS on visible terrain instead of a flat plain. The mountains added earlier were never broken -- measured on the live seed, relief is 133px across spawn +/-1500 and 451px across +/-8000 -- but the nearest real peak sat about 2.5 screen-widths from spawn, so you started on flat ground, looked around, and saw exactly what you had before. Two fixes: a rolling-hills octave at period 380 that is always on (the existing octaves were 160/60/22 for fine detail and 1100 for rare mountains, leaving the 300-500 band where relief you can actually see across one screen lives completely empty), and a guaranteed hill in view of spawn -- the same reasoning as the existing rule that force-spawns trees near the origin so a new world always has trees in sight. On-screen relief at spawn went from about 30px to 104px, and the nearest peak from 1520px away to 128px away.",
+    "Trees (@world): trunks and canopies rescaled against the real player box (4px wide, 10px tall). Oak trunks were 4-7px -- barely wider than the player, and about 1:12 against their own height -- with a canopy only about half the tree's height, which is what made them read as bare poles with a green blob on top. Oak trunks are now 7-12px (about 1.75-3 player-widths) and the canopy is roughly as wide as the tree is tall, the proportion a real broadleaf has. Pines and palms rescaled to match.",
+  } },
+  { ver = "1.15.94", notes = {
+    "Crafting (@ux): categories are drop-downs now. All 13 start collapsed, so the panel opens as a short scannable list instead of 121 recipes at once, and each header reads how many of its recipes you can afford right now (\"TOOLS 1 of 7 craftable now\"). Click a header to open it.",
+    "Crafting (@ux): anything you cannot make yet has a [?] button that expands its PREREQUISITE CHAIN in place -- what that thing needs, what those need, three levels deep, each node showing have/need and whether it is craftable now, blocked on a station, or a raw material to go gather. Derived from the recipe data itself so it cannot drift. Answers \"how do I actually get to oxygen generation\" without reading recipes one at a time.",
+    "HUD (@ux): the SANDBOX / TPT / GUIDE quick buttons are finally VISIBLE. R.drawQuickBar was fully written -- layout, hover, and a wired click handler -- but nothing ever called the draw half, AND it called the file-local `floor` from line 159 while that local is not declared until line 929, so it resolved as a nil global and threw on its first label every frame. Sandbox is now a one-click toggle on the main HUD, lit orange while active, no menu needed.",
+    "HUD (@ux): oxygen particles your character breathes now flash a gold pulse where they are absorbed -- an expanding ring fading over ~16 frames, with a dark backing ring so it stays legible against both the bright surface and the dark underground. Reads @systems' R.breathFX feed. Makes a mechanic that was previously invisible actually observable."
+  } },
+  { ver = "1.15.93", notes = {
+    "Vehicles (@vehicles): free-roaming vehicles are actually worth riding now. They were travelling 0.62px/tick against a 1.3px/tick walk -- slower than your own legs -- because a vehicle was supported only at its centre point, so it dropped into narrow dips barely wider than a pixel and then could not climb back out (a 6px climb limit against an unbounded fall) and sat there permanently. A vehicle now rides on the highest ground under ANY part of its body, so a 30px hauler bridges a 3px crack instead of falling into it. Measured on real terrain: 0.62 -> 2.81px/tick and 85 stalls -> 0, sustained over 300 ticks. The bike now moves at roughly twice walking speed.",
+    "Vehicles: the giveaway that this was geometry and not tuning -- distance travelled came out byte-identical across every acceleration, friction, top-speed and stall-penalty variant tested, including one with no stall penalty at all and a 5.0 speed cap.",
+  } },
+  { ver = "1.15.92", notes = {
+    "Terrain weapons (@terraweapons): a new weapon family that reshapes the world with real physics instead of scripted effects, craftable across the workbench/furnace/anvil tiers. TUNNEL BORER carves a corridor tall enough to actually walk through (14px) rather than a hole you cannot fit in. DEPOSITION GUN sprays real rock that then slumps and stacks under real gravity, so you can fill pits and raise ground at range -- terrain-altering that ADDS instead of removing. MAGMA LANCE superheats terrain past its OWN real melting point until it genuinely flows, so granite melts at granite's temperature and ice at ice's -- the weapon never decides what melts, physics does. CRYO FORMER chills real water below freezing so it sets into real ice you can stand and build on. SUPPORT CUTTER destroys nothing directly: it cuts the load path out from under a rock mass and lets the existing structural-collapse model bring it down for real.",
+  } },
+  { ver = "1.15.91", notes = {
+    "Oxygen tank (@items): the tank you craft is now a real shape on your back, drawn on the player sprite with a live fill level -- the cylinder fills bottom-up in cyan as it charges, with a valve cap and a hose to your mask, so you can read your air reserve without opening anything. It tracks the walk cycle so it stays glued to the sprite, and it shows whenever you own the tank rather than only when it is the selected slot.",
+    "Oxygen tank (@items): it now fills from REAL oxygen. Topping up consumes an actual OXYG particle out of the air beside you (it already vented real OXYG at your head when running low). There is deliberately no free fallback -- with no real oxygen nearby it does not fill, so refuelling means standing somewhere genuinely breathable. Honest limitation: TPT cannot attach loose particles to a moving entity, so the tank does not literally carry OXYG particles around; consuming real air to fill it and releasing real air to breathe is the physically honest version this engine supports.",
+    "Ammo as a modifier (@items): kinetic guns (Musket, Shotgun, Steam Nail Gun, Rail Gun) now fire whatever round you carry, and the round IS a real element, so TPT physics does the rest -- Thermite burns what it hits, Nitro really detonates, Lead is denser and hits harder but flies slower, plain Metal stays the baseline. The HUD names the loaded round. Exotic rounds are preferred over plain metal, so what you carry is how you load a gun.",
+  } },
+  { ver = "1.15.90", notes = {
+    "Breathing (@systems): the game now records each real oxygen particle your character actually inhales, so the UI can glow them as they are drawn in. Data side only -- the visible effect lands with the renderer."
+  } },
+  { ver = "1.15.89", notes = {
+    "Oxygen machines (@systems): an oxygen generator, air pump or life support unit inside a SEALED room contributed nothing to your air. Its output was measured and then thrown away -- it was only ever added to the open-air formula, and every sealed-room limiter ignored it too, so a powered generator in a deep sealed base still left you suffocating at ~6%. That is the one place the machine is the whole point. A supplied sealed room now approaches full air, scaled by how much you have running.",
+    "Breathing (@systems): re-applied the fix for suffocating while standing in visible oxygen bubbles -- it was silently reverted by a concurrent edit while the version and changelog still claimed it. The rule that real oxygen beats estimated air was gated on a ratio dividing your nearby bubbles by all ~1737 sampled cells, secretly demanding ~47 bubbles in one small circle; now gated on the real count."
+  } },
+  { ver = "1.15.88", notes = {
+    "Breathing (@systems): fixed a real death bug -- you could suffocate while standing in visible oxygen bubbles that the game was genuinely counting. The rule that says \"real oxygen particles beat the estimated air quality\" was gated on a ratio that divided your nearby particle count by every one of the ~1810 sampled cells in the breath radius, so it secretly required ~43 bubbles packed into one 48px circle -- against a screen-wide oxygen cap of 220. A normal handful of bubbles never tripped it, the deep-underground suffocation estimate then pushed your air down to ~9, and damage starts at 12. Now gated on the actual particle count: 4 bubbles is a survivable pocket, ~28 reads as full air."
+  } },
+  { ver = "1.15.87", notes = {
+    "Vehicles (@vehicles): the first vehicles that don't need rails. Every vehicle until now rode a single shared function that hard-failed without track, which is why there were no bikes -- there is now a real free-roaming ground physics primitive that follows actual terrain, climbs slopes up to each vehicle's grade limit, stalls out on ground too steep for it, falls under real gravity and hurts both machine and rider on a bad landing.",
+    "Vehicles: Dirt bike (workbench, no fuel -- light, quick, climbs 4px steps, an early traversal unlock), Bulldozer (anvil -- a real earthmover whose blade genuinely carves terrain using the same pick-tier and hardness rules as the drill train and credits every block, so you can cut roads and open a hillside without laying track) and Hauler (anvil -- free-roaming heavy transport with a big cargo bed that loads by left-clicking it, dumps into a Storage Crate like the wagon does, and genuinely slows down the heavier it gets).",
+    "Vehicles: sized against the player for the first time. The player is ~12px and the existing minecart was only ~9px tall -- smaller than its own rider. The bike, dozer and hauler are 11, 16 and 18px tall respectively so you can actually see yourself on them.",
+  } },
+  { ver = "1.15.86", notes = {
+    "Weapons (@items): seven new weapons, each built on a real element doing its real job -- Thermite Lance (real THRM at 2500K, cuts metal a flamethrower cannot), Tungsten Sniper (real dense TUNG slug at hyper-velocity, punches through several blocks), Tesla Arc (real LIGH that chains between up to 4 nearby enemies instead of stopping at the first), Gravity Well Grenade (a real anchored well that drags loose matter and enemies inward by setting real velocities, then collapses), EMP Charge (real EMP burst that kills live sparks and powered machinery in radius without touching terrain), Aerogel Foam Gun (sprays real AERO to bridge gaps and plug leaks), and Disintegrator (void beam that deletes the first solid it meets cleanly, no crater or debris, and banks it if mineable).",
+    "Armor (@items): the game had no armor system at all. Five pieces across three sets, built as passive gear -- ownership is the equip, so no new slots or UI. Each counters a REAL survival accumulator core already damages you from rather than adding a defense number: Lead-Lined Vest bleeds accumulated radiation dose (real attenuation), Zirconium Faceplate sheds the geothermal heat load that cooks you at depth, Sealed Pressure Suit keeps a breathable pocket in gas AND underwater (the gap the Gas Mask and Diving Helmet each leave), Padded Harness absorbs landing impact, Miner's Lamp Helm sheds real GLOW so you can see while mining. Set bonuses stack: Deep Caver slows UV burn, Reactor Engineer roughly doubles dose and heat shedding, Void Diver actively clears CO and CO2.",
+  } },
+  { ver = "1.15.85", notes = {
+    "Hover (@ux): hovering now tells you what a THING is, not just what particle it is made of. A tree reads \"Tree trunk - chop with the axe (slot 2) for Wood - cut the trunk through and the whole tree comes down\" instead of \"Wood, 71F\". Also recognises the companion (HP, press Enter to talk), enemies (HP, attack with the sword), machines (right-click for inputs/outputs), and ore, which now tells you whether your pick is strong enough and what tier you need. Falls through to the existing temperature/pressure readout for plain terrain. Purely passive text -- it never captures a click or needs dismissing.",
+    "Crafting (@ux): fixed a real error raised on every click in the recipes tab -- \"this functionality is restricted to graphics events\". The material-chip layout helper was drawing a hint inside itself, but the click handler calls that same helper purely to work out row positions, and drawing outside a draw event is illegal. Layout is pure now; the hint is drawn by the draw path."
+  } },
+  { ver = "1.15.84", notes = {
+    "Crafting (@ux): recipes are grouped by what they are FOR -- Tools, Weapons, Survival Gear, Food & Farming, Stations, Materials, Power, Life Support, Fluids & Processing, Logistics & Storage, Building & Utility, Exotic -- instead of by which crafting station makes them. Station answered \"where do I make this\", an implementation detail, rather than \"what am I trying to make\"; it is still shown on every gated row (\"needs Anvil\") but is no longer the organising axis. Each category header reads how many of its recipes you can afford right now (\"TOOLS 1 of 7 craftable now\"), and a \"show: craftable now\" toggle hides everything you cannot make yet.",
+    "Bag (@ux): empty inventory cells now highlight on hover. Only occupied cells ever lit up before, so while carrying a stack looking for somewhere to put it, the empty slots you were actually aiming at gave no feedback -- the panel advertised \"drag to move\" with an invisible target."
+  } },
+  { ver = "1.15.83", notes = {
+    "Caves (@world): tunnels now run HORIZONTALLY. Measured the complaint first -- in the dirt layer, where the old worm tunnels are the only cave form, mean horizontal open-run was 9.9px against 40.1px vertical (H:V 0.246), i.e. every tunnel really was a descending shaft. Whole-world averages hid this completely (0.98 by adjacency, 1.17 by run length) because the large cheese caverns dominate them. The cause was structural, not tuning: a worm's centreline is a function of DEPTH, so it must descend while only wandering sideways -- no amount of extra wiggle changes its orientation. Added a second cave family parameterised by X instead, so a passage's depth varies as you travel horizontally: long horizontal galleries at spaced levels, with the old depth-parameterised worms left as the vertical connectors between them. Galleries carry real stalactites and stalagmites (rock spikes reaching in from ceiling and floor) and open into occasional large chambers.",
+    "Caves (@world): passages are now big enough to actually walk through. Against the ~12px player, the old worm bore was 6-10px and could pinch to 3px -- physically too small for the character to enter, which is a large part of why caves read as tubes bored through dirt rather than somewhere you can stand. Worm bore is now 14-20px (about 1.2-1.7 player-heights) with a hard floor of 14px, and galleries are 18-28px (1.5-2.3 player-heights).",
+    "Aquifers (@world): a real water table, distinct from the existing tree moisture. Saturated strata bands sit confined inside the rock and do nothing until something opens them -- dig into one and it floods. Springs need no special code: because caves are carved before rock is filled, a cave cutting a saturated band stays open while the band's rock becomes water, which then flows into the cave on its own. Galleries crossing a saturated band are generated already flooded, so you can follow a passage and find real standing water while exploring. Saturated layers ride the same per-column wobble the rock strata use, so they line up with the visible banding instead of cutting across it, and ore veins still win over water so the tech tree is never starved.",
+  } },
   { ver = "1.15.82", notes = {
     "Trees/air (@systems): found why sawdust keeps appearing on trees, and it was never our code -- the engine itself turns WOOD into SAWD wherever a particle hits it faster than speed 5. The gas-venting fix that was supposed to route trapped oxygen around trunks pushed it at a speed proportional to how far the trunk's hollow column was, with no cap, so venting a pocket ~13px away launched oxygen at ~6.4 and it sandblasted the very trees it was routing around. Released gas is now clamped to a firm 3.2 -- a vent, not a jet. Oxygen should also spread between trees more instead of ricocheting off them."
   } },
@@ -638,29 +916,57 @@ do local px, pw = 80, W - 160
   R.changesBtnRect = { x = px + pw - 74, y = 42, w = 66, h = 13 }
   R.updateBtnRect  = { x = px + pw - 74, y = 42, w = 66, h = 13 }
 end
+-- R.VERSION is overwritten to a fixed literal by rpg_plugins/netlink.lua at plugin load
+-- (deliberate cross-plugin version coordination, documented there and in decisionLog.md --
+-- NOT a bug, do not "fix" it). That means this changelog's own "has he seen the latest
+-- notes" check must never key off R.VERSION: since netlink pins it to one literal string on
+-- every load, seen==R.VERSION would either match forever (popup never fires again for any
+-- future entry, silently) or never match, depending on load order -- not something new work
+-- here should depend on. Key off the newest entry that actually carries a ver field instead:
+-- the first { ver=, notes= } table found in R.CHANGELOG, skipping any plain-string entries a
+-- plugin may have inserted directly (netlink.lua does this on load via table.insert). Kept as
+-- an R.* function, not a top-level local, per the shared locals-budget rule.
+function R._changelogHeadVer()
+  for _, entry in ipairs(R.CHANGELOG) do
+    if type(entry) == "table" and entry.ver then return entry.ver end
+  end
+  return R.VERSION
+end
+-- A CHANGELOG entry is normally { ver=, notes={...} }, but a plugin may instead insert a
+-- plain already-formatted string (netlink.lua does). The old code here assumed every entry
+-- was a table and did entry.notes unconditionally -- the moment a string entry existed
+-- in the list, ipairs(entry.notes) on a nil field threw, aborting the whole function. Both
+-- call sites wrap this in pcall, so that failure was silent: no crash shown, popup simply
+-- never appeared, for every entry newer than the string, forever. Handle both shapes.
+function R._appendChangelogLines(lines, entry)
+  if type(entry) == "table" then
+    lines[#lines + 1] = "v" .. tostring(entry.ver) .. ":"
+    for _, n in ipairs(entry.notes or {}) do lines[#lines + 1] = "- " .. n end
+  else
+    lines[#lines + 1] = tostring(entry)
+  end
+  lines[#lines + 1] = ""
+end
 function R.checkLocalChangelog()
   local seen = ""
   local f = io.open("changelog-seen.txt", "r")
   if f then seen = (f:read("*a") or ""):gsub("%s+$", ""); f:close() end
-  if seen == R.VERSION then return end
+  local head = R._changelogHeadVer()
+  if seen == head then return end
   local pending = {}
   for _, entry in ipairs(R.CHANGELOG) do
-    if entry.ver == seen then break end
+    if type(entry) == "table" and entry.ver == seen then break end
     pending[#pending + 1] = entry
   end
   if #pending == 0 then return end
   local lines = {}
-  for _, entry in ipairs(pending) do
-    lines[#lines + 1] = "v" .. entry.ver .. ":"
-    for _, n in ipairs(entry.notes) do lines[#lines + 1] = "- " .. n end
-    lines[#lines + 1] = ""
-  end
+  for _, entry in ipairs(pending) do R._appendChangelogLines(lines, entry) end
   R.localChanges = { notes = table.concat(lines, "\n"), count = #pending }
   R.changesPromptOpen = true
 end
 function R.dismissLocalChangelog()
   R.changesPromptOpen = false
-  local f = io.open("changelog-seen.txt", "w"); if f then f:write(R.VERSION); f:close() end
+  local f = io.open("changelog-seen.txt", "w"); if f then f:write(R._changelogHeadVer()); f:close() end
 end
 -- Reopens the FULL history any time, not just the "new since last seen"
 -- subset the boot check shows -- the ask was "I want to see our changes...
@@ -668,11 +974,7 @@ end
 -- cover once it's been dismissed. Esc menu > "View full changelog".
 function R.openFullChangelog()
   local lines = {}
-  for _, entry in ipairs(R.CHANGELOG) do
-    lines[#lines + 1] = "v" .. entry.ver .. ":"
-    for _, n in ipairs(entry.notes) do lines[#lines + 1] = "- " .. n end
-    lines[#lines + 1] = ""
-  end
+  for _, entry in ipairs(R.CHANGELOG) do R._appendChangelogLines(lines, entry) end
   R.localChanges = { notes = table.concat(lines, "\n"), count = #R.CHANGELOG }
   R.changesScroll = 0
   R.changesPromptOpen = true
@@ -924,23 +1226,50 @@ local surfCache = {}
 local function surfaceAt(wx)
   local s = surfCache[wx]; if s then return s end
   local v = 0.55 * smooth1(wx, 160, 1) + 0.30 * smooth1(wx, 60, 2) + 0.15 * smooth1(wx, 22, 3)
-  s = floor(120 + v * 100 - mountainAt(wx) * 900); surfCache[wx] = s; return s
+  -- (1) Rolling hills, period 380, always on. The other octaves are 160/60/22 (small detail)
+  -- and mountains are 1100 (rare) -- nothing occupied the 300-500 band where relief you can
+  -- actually SEE across one ~612px screen lives, so plains read as dead flat. Measured on live
+  -- seed 7: across the ~600px visible at spawn the surface varied only ~30px. 70px at period
+  -- 380 gives ~1.6 cycles per screen. Max slope ~0.7px/px, gentler than the 2px/px the
+  -- mountains already allow, so nothing becomes unwalkable. Salt 72 is fresh.
+  --
+  -- (2) A guaranteed hill in view of spawn. Mountains were never broken -- measured relief is
+  -- 133px across spawn +/-1500 and 451px across +/-8000 -- but the nearest real peak sat at
+  -- x=1520, about 2.5 screen-widths away, so a new world still OPENED on a flat plain and read
+  -- as "the terrain didn't change." Same reasoning as the existing forceTree band that
+  -- guarantees trees at spawn: what a new world opens on is what it gets judged by. Centred at
+  -- x=420 (~240px from the x=182 spawn, comfortably in frame), 90px tall, ~600px wide, with a
+  -- squared falloff so it blends into the surrounding terrain instead of ending in a cliff.
+  local sd = (wx - 420) / 300
+  local bump = 0
+  if sd > -1 and sd < 1 then local q = 1 - sd*sd; bump = 90 * q * q end
+  s = floor(120 + v * 100 - mountainAt(wx) * 900 - smooth1(wx, 380, 72) * 70 - bump)
+  surfCache[wx] = s; return s
 end
 -- biome width 900 inlined at its single use (200-locals budget, see CLAUDE.md)
-local MAP_TYPES = { "mixed", "forest", "desert", "snow", "swamp" }
-local MAP_TYPE_OK = { mixed = 1, forest = 1, desert = 1, snow = 1, swamp = 1 }
+local MAP_TYPES = { "mixed", "forest", "desert", "snow", "swamp", "flat" }
+local MAP_TYPE_OK = { mixed = 1, forest = 1, desert = 1, snow = 1, swamp = 1, flat = 1 }
 local MAP_TYPE_LABEL = {
   mixed = "Mixed (all biomes)",
   forest = "Forest",
   desert = "Desert",
   snow = "Snow",
   swamp = "Swamp",
+  -- Flat: no hills, no caves, no biome noise, no structures. Ground is solid ROCK
+  -- from FLAT_SURFACE_Y down. world.lua's flatWorldGen() has existed since 2026-08-31
+  -- but had no way to switch it on; this exposes it as a map type so it appears in the
+  -- existing Create World panel with no new UI. Asked for directly: "just spawns our guy
+  -- in on a flat map, no terrain or anything, just our guy."
+  flat = "Flat (no terrain)",
 }
 R.mapType = (type(R.mapType) == "string" and MAP_TYPE_OK[R.mapType]) and R.mapType or "mixed"
 R.createSandbox = R.createSandbox == true
 local function forcedBiome()
   local t = R.mapType
-  if type(t) == "string" and t ~= "mixed" and MAP_TYPE_OK[t] then return t end
+  -- "flat" is a map type, NOT a biome -- flatWorldGen bypasses the biome pipeline
+  -- entirely, so returning it here would hand a bogus biome name to every
+  -- biome-keyed lookup downstream.
+  if type(t) == "string" and t ~= "mixed" and t ~= "flat" and MAP_TYPE_OK[t] then return t end
   return nil
 end
 function R.cycleMapType()
@@ -1172,6 +1501,30 @@ R._testShiftCam = shiftCam; R._testFlushFill = flushFill   -- dev-only verificat
 -- just recentred around this offset instead of dead centre.
 R.camYOffset = R.camYOffset or 0
 R.camXOffset = R.camXOffset or 0
+
+-- Camera zoom (Ctrl+Up / Ctrl+Down). Scales the whole rendered world via the
+-- engine's ren.cameraZoom; the HUD is drawn after the sim image lands in the
+-- screen buffer, so it stays crisp at 1:1 while the world magnifies.
+--
+-- Guarded on the binding existing: ren.cameraZoom ships in a C++ change that is
+-- compiled but not yet linked (the running game holds powder.exe). Until that
+-- rebuild happens this is a no-op that says so, rather than throwing -- calling a
+-- nil field from a key handler is exactly the nil-crash class that has bitten
+-- this project seven times.
+R.camZoom = R.camZoom or 1
+function R.setCamZoom(delta)
+  if not (ren and ren.cameraZoom) then
+    R.hint = "Camera zoom needs the pending engine rebuild"
+    return false
+  end
+  local z = math.max(1, math.min(4, (R.camZoom or 1) + delta))
+  R.camZoom = z
+  local ok = pcall(ren.cameraZoom, z)
+  if not ok then R.hint = "Camera zoom unavailable"; return false end
+  R.hint = (z <= 1) and "Zoom: off" or string.format("Zoom: %.1fx  (Ctrl+Down to zoom out)", z)
+  return true
+end
+
 local CAM_OFFSET_MAX = 150
 local function updateCamera()
   if R.frame % 2 == 1 then return end
@@ -1181,7 +1534,17 @@ local function updateCamera()
   local dy = (math.abs(ey) > 28) and math.max(-4, math.min(4, floor(ey * 0.25 + (ey > 0 and 0.5 or -0.5)))) or 0
   if math.abs(ex) > 20 and dx == 0 then dx = ex > 0 and 1 or -1 end
   if math.abs(ey) > 28 and dy == 0 then dy = ey > 0 and 1 or -1 end
-  if R.cam.y + dy < -300 then dy = -300 - R.cam.y end
+  -- SKY CEILING, raised 2026-09-01 from -300 to -900.
+  -- PhoenixFire808: "I was walking along and it wouldn't let my guy go up any higher,
+  -- I was trying to go over this mountain -- that's a huge problem."
+  -- It was never terrain stopping him: worldgen produces real climbable ground up to
+  -- about y = -755 (verified by replicating the live noise formula), and gen(wx,wy) is a
+  -- pure function of world coords so the world is already effectively unbounded -- only a
+  -- 612x384 window is ever materialised. This clamp was the entire ceiling, sitting 455px
+  -- BELOW the top of the mountains it was hiding.
+  -- -900 leaves ~145px of headroom above the tallest generated peak. Keep this in sync
+  -- with the navigation bound near the bottom of this file (search SKY CEILING).
+  if R.cam.y + dy < -900 then dy = -900 - R.cam.y end
   if R.cam.y + dy > DEPTH - H + 20 then dy = DEPTH - H + 20 - R.cam.y end
   if dx ~= 0 or dy ~= 0 then shiftCam(dx, dy) end
 end
@@ -1227,6 +1590,9 @@ function R.generateWorld(seed)
   -- via R.createSandbox; that choice is applied after the wipe so it is not
   -- inherited from a previous session the way the old bug did.
   local wantSandbox = R.createSandbox == true
+  -- Flat map type drives world.lua's flatWorldGen(). Set BEFORE fillRegion below,
+  -- since that is what actually stamps terrain.
+  R.flatTestWorld = (R.mapType == "flat")
   R.sandbox = false
   -- Same class of bug as R.sandbox above: R.setTptMenus() (the function that
   -- actually calls tpt.hud/tpt.menu_enabled to hide native TPT's far-right
@@ -1255,7 +1621,13 @@ function R.generateWorld(seed)
   R.treeHP = {}; R.pendingAir = {}
   R.lastMine = nil; R.lastSwing = nil; R.lastPlace = nil; R.lastHitAt = nil; R.blockHits = {}  -- frame-stamped cooldowns must reset with R.frame, or mining/chopping/placing stays dead after a new seed until the frame counter climbs back up
   if R.grid == nil then R.grid = true end  -- build grid on by default
-  R.P.x = 0; R.P.y = surfaceAt(0) - 1; R.P.vx, R.P.vy = 0, 0
+  R.P.x = 0
+  -- On a flat map surfaceAt() still reports hill noise, but flatWorldGen ignores it and
+  -- fills solid ROCK from FLAT_SURFACE_Y down -- so spawning at surfaceAt(0) would drop
+  -- the player inside rock or leave him falling. R.FLAT_SURFACE_Y is published by
+  -- world.lua when available; 200 is that file's own constant and the fallback.
+  R.P.y = (R.flatTestWorld and ((R.FLAT_SURFACE_Y or 200) - 1)) or (surfaceAt(0) - 1)
+  R.P.vx, R.P.vy = 0, 0
   R.cam.x = floor(R.P.x) - 306; R.cam.y = floor(R.P.y) - 200
   sim.clearSim(); fillRegion(M, M, W - M - 1, H - M - 1); R.clearAround()
   do -- classic Fire display so FIRE/LAVA/PLSM render as blazing gradients instead of flat orange pixels
@@ -1265,7 +1637,7 @@ function R.generateWorld(seed)
   end
   say("World " .. R.seed .. "  " .. (MAP_TYPE_LABEL[R.mapType or "mixed"] or "Mixed") .. ".  Esc = menu & controls")
   R.setMenuOpen(R.tipsOn ~= false)
-  if wantSandbox then R.sandbox = true; pcall(R.sandboxFill); pcall(R.setTptMenus, true); say("SANDBOX: everything unlocked + TPT menus on") end
+  if wantSandbox then R.sandbox = true; pcall(R.sandboxUnlock); say("SANDBOX: everything unlocked") end  -- TPT menus left alone on purpose: independent toggle, see R.toggleSandbox
   if R.releaseMouse then R.releaseMouse() end
   R._placeGraceUntil = (R.frame or 0) + 48
 end
@@ -1525,9 +1897,43 @@ local function movePlayer()
           target = math.min(target, 6 + R.o2conc * 2 + pvent * 25)
         end
         -- Measured OXYG must not lose to abstract vent/stale math (shallow hole + bubbles bug).
-        if particleBreath >= 10 then
-          local pf = particleBreath * (depth < 50 and 0.92 or 0.82)
-          target = math.max(target, pf)
+        -- MEASURED SUPPLY BEATS ESTIMATES. Everything above this point is *estimated* air
+        -- (depth thinning, sealed-pocket guesses, stale-air and deep-suffocation caps). The two
+        -- floors below are *measured* reality, so they are deliberately applied last.
+        --
+        -- (1) PLAYER-DEATH BUG (2026-08-31): died underground "even though I saw oxygen bubbles
+        -- within range". The old gate here was `particleBreath >= 10`, i.e. `o2conc >= 7.14`.
+        -- o2conc divides the particle count by EVERY sampled cell in the breath circle
+        -- (measured live: 1737 samples), so it really demanded ~47 OXYG particles inside one
+        -- 48px circle -- against a screen-wide OXYG cap of 220. A realistic handful of ~10
+        -- bubbles scored o2conc ~1.7, this floor never fired, the deep cap just above then
+        -- forced target to ~6-9, and death damage begins at o2 <= 12. Gate on the real particle
+        -- count instead: a breathed oxygen particle is worth a real breath.
+        -- the owner's spec, 2026-08-31: "if there's oxygen in my guy's range he needs to be
+        -- replenishing it like all the way full, like if it's available." Breathing is
+        -- binary, not a dosage curve -- a person standing in breathable air does not get
+        -- 62% of a breath because the air is locally a bit thin. Either there is air to
+        -- breathe or there isn't. The earlier `28 + o2p * 2.6` ramp was a reasonable step up
+        -- from the broken state (which needed ~47 particles before it registered at all), but
+        -- this is the destination. The `>= 4` gate stays so a single stray particle drifting
+        -- through a vacuum isn't mistaken for an atmosphere.
+        if o2p >= 4 then
+          target = math.max(target, 100)
+        end
+        -- (2) OXYGEN-MACHINE BUG (2026-08-31): "built a little electrolysis machine underground
+        -- and my oxygen still isn't refilling completely". `src` (the summed rate of every
+        -- registered R.o2Sources emitter in range) was folded ONLY into `base`, and `base` is
+        -- read only by the NOT-sealed branch -- so in a sealed room, which is the entire reason
+        -- to build life support, the machine's output was computed and then silently discarded.
+        -- Worse, all three limiters ignored it too: the sealed pocket, the stale cap
+        -- (`min(stale, 10 + ...)`) and the deep cap (`min(target, 6 + ...)`), so a powered
+        -- generator in a deep sealed base still got clamped to ~6. Applying it here as a floor
+        -- fixes all three at once, and matches the promise of building life support: a
+        -- well-supplied sealed room approaches full air. o2gen(18) -> 93, lifesupport(14) -> 79,
+        -- airpump(10) -> 65, bellows(8) -> 58. Sources sum, so a bigger installation gets closer
+        -- to 100.
+        if src > 0 then
+          target = math.max(target, math.min(100, 30 + src * 3.5))
         end
       end
       R.o2 = R.o2 or 100
@@ -1678,6 +2084,18 @@ local function movePlayer()
           if p and nameOf(sim.partProperty(p, "type")) == "OXYG" then
             sim.partKill(p)
             R.o2 = math.min(100, (R.o2 or 50) + 7)   -- inhaling a real OXYG particle refills the meter
+            -- Breath-glow feed for @ux's renderer: marks the exact particles actually inhaled.
+            -- WORLD coordinates on purpose -- the draw path must subtract R.cam itself. Canvas
+            -- coords would make any effect outliving one frame slide across the screen as the
+            -- camera scrolls instead of staying pinned where the breath happened.
+            -- Every consumed particle is recorded (this loop can kill several per tick, and the
+            -- whole point is to mark what was really breathed). Hard-capped at 24, oldest
+            -- discarded. Two numbers appended at an event that already fires -- deliberately not
+            -- a scan; an O(particle-count) scan inside a per-cell loop caused real measured lag
+            -- in this project once already.
+            R.breathFX = R.breathFX or {}
+            R.breathFX[#R.breathFX + 1] = { x = x + ox, y = y + oy, at = R.frame }
+            if #R.breathFX > 24 then table.remove(R.breathFX, 1) end
             -- Exhaled CO2: breathing in real O2 breathes real CO2 back out, right where you're
             -- standing. In a sealed space this is what actually makes staying put dangerous over
             -- time (CO2 sinks -- see the H2/GAS/CO2 gravity notes above -- so it pools at your feet
@@ -1911,9 +2329,42 @@ local function drawPlayer()
 end
 
 -- ================================================================ items, tools, crafting
-R.HARD = { METL=4, GRSS=1, BCOL=1,  GOO=1, SAND=1, SNOW=1, ICE=1, PLNT=1, WOOD=2, CLST=1, COAL=2, GRNT=3, BRCK=3, GLAS=2, IRON=4, CU=4, GOLD=4, QRTZ=4, DU=5, URAN=5, STEL=5, TTAN=6, DMND=8 }
+R.HARD = { METL=4, GRSS=1, BCOL=1,  GOO=1, SAND=1, SNOW=1, ICE=1, PLNT=1, WOOD=2, CLST=1, COAL=2, GRNT=3, BSLT=3, BRCK=3, GLAS=2, IRON=4, CU=4, GOLD=4, QRTZ=4, DU=5, URAN=5, STEL=5, TTAN=6, DMND=8,
+  -- ADDED 2026-09-02 (@lead). @veins placed six new materials as real worldgen veins and
+  -- @matimpl added their names/recipes, but NEITHER added R.MINEABLE/R.HARD entries -- so all
+  -- six were in the ground and physically un-diggable. That is the same shape as the GRNT /
+  -- NSCN / TUNG / THRM / NITR deadlocks: content that exists but no verb reaches.
+  -- Hit counts follow the existing tier convention (tier 2 -> 3 hits, 3 -> 4, 4 -> 5).
+  MERC=4, LITH=3, DEUT=4, ISZS=5, PTNM=5, BMTL=3 }
+-- Display names for the six new vein materials (2026-09-02 @lead); without these
+-- they render as raw four-letter codes in every UI surface.
+R.NAMES.PTNM = R.NAMES.PTNM or "Platinum"
+R.NAMES.ISZS = R.NAMES.ISZS or "Solid isotope"
+R.NAMES.DEUT = R.NAMES.DEUT or "Deuterium"
+R.NAMES.MERC = R.NAMES.MERC or "Mercury"
+R.NAMES.LITH = R.NAMES.LITH or "Lithium"
 R.blockHits = R.blockHits or {}
-R.MINEABLE = { METL=3, GRSS=1, BCOL=1,  GOO=1, SAND=1, SNOW=1, ICE=1, PLNT=1, WOOD=1, CLST=1, STNE=2, COAL=1, BRCK=2, GLAS=2, BRMT=2, IRON=2, GOLD=3, CU=2, DU=4, URAN=4, STEL=4, GRNT=2, TTAN=4, DMND=6, LEAD=3, ZIRC=3, STEL=4, QRTZ=3 }
+-- BSLT added 2026-08-31: this is the real, always-solid subsoil/fallback rock
+-- worldgen actually places everywhere (see ROCK local ~line 1204; GRNT is a
+-- phantom token, never placed by genBase()). Without a R.MINEABLE entry, BSLT
+-- was hard-blocked from being mined at all ("cannot be mined", line ~5641),
+-- even though it's the single most common solid material in the world.
+-- Tier 2 matches GRNT's old tier so the wood pick (power=1) can still mine it
+-- slowly per its own flavor text ("granite... only slowly"); the stone pick
+-- (power=2) mines it at full speed once crafted.
+R.MINEABLE = { METL=3, GRSS=1, BCOL=1,  GOO=1, SAND=1, SNOW=1, ICE=1, PLNT=1, WOOD=1, CLST=1, STNE=2, COAL=1, BRCK=2, GLAS=2, BRMT=2, IRON=2, GOLD=3, CU=2, DU=4, URAN=4, STEL=4, GRNT=2, BSLT=2, TTAN=4, DMND=6, LEAD=3, ZIRC=3, STEL=4, QRTZ=3,
+  -- ADDED 2026-09-02 (@lead): the six materials @veins placed as worldgen veins.
+  -- Tiers set from the depth each is actually generated at, measured from world.lua:
+  --   MERC d>160 (swamp only)  LITH d 200-400   DEUT d>420   ISZS d>440   PTNM deep+rare   BMTL ruins
+  -- so they slot alongside the existing depth-equivalent ores (LEAD/ZIRC=3, DU/URAN/TTAN=4).
+  MERC=3, LITH=3, DEUT=4, ISZS=4, PTNM=4, BMTL=2,
+  -- ADDED 2026-09-02 (@matimpl, design-material-progression.md S4 chain 4): SALT is a real particle
+  -- already produced in-world by two existing machines (the Salt Evaporator's pan, and the Desalinator's
+  -- byproduct stream) but had no R.MINEABLE entry, so a player standing next to a pan full of real SALT
+  -- crystals could not pick any of it up -- the exact same "produced but uncollectable" shape as the BSLT
+  -- gap noted above. Tier 1 matches the other loose dusts (SAND/CLST/GRSS); this is also what makes the
+  -- new TNT recipe below (GUN+SALT) actually reachable rather than a second silent deadlock.
+  SALT=1 }
 R.TOOLS = R.TOOLS or {
   pick  = { name="wood pick", power=1, reach=24, speed=8, radius=3 },
   axe   = { name="axe", power=1, reach=26, speed=6, radius=4, only={WOOD=1, PLNT=1, GRSS=1} },
@@ -1921,7 +2372,19 @@ R.TOOLS = R.TOOLS or {
   torch = { name="torch", reach=56 },
   bucket= { name="bucket", reach=56 },
 }
-R.PICKS = { {name="wood pick", power=1, reach=24, speed=8, need={WOOD=6}, st="hand", desc="Digs dirt, sand and coal; granite and iron only slowly"}, {name="stone pick", power=2, reach=26, speed=7, need={GRNT=6, WOOD=4}, st="workbench", desc="Digs granite, coal and iron at full speed"}, {name="iron pick", power=3, reach=30, speed=6, need={METL=5, WOOD=4}, st="anvil", desc="Digs gold and quartz too; faster"}, {name="steel pick", power=4, reach=34, speed=5, need={STEL=5, WOOD=4}, st="anvil", desc="Digs uranium ore and deep titanium"}, {name="diamond pick", power=6, reach=40, speed=4, need={DMND=4, STEL=4}, st="anvil", desc="Digs everything, including bedrock"} }
+-- Diamond pick need reduced DMND 4->3, 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #3):
+-- DMND has R.MINEABLE tier 6, but the best pick that does NOT itself require DMND (steel,
+-- power 4) only mines up to tier power+1=5 -- DMND cannot be mined until you already have
+-- this exact pick. The only deterministic DMND sources are two one-time quest rewards
+-- ("titanium":1, "steel":2, both above) totalling exactly 3, one short of the old need of 4:
+-- a quantity-sufficiency deadlock on the game's top tool tier, same shape as the historic
+-- GRNT bug (one-time supply < recipe demand), previously masked only by the PROBABILISTIC
+-- `dpick` chest-loot accessory (tier-3, depth>600) granting the same power for free. Reducing
+-- the need to 3 makes the crafted recipe itself deterministically reachable from guaranteed
+-- quest rewards alone, with zero DMND mining required -- matching, not replacing, the
+-- accessory route (both now independently sufficient instead of one being a silent bugfix
+-- for the other). Left R.MINEABLE.DMND=6 untouched: only the recipe's own demand changed.
+R.PICKS = { {name="wood pick", power=1, reach=24, speed=8, need={WOOD=6}, st="hand", desc="Digs dirt, sand and coal; granite and iron only slowly"}, {name="stone pick", power=2, reach=26, speed=7, need={[ROCK]=6, WOOD=4}, st="workbench", desc="Digs granite, coal and iron at full speed"}, {name="iron pick", power=3, reach=30, speed=6, need={METL=5, WOOD=4}, st="anvil", desc="Digs gold and quartz too; faster"}, {name="steel pick", power=4, reach=34, speed=5, need={STEL=5, WOOD=4}, st="anvil", desc="Digs uranium ore and deep titanium"}, {name="diamond pick", power=6, reach=40, speed=4, need={DMND=3, STEL=4}, st="anvil", desc="Digs everything, including bedrock"} }
 R.SWORDS = { {name="wood sword", dmg=15, need={WOOD=8}, st="workbench", desc="Better than fists"}, {name="iron sword", dmg=35, need={METL=5, WOOD=2}, st="anvil", desc="Solid damage"}, {name="steel sword", dmg=60, need={STEL=5, WOOD=2}, st="anvil", desc="Cleaves most enemies in two hits"} }
 R.ACCS = {
   cloud   = { name="Cloud in a Bottle", desc="double jump: press jump again in the air", tier=1 },
@@ -1981,6 +2444,15 @@ function R.grantItem(el)
   say(R.nice(el) .. " -> slot " .. (slot % 10))
   return true
 end
+-- Capability half of sandbox: everything unlocked, nothing handed to you.
+function R.sandboxUnlock()
+  for _, k in ipairs(R.ACC_ORDER) do R.acc[k] = true; R.accOwned[k] = true end
+  R.TOOLS.pick = {name="diamond pick", power=6, reach=40, speed=4, radius=4}
+  R.TOOLS.sword = {name="steel sword", reach=34, dmg=60, speed=12}
+  R.rebuildHotbar(); R.runHooks(R.hooks.sandbox)
+end
+-- Unlock AND stock every material. Kept for anyone who explicitly wants a full bag; it is
+-- no longer what entering sandbox does.
 function R.sandboxFill()
   local names = {}
   for k in pairs(R.NAMES) do names[#names+1] = k end
@@ -1999,9 +2471,9 @@ end
 R.QUESTS = {
   { id="wood", txt="Chop 10 wood with the axe (slot 2)", done=function() return (R.stats.mined.WOOD or 0) >= 10 end, reward={WOOD=10} },
   { id="woodpick", txt="Craft a wood pick by hand (E > craft) - 6 Wood", done=function() return R.stats.crafted["wood pick"] end, reward={WOOD=4} },
-  { id="bench", txt="Craft a Workbench (E) and place it", done=function() return #R.stations > 0 end, reward={GRNT=6} },
+  { id="bench", txt="Craft a Workbench (E) and place it", done=function() return #R.stations > 0 end, reward={[ROCK]=6} },
   { id="pick", txt="Dig 6 Granite with the wood pick (slow) and craft a stone pick at the workbench", done=function() return R.stats.crafted["stone pick"] or R.TOOLS.pick.power >= 2 and (R.stats.crafted["stone pick"] or false) end, reward={COAL=3} },
-  { id="coal", txt="Mine 10 Coal (black seams underground)", done=function() return (R.stats.mined.COAL or 0) >= 10 end, reward={GRNT=10} },
+  { id="coal", txt="Mine 10 Coal (black seams underground)", done=function() return (R.stats.mined.COAL or 0) >= 10 end, reward={[ROCK]=10} },
   { id="furnace", txt="Craft a Furnace kit, place it and light it with the torch", done=function() for _, st in ipairs(R.stations) do if st.kind == "furnace" and R.nearStation("furnace") then return true end end; return false end, reward={IRON=6} },
   { id="iron", txt="Smelt 5 Iron bars at the lit furnace (2 Iron ore each)", done=function() return (R.stats.crafted.METL or 0) >= 5 end, reward={WOOD=6} },
   { id="anvil", txt="Craft and place an Anvil", done=function() for _, st in ipairs(R.stations) do if st.kind == "anvil" then return true end end; return false end, reward={METL=3} },
@@ -2031,7 +2503,7 @@ R.RECIPES = {
   { out="FLASK", n=1, need={GRSS=6, WOOD=3}, st="hand", txt="Air bladder", desc="A sealed plant bladder. Fills in fresh air; releases it automatically when you are running out" },
   -- by hand
   { out="WORKBENCH", n=1, need={WOOD=10}, st="hand", txt="Workbench", desc="Place it and stand near it: unlocks tools, kits and building blocks" },
-  { out="FURNACE", n=1, need={GRNT=20, COAL=5}, st="workbench", txt="Furnace kit", desc="Granite box with a coal bed. Place, then light with the torch (slot 4). Smelts ore while burning" },
+  { out="FURNACE", n=1, need={[ROCK]=20, COAL=5}, st="workbench", txt="Furnace kit", desc="Granite box with a coal bed. Place, then light with the torch (slot 4). Smelts ore while burning" },
   { out="ANVIL", n=1, need={METL=8}, st="workbench", txt="Anvil", desc="Forge iron and steel tools here" },
   { out="RESEARCH", n=1, need={STEL=6, GLAS=4, CU=2}, st="workbench", txt="Research Bench", desc="A progression tier past the workbench -- unlocks advanced material recipes" },
   -- research bench (a tier past the workbench -- needs steel/glass/copper the workbench itself can't make, so it's a real gate, not just another crafting spot)
@@ -2043,19 +2515,79 @@ R.RECIPES = {
   { out="STEL", n=1, need={METL=2, COAL=1}, st="furnace", txt="Steel", desc="Iron bars + coal = steel: hardest tool material short of diamond" },
   { out="BRCK", n=4, need={GOO=4}, st="furnace", txt="Fired brick", desc="Kiln-fired dirt. A solid, heat-proof building block" },
   { out="GLAS", n=2, need={SAND=4}, st="furnace", txt="Glass", desc="Melted sand. Lets light through; shatters under pressure" },
-  { out="GOLD", n=1, need={GOLD=1, COAL=1}, st="furnace", txt="Refined gold", desc="Purify gold ore (used in circuits)" },
+  -- REMOVED 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #4): this used to be
+  -- `{ out="GOLD", n=1, need={GOLD=1, COAL=1}, st="furnace", txt="Refined gold", desc="Purify gold ore (used in circuits)" }`
+  -- -- a self-referential no-op. Mined gold ore and every other use of "refined
+  -- gold" already share one inventory code (R.NAMES.GOLD="Gold"), so this recipe
+  -- consumed 1 GOLD + 1 COAL to produce exactly 1 GOLD back: a pure, silent COAL
+  -- sink with zero material gain, and the self-loop the reachability script's own
+  -- cycle-detector flagged automatically. Deleted rather than reworked into a real
+  -- two-tier ore/refined-good split: every other GOLD consumer in the game (CU,
+  -- LIGHTGUN/TPWAND/GRAVWELL ammo, WIFI, C-4, the ironpick quest reward) already
+  -- expects the single shared code, so splitting it would be a real economy change
+  -- across many files, not a targeted fix for a dead recipe.
   { out="CU", n=2, need={GOLD=1, METL=1}, st="furnace", txt="Copper", desc="Conductive copper for wiring" },
   -- workbench
   { out="INSL", n=4, need={SAND=2, WOOD=2}, st="workbench", txt="Insulation", desc="Blocks heat and electricity. Line a base with it" },
-  { out="TTAN", n=1, need={STEL=2, DU=1}, st="anvil", txt="Titanium plate", desc="Very hard, heat-resistant plate" },
+  { out="TTAN", n=1, need={STEL=2, [UORE]=1}, st="anvil", txt="Titanium plate", desc="Very hard, heat-resistant plate" },
   -- electrics (workbench, needs furnace materials)
   { out="PSCN", n=2, need={CU=1, GLAS=1}, st="workbench", txt="P-silicon", desc="Semiconductor: passes sparks one way. Basis of circuits" },
+  -- ADDED 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #1): NSCN ("N-silicon")
+  -- is a real stock TPT element (src/simulation/elements/NSCN.cpp, TYPE_SOLID,
+  -- Falldown=0 -- verified safe per CLAUDE.md rule 4) but had zero sources anywhere
+  -- in this fork: not mined, not crafted, not looted -- only ever drawn as decorative
+  -- build-geometry pixels inside two machines' own construction code, never given to
+  -- the player. That permanently blocked MAGACCELKIT (needs 4xNSCN, machines2.lua).
+  -- Doped the other direction from PSCN right above it (GOLD instead of CU as the
+  -- dopant stand-in, matching the existing GOLD/CU "circuits" material pairing used
+  -- by WIFI/LIGHTGUN/TESLAARC elsewhere) rather than adding new worldgen placement --
+  -- same station/tier/output-count as PSCN so the two feel like a matched pair.
+  { out="NSCN", n=2, need={GOLD=1, GLAS=1}, st="workbench", txt="N-silicon", desc="Semiconductor: passes sparks the other way; disables powered materials it touches. Basis of circuits" },
   { out="LEDL", n=2, need={GLAS=1, CU=1}, st="workbench", txt="LED lamp", desc="Lights up when sparked" },
   { out="WIFI", n=1, need={CU=2, GOLD=1}, st="workbench", txt="Wireless link", desc="Carries sparks between two WIFI blocks on the same channel" },
   { out="B4C", n=1, need={COAL=4, METL=1}, st="anvil", txt="Control rod", desc="Boron carbide: absorbs neutrons in a reactor" },
   { out="TRBN", n=1, need={STEL=6, CU=2}, st="anvil", txt="Turbine stage", desc="Turns steam/pressure into electricity" },
   { out="TEG", n=1, need={CU=3, GLAS=2}, st="workbench", txt="Thermoelectric", desc="Makes power from a temperature difference" },
-  { out="UO2", n=1, need={DU=4, COAL=1}, st="furnace", txt="Fuel pellet", desc="Uranium dioxide reactor fuel. Handle with lead" },
+  { out="UO2", n=1, need={[UORE]=4, COAL=1}, st="furnace", txt="Fuel pellet", desc="Uranium dioxide reactor fuel. Handle with lead" },
+  -- ADDED 2026-09-02 (@matimpl, knowledge/design-material-progression.md): stock-element progression
+  -- chains from the design doc's S4 -- craft/react routes only, every input already independently
+  -- reachable (no new worldgen veins needed, world.lua is not this lane's file this wave). Grouped by
+  -- the doc's own chain numbers; guide.lua buckets these into its existing per-station tabs automatically.
+  -- chain 1: Electronics & Circuits (T1-T3)
+  { out="SLCN", n=3, need={SAND=4}, st="furnace", txt="Silicon powder", desc="Sand heated past its melting point in a lit furnace -- refined silicon, the base of every semiconductor" },
+  { out="SWCH", n=1, need={METL=2, PSCN=1}, st="workbench", txt="Switch", desc="On/off conductor -- gate one branch of your grid without cutting the whole line" },
+  { out="INWR", n=2, need={PSCN=2, INSL=1}, st="workbench", txt="Insulated wire", desc="P-silicon core wrapped in insulation -- carries a spark without shorting on contact" },
+  { out="TESC", n=1, need={CU=4, GOLD=2, QRTZ=2}, st="research", txt="Tesla coil", desc="Throws real lightning when sparked -- upgrade path for the Tesla Arc and automated defenses" },
+  { out="ETRD", n=1, need={CU=3, SLCN=2}, st="research", txt="Electrode", desc="Silicon-cored electrode -- strikes a real plasma arc across a gap when sparked" },
+  { out="DSTW", n=2, need={WATR=4}, st="advlab", txt="Distilled water", desc="Boiled and recondensed -- non-conductive, won't corrode wiring the way saltwater does. Makes ocean/swamp bases viable" },
+  -- chain 4: Demolition & Blasting (T2) -- THRM/NITR fixed in items.lua; the rest of the chain lives here
+  { out="GUN", n=3, need={CLST=4}, st="furnace", txt="Gunpowder (raw)", desc="Clay dust roasted in a lit furnace -- light, flammable powder. Mix with Salt for TNT" },
+  { out="TNT", n=1, need={GUN=6, SALT=2}, st="workbench", txt="TNT", desc="Packed gunpowder and salt -- explodes all at once, a real blast-mining charge" },
+  { out="FUSE", n=4, need={COAL=2, WOOD=2}, st="workbench", txt="Fuse", desc="Burns slowly, ignites at high heat or spark -- lay a controlled-delay line to a charge" },
+  { out="IGNC", n=3, need={FUSE=2, COAL=2}, st="workbench", txt="Ignition cord", desc="A slower-burning fuse cord -- lights reliably from fire or spark" },
+  { out="FSEP", n=6, need={FUSE=3}, st="workbench", txt="Fuse powder", desc="Bulk fuse powder for laying a long detonation line fast" },
+  { out="TRON", n=1, need={QRTZ=3, TESC=1}, st="research", txt="Tron", desc="Smart particles that steer around obstacles -- seeking-ammo upgrade for kinetic weapons" },
+  -- chain 5: Force-Field Automation (T3)
+  { out="PSTN", n=1, need={METL=4, PSCN=1, NSCN=1}, st="research", txt="Piston", desc="PSCN extends it, NSCN retracts it -- a real mechanical piston, pushes many particles at once" },
+  { out="FRME", n=1, need={METL=6}, st="research", txt="Frame", desc="Used together with pistons to push a solid mass of particles" },
+  { out="ACEL", n=1, need={CU=2, QRTZ=2}, st="research", txt="Accelerator", desc="Speeds up nearby elements passing through it -- a contactless conveyor upgrade" },
+  { out="DCEL", n=1, need={CU=2, QRTZ=2}, st="research", txt="Decelerator", desc="Slows nearby elements passing through it -- a contactless conveyor upgrade" },
+  { out="FRAY", n=1, need={CU=3, QRTZ=2}, st="research", txt="Force emitter", desc="Temperature-tuned push/pull field -- shove hazardous material without touching it" },
+  { out="RPEL", n=1, need={CU=3, QRTZ=2}, st="research", txt="Repeller", desc="Repels or attracts by temperature -- pairs with the Force emitter for contactless material handling" },
+  { out="PPIP", n=2, need={METL=2, PSCN=1}, st="workbench", txt="Powered pipe", desc="A pipe that only moves particles while PSCN/NSCN-activated -- a switchable logistics line" },
+  -- chain 6: Shield Defense Ladder (T3-T5) -- SHD4 (reactor-online only) lives in machines.lua's TIERR_RECIPES
+  { out="SHLD", n=2, need={STEL=4, PSCN=2}, st="research", txt="Shield tier 1", desc="Grows a real barrier around a spark, breaks under pressure -- base defense's first tier" },
+  { out="SHD2", n=1, need={SHLD=4, QRTZ=2, CU=2}, st="research", txt="Shield tier 2", desc="A tougher shield field -- absorbs more before breaking" },
+  { out="SHD3", n=1, need={SHD2=3, ZIRC=2, GLAS=2}, st="advlab", txt="Shield tier 3", desc="Reactor-cladding-grade shielding -- absorbs heavy damage before it breaks" },
+  -- chain 9: Sensor/Automation Safety Tier (T3-T4)
+  { out="DTEC", n=1, need={METL=3, QRTZ=2}, st="research", txt="Detector", desc="Sparks when a matching material is nearby -- wire it into an early-warning alarm" },
+  { out="LDTC", n=1, need={METL=3, QRTZ=2}, st="research", txt="Linear detector", desc="Scans all 8 directions for a matching material -- wider coverage than the Detector" },
+  { out="PSNS", n=1, need={METL=2, CU=1}, st="research", txt="Pressure sensor", desc="Sparks when pressure crosses a threshold -- wire a pressure vessel's shutoff to it" },
+  { out="TSNS", n=1, need={METL=2, CU=1}, st="research", txt="Temperature sensor", desc="Sparks when temperature crosses a threshold -- wire a reactor's shutoff to it" },
+  { out="SPNG", n=4, need={CLST=4}, st="workbench", txt="Sponge", desc="Dried clay that soaks up water -- a cheap flood-control stopgap before you can afford a Sump" },
+  { out="VOID", n=1, need={METL=6}, st="research", txt="Void", desc="Drains away anything that enters it -- a waste-disposal sink" },
+  { out="PVOD", n=1, need={METL=4, VOID=1}, st="research", txt="Powered void", desc="A void that only drains while PSCN/NSCN-activated -- the core of a trash incinerator" },
+  { out="VENT", n=3, need={METL=3}, st="workbench", txt="Vent", desc="Creates pressure and pushes particles -- pairs with an air line for ventilation" },
 }
 R.STATIONS = { hand = "by hand", workbench = "Workbench", furnace = "lit Furnace", anvil = "Anvil", research = "Research Bench", advlab = "Advanced Lab" }
 R.stations = R.stations or {}   -- placed stations: {kind, x, y (world)}
@@ -2351,7 +2883,7 @@ local function buildStation(kind, mx, my)  -- mx,my canvas; structure sits on th
   elseif kind == "ANVIL" then box(wx + 1, gy - 3, wx + 8, gy - 2, "METL"); box(wx + 3, gy - 1, wx + 6, gy, "METL")
   elseif kind == "RESEARCH" then box(wx, gy - 4, wx + 11, gy - 3, "METL"); box(wx + 2, gy - 6, wx + 4, gy - 4, "GLAS"); box(wx + 1, gy - 2, wx + 1, gy, "METL"); box(wx + 10, gy - 2, wx + 10, gy, "METL")
   elseif kind == "ADVLAB" then box(wx, gy - 5, wx + 13, gy - 4, "STEL"); box(wx + 2, gy - 8, wx + 5, gy - 5, "GLAS"); box(wx + 8, gy - 8, wx + 11, gy - 5, "GLAS"); box(wx + 1, gy - 3, wx + 1, gy, "STEL"); box(wx + 12, gy - 3, wx + 12, gy, "STEL")
-  elseif kind == "FURNACE" then local el = has("GRNT") and "GRNT" or "BRCK"
+  elseif kind == "FURNACE" then local el = ROCK
     box(wx, gy - 12, wx + 13, gy, el)                       -- body
     for y = gy - 10, gy - 2 do for x = wx + 2, wx + 11 do local p = sim.partID(x - R.cam.x, y - R.cam.y); if p then sim.partKill(p) end end end  -- chamber
     box(wx + 2, gy - 3, wx + 11, gy - 2, "COAL")            -- coal bed
@@ -2464,8 +2996,15 @@ local BRUSH_R_MAX = 40
 function R.pullNativeBrush(shapeToo)
   -- shapeToo=false: sync radius only (mouse-move) so V/Tab shape isn't stomped.
   if shapeToo == nil then shapeToo = true end
-  local ok, id = pcall(tpt.brushID)
-  local ok2, rx, ry = pcall(tpt.brushRadius)
+  -- tpt.brushID / tpt.brushx / tpt.brushy are PROPERTIES, not functions: reading them
+  -- yields a number and writing them is plain assignment. The old code did
+  -- pcall(tpt.brushID) -- i.e. CALLING a number -- which failed 100% of the time with
+  -- "attempt to call a number value", silently, inside a pcall. So native brush sync has
+  -- never worked in either direction, and V/Tab only ever moved the RPG's private copy
+  -- while native TPT's own brush (which does the placing in sandbox/TPT-menu mode) never
+  -- changed. Reading them also asserts an interface event, hence the closures.
+  local ok, id = pcall(function() return tpt.brushID end)
+  local ok2, rx, ry = pcall(function() return tpt.brushx, tpt.brushy end)
   R._brushPullErr = (not ok and tostring(id)) or (not ok2 and tostring(rx)) or nil
   if shapeToo and ok and type(id) == "number" then
     R.brushShape = BRUSH_NAME[id] or "circle"
@@ -2483,8 +3022,8 @@ function R.pushNativeBrush()
   local shape = R.brushShape or "square"
   local r = math.max(0, math.min(BRUSH_R_MAX, floor(R.brush or 1)))
   if shape == "single" then r = 0; shape = "square" end
-  pcall(tpt.brushID, BRUSH_ID[shape] or 1)
-  pcall(tpt.brushRadius, r, r)
+  pcall(function() tpt.brushID = BRUSH_ID[shape] or 1 end)
+  pcall(function() tpt.brushx = r; tpt.brushy = r end)
   R.brush, R.brushRx, R.brushRy = r, r, r
   if r == 0 then R.brushShape = "single" else R.brushShape = shape end
 end
@@ -2864,6 +3403,10 @@ end
 local function grabText() pcall(interface.grabTextInput) end
 local function releaseText() pcall(interface.dropTextInput) end
 local function onTextInput(text)
+  if R.titleScreen then
+    if R.titleMultiplayerOpen and R.net and R.net.titleTextInput then pcall(R.net.titleTextInput, text) end
+    return
+  end
   if not R.active or not text or text == "" then return end
   if R.feedbackOpen then if #R.feedbackText < 400 then R.feedbackText = R.feedbackText .. text end
   elseif R.chatOpen then if #R.chatText < 120 then R.chatText = R.chatText .. text end end
@@ -2873,7 +3416,9 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
     if key == 27 then
       if R.titleCreateOpen then R.titleCreateOpen = false; return false end
       if R.titleSettingsOpen then R.titleSettingsOpen = false; return false end
+      if R.titleMultiplayerOpen then R.titleMultiplayerOpen = false; return false end
     end
+    if R.titleMultiplayerOpen and R.net and R.net.titleKeyDown then pcall(R.net.titleKeyDown, key, shift, ctrl, alt) end
     return false
   end
   if not R.active then return end
@@ -2918,6 +3463,12 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
   -- space is left alone: it's TPT's native pause hotkey (hardcoded in GameView, not
   -- suppressible from Lua) and W is now the only jump key, so there's nothing left
   -- for the RPG to do with it -- let it fall through and just pause like normal.
+  -- Ctrl+Up / Ctrl+Down = camera zoom. Must be checked BEFORE the plain-arrow
+  -- branch below, or the same press would also nudge camYOffset and the view
+  -- would zoom and pan at once. Plain arrows keep nudging exactly as before.
+  if R.ctrlHeld and ARROWK[key] and (ARROWK[key] == "up" or ARROWK[key] == "down") then
+    R.setCamZoom(ARROWK[key] == "up" and 0.5 or -0.5); return false
+  end
   if ARROWK[key] then R.keys[ARROWK[key]] = true; return false end
   if rep then return end
   if k == "e" then R.invOpen = not R.invOpen; R.releaseMouse(); return false end
@@ -3951,7 +4502,14 @@ local function onDraw()
     graphics.fillRect(b.x, b.y, b.w, b.h, 60, 52, 20, 255); graphics.drawRect(b.x, b.y, b.w, b.h, 255, 220, 80, 255)
     graphics.drawText(b.x + 10, b.y + 3, "Got it", 255, 240, 200, 255)
   end
-  drawHotbar(); if R.minimap then drawMinimap() end; if R.invOpen then drawPanel() end
+  drawHotbar()
+  -- Plugin overlay hook for the hotbar (added 2026-09-01 @lead, requested by @hotbar).
+  -- drawHotbar() opens with an opaque fill across the whole tray and runs AFTER every
+  -- plugin's drawHUD hook, so anything a plugin draws earlier is painted over and there
+  -- was no way for ui.lua to add a hover highlight. This is the same idiom as
+  -- R.drawQuickBar. pcall so a faulty plugin overlay can never take the HUD down.
+  if R.drawHotbarOverlay then pcall(R.drawHotbarOverlay) end
+  if R.minimap then drawMinimap() end; if R.invOpen then drawPanel() end
   if R.minimap then
     graphics.drawText(MAP_X, 136, "Esc | L | C", 150, 155, 170, 200)
   end
@@ -4821,6 +5379,36 @@ local function hotReloadCore()
 end
 local function onTick()
   if R.hotReloadRequested then R.hotReloadRequested = false; hotReloadCore(); return end
+  -- GAS THROUGH LIQUIDS (2026-08-31): "all the oxygen and gases are getting caught on the trees
+  -- and the liquids". Root cause is an engine rule, not our Lua: SimulationData.cpp's
+  -- init_can_move sets can_move[moving][dest] = 0 (bounce) whenever the mover's Weight is <= the
+  -- destination's. OXYG has Weight 1, WATR 30, so can_move[OXYG][WATR] is 0 -- measured live,
+  -- every gas read 0 into every liquid. Gas was forbidden from entering the pixel at all, which
+  -- is why every previous Lua-side attempt (spawn bands, boxed-in release passes) was working
+  -- downstream of a hard rule it could not affect.
+  -- Set to 1 (swap), which is exactly right physically: a rising bubble displaces water and the
+  -- water fills in behind it. Done from Lua rather than C++ because sim.canMove is a real setter
+  -- whose values persist through element reloads via the engine's customCanMove sticky bit -- so
+  -- this needs no rebuild and no closing his game. The setter requires interface-event context
+  -- (same class as sim.pressure's setter), which is why it runs here in the tick rather than at
+  -- file scope. Guarded to run once per load.
+  -- NOT applied to foliage: see the hub note. can_move=2 (co-occupy, the "layers" behaviour)
+  -- corrupts pmap for non-energy particles, and can_move=1 physically relocates the leaf, which
+  -- would make canopies churn -- a new version of the tree-damage complaint. That half needs a
+  -- real engine feature (a separate gas occupancy map, like the existing photons[] map) and is
+  -- the owner's call, not something to guess at.
+  if not R.gasSwapInit then
+    R.gasSwapInit = true
+    for _, g in ipairs({ "OXYG", "CO2", "WTRV", "SMKE", "NBLE", "CAUS", "HYGN", "H2", "GAS" }) do
+      local gi = eid(g)
+      if gi then
+        for _, l in ipairs({ "WATR", "DSTW", "SLTW", "OIL" }) do
+          local li = eid(l)
+          if li then pcall(sim.canMove, gi, li, 1) end
+        end
+      end
+    end
+  end
   -- Dev-only verification hook: tpt.screenshot() needs real interface-event context, same
   -- restriction as everything else the bridge can't call directly. Set R.debugShotRequested
   -- (a path string) via the bridge, next real tick captures and writes it, R.debugShotDone
@@ -4952,7 +5540,9 @@ local function onTick()
     end
     R.panelWas = now
   end
-  if R.sandbox then if R.frame % 30 == 0 then for k, v in pairs(R.inventory) do if v < 500 then R.inventory[k] = 999 end end end; R.hp = 100; R.o2 = 100 end
+  -- Was also re-filling every stack to 999 every 30 frames, so a sandbox bag could never
+  -- be anything but a wall of 999s even if you dropped things. Survivability kept.
+  if R.sandbox then R.hp = 100; R.o2 = 100 end
   if not sim.paused() then
     if R.frame % 14000 == 0 then R.day = (R.day or 1) + 1; say("Day " .. R.day) end
     if R.enemies and R.frame % 2400 == 0 and eid("FIGH") then local x = floor(R.P.x - R.cam.x) + (math.random() < 0.5 and -140 or 140); x = math.max(5, math.min(W-5, x)); local y = surfaceAt(x + R.cam.x) - 8 - R.cam.y; if y > 0 and y < H then sim.partCreate(-1, x, y, eid("FIGH")); say("An enemy approaches") end end
@@ -5001,6 +5591,7 @@ local TITLE_BTN = {
   newworld = { x = 0, y = 0, w = 150, h = 26 },
   settings = { x = 0, y = 0, w = 150, h = 26 },
   quit = { x = 0, y = 0, w = 150, h = 26 },
+  multiplayer = { x = 0, y = 0, w = 150, h = 26 },
 }
 local function layoutTitleButtons()
   local cx = floor(W / 2 - 75)
@@ -5008,6 +5599,7 @@ local function layoutTitleButtons()
   TITLE_BTN.newworld.x = cx; TITLE_BTN.newworld.y = floor(H / 2) - 6
   TITLE_BTN.settings.x = cx; TITLE_BTN.settings.y = floor(H / 2) + 26
   TITLE_BTN.quit.x = cx; TITLE_BTN.quit.y = floor(H / 2) + 58
+  TITLE_BTN.multiplayer.x = cx; TITLE_BTN.multiplayer.y = floor(H / 2) + 90
 end
 local function openCreateWorld()
   R.titleCreateOpen = true
@@ -5042,6 +5634,7 @@ end
 -- truth, the Esc menu keeps working exactly as before for mid-game use.
 R.titleSettingsOpen = R.titleSettingsOpen or false
 R.titleCreateOpen = R.titleCreateOpen or false
+R.titleMultiplayerOpen = R.titleMultiplayerOpen or false
 local TITLE_SETTINGS_KEYS = { "Map type", "Day length", "Cave frequency", "Ore rarity", "Gravity", "Jump height", "Move speed", "Tree spacing", "Enemy difficulty" }
 local titleSettingsRows = {}
 local titleBackBtn = { x = 0, y = 0, w = 90, h = 22 }
@@ -5156,6 +5749,11 @@ drawTitleScreen = function()
     local a = 120 + floor(80 * (0.5 + 0.5 * math.sin((R.frame or 0) * 0.05 + e.drift)))
     graphics.fillRect(floor(e.x), floor(e.y), e.sz, e.sz, 255, 170, 70, a)
   end
+  if R.titleMultiplayerOpen then
+    if R.net and R.net.drawTitleScreen then pcall(R.net.drawTitleScreen)
+    else R.titleMultiplayerOpen = false end   -- plugin gone: fall back to the menu, never a blank screen
+    return
+  end
   if R.titleCreateOpen then drawTitleCreate(); return end
   if R.titleSettingsOpen then drawTitleSettings(); return end
   local title = "POWDER RPG"
@@ -5169,6 +5767,7 @@ drawTitleScreen = function()
     { TITLE_BTN.newworld, "New World" },
     { TITLE_BTN.settings, "Settings" },
     { TITLE_BTN.quit, "Quit" },
+    { TITLE_BTN.multiplayer, "Multiplayer" },
   }
   for _, b in ipairs(buttons) do
     local r, label = b[1], b[2]
@@ -5182,6 +5781,7 @@ drawTitleScreen = function()
 end
 titleMouseDown = function(x, y)
   if not R.titleScreen then return false end
+  if R.titleMultiplayerOpen then if R.net and R.net.titleMouseDown then pcall(R.net.titleMouseDown, x, y) end; return true end
   if R.titleCreateOpen then titleCreateMouseDown(x, y); return true end
   if R.titleSettingsOpen then titleSettingsMouseDown(x, y); return true end
   layoutTitleButtons()
@@ -5195,6 +5795,10 @@ titleMouseDown = function(x, y)
   end
   if hitRect(x, y, TITLE_BTN.newworld) then openCreateWorld(); return true end
   if hitRect(x, y, TITLE_BTN.settings) then R.titleSettingsOpen = true; return true end
+  if hitRect(x, y, TITLE_BTN.multiplayer) then
+    if R.net and R.net.drawTitleScreen then R.titleMultiplayerOpen = true end
+    return true
+  end
   -- No real scriptable full-process-quit exists in TPT Lua -- rather than fake a
   -- broken quit button, this tells the player the real way to close the game.
   if hitRect(x, y, TITLE_BTN.quit) then say("Close the window or Alt+F4 to quit"); return true end
@@ -5481,7 +6085,10 @@ function R.findPath(sx, sy, gx, gy, opts)
     for _, mv in ipairs({ {1,0,1}, {-1,0,1}, {1,-1,1.3}, {-1,-1,1.3}, {0,-1,1.6}, {0,-2,2.6}, {1,1,1.1}, {-1,1,1.1}, {0,1,1}, {0,2,1.2}, {0,3,1.4} }) do
       local nx, ny, cost = cur.cx + mv[1], cur.cy + mv[2], mv[3]
       local wx, wy = nx * c, ny * c
-      if wy < -400 or wy > DEPTH then goto skip end
+      -- SKY CEILING (nav): raised 2026-09-01 from -400 to -900 to match the camera clamp
+      -- in updateCamera. These two are independent and were 100px apart, so pathfinding
+      -- would have refused to route a companion up a mountain the player could now reach.
+      if wy < -900 or wy > DEPTH then goto skip end
       local blocked = navSolid(wx, wy) or navSolid(wx, wy - c)     -- body is two cells tall
       local dig = false
       if blocked then
@@ -5527,7 +6134,10 @@ function R.zoomOff() R.zoomLocked = nil; pcall(ren.zoomEnabled, false); return t
 function R.mount(v) if not v then return false end; v.mounted = R.frame; R.ride = v; say("Riding - press S to get off"); return true end
 function R.dismount() local v = R.ride; R.ride = nil; if v then R.P.y = (v.y or R.P.y) - 8; R.P.vy = -1 end; say("Dismounted"); return true end
 R.hooks.mount = R.hooks.mount or {}
-R.PLUGINS = { "world", "enemies", "machines", "machines2", "items", "vehicles", "survival", "companion", "save", "ui", "guide" }
+-- "telemetry" FIRST, deliberately: it installs R.tlog and the project-wide error capture,
+-- and every plugin loaded after it can then log its own load failures. Loading it last
+-- would mean the diagnostic layer is absent for exactly the failures most worth catching.
+R.PLUGINS = { "telemetry", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools" }
 R.pluginStatus = {}
 -- Critical distribution bug: this only ever checked the original dev
 -- machine's absolute path. On any other machine (a packaged copy, a

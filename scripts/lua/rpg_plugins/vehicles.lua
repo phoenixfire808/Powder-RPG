@@ -11,7 +11,7 @@
 -- rail shaft with call buttons at both ends, climbs while grid-powered, free-falls if power is lost), DRILL TRAIN
 -- (bores forward through rock using the normal pick tier/hardness rules, credits ore, lays its own rail behind).
 --
--- Controls: V = board the nearest vehicle (or climb out of the current one); D = drive/accelerate forward,
+-- Controls: E = board the nearest vehicle (or climb out of the current one); D = drive/accelerate forward,
 -- A = slow/reverse, S = brake (holding S more than ~20 frames also climbs you out, same as any other mount);
 -- P = toggle a locomotive's two-stop auto-route. Rails: select the Rail kit, hold RIGHT mouse and drag - the
 -- track snaps to flat, +-45 degree slopes, or straight up/down.
@@ -66,6 +66,15 @@ local function poweredNear(wx, wy, r)
     if p and R.nameOf(sim.partProperty(p, "type")) == "SPRK" then return true end
   end end
   return false
+end
+-- poweredNear can only see SPRK particles that are actually on screen, so it returns false for every
+-- machine you have scrolled away from. Read literally that means a mine lift loses power the instant it
+-- leaves the viewport and free-falls down its own shaft, and a locomotive dies mid-route -- purely because
+-- you looked somewhere else. Cache the last on-screen reading and reuse it while off screen: the sim only
+-- runs particles near the viewport anyway, so the cached value is the best evidence available.
+local function poweredCached(v, wx, wy, r)
+  if onScreen(wx, wy, 24) then v.gridPower = poweredNear(wx, wy, r) end
+  return v.gridPower == true
 end
 
 -- ================================================================ RAIL SYSTEM: a persisted graph of straight
@@ -155,7 +164,7 @@ end
 -- ================================================================ generic on-rail physics, shared by every
 -- wheeled vehicle (minecart / handcar / locomotive / drill train)
 local GRAV_ALONG, FRICTION, MAXSPD = 0.045, 0.994, 3.2
-local function derailCrash(v)
+local function derailCrash(v, reason)
   if v.dead then return end
   v.dead = true
   local wasRiding = (R.ride == v)
@@ -163,9 +172,9 @@ local function derailCrash(v)
     local dmg = math.min(20, 4 + floor(abs(v.speed or 0) * 4))
     R.hp = math.max(0, R.hp - dmg); R.hurt = R.frame
     R.shake = { t = R.frame, mag = 6 }
-    R.say("CRASH! The " .. (v.label or "vehicle") .. " derails - you're thrown clear (-" .. dmg .. " HP)")
+    R.say("CRASH! The " .. (v.label or "vehicle") .. " is wrecked - you're thrown clear (-" .. dmg .. " HP)")
   else
-    R.say("A " .. (v.label or "vehicle") .. " ran off the end of the rail and derailed")
+    R.say("A " .. (v.label or "vehicle") .. " " .. (reason or "ran off the end of the rail and derailed"))
   end
   local cx, cy = floor(v.x - R.cam.x), floor(v.y - R.cam.y)
   for _ = 1, 6 do
@@ -194,6 +203,100 @@ local function advanceOnRail(v, driveAccel)
   if blocked then v.speed = 0 else v.x, v.y = nx, ny end
   v.wheelAngle = (v.wheelAngle or 0) + v.speed * 0.35
   return true
+end
+
+-- ================================================================ generic FREE-ROAMING ground physics.
+-- Sibling to advanceOnRail with the same contract (mutates v.x/v.y/v.speed, returns false when the vehicle
+-- should be destroyed), but follows real terrain through R.solidW instead of a rail segment list. Every
+-- vehicle in this file used to route through advanceOnRail, which hard-fails without track -- that is why
+-- there were no bikes or buggies. This is the missing primitive; a new ground vehicle is now a config table
+-- plus a draw function. Slope climbing uses the same step-up idiom the player and companion already use, so
+-- terrain grade genuinely matters now that the world has real mountains.
+local GRAV_AIR, TERMINAL, HARD_LAND = 0.22, 5.0, 2.4
+-- Ground height in one column: the y whose cell is free and whose cell below is solid. Scans UP first when
+-- the start point is already inside terrain (so a vehicle can never bury itself), then DOWN for a drop.
+-- Used for the LEADING EDGE only. A full-width box here is permanently blocked on uneven ground
+-- (measured: 120/120 ticks stalled, 0px travelled); support uses spanGroundY below instead.
+local function groundYAt(x, fromY, up, down)
+  if R.solidW(x, fromY) then
+    for u = 1, (up or 4) do
+      local yy = fromY - u
+      if not R.solidW(x, yy) and R.solidW(x, yy + 1) then return yy end
+    end
+    return nil
+  end
+  for d = 0, (down or 3) do
+    local yy = fromY + d
+    if R.solidW(x, yy + 1) then return yy end
+  end
+  return nil                                  -- nothing underfoot in range: airborne
+end
+-- Support across the whole body footprint, not just the centre: a vehicle rides on the HIGHEST ground under
+-- any part of it, so a 30px hauler bridges a 3px crack instead of dropping in. This was the real bug behind
+-- "vehicles are slower than walking" -- with centre-only support a bike managed 0.62px/tick and stalled
+-- 85/120 ticks, because it kept falling into narrow dips it then could not climb out of (climb 6 against an
+-- unbounded fall) and stuck there for good. Distance came out identical across every speed, friction, accel
+-- and stall-penalty variant tested, which is what proved it was geometry rather than tuning.
+-- With span support: 2.81px/tick, zero stalls, sustained over 300 ticks.
+local function spanGroundY(v, x, y, down)
+  local hw = math.max(1, floor((v.bodyW or 12) / 2) - 1)
+  local best
+  for xx = -hw, hw do
+    local g = groundYAt(x + xx, y, 24, down or 1)
+    if g and (not best or g < best) then best = g end
+  end
+  return best
+end
+local function advanceOnGround(v, accel)
+  local maxs = v.maxSpeed or 2.2
+  v.speed = ((v.speed or 0) + (accel or 0)) * (v.friction or 0.96)
+  if v.speed > maxs then v.speed = maxs elseif v.speed < -maxs then v.speed = -maxs end
+  local x, y = floor(v.x + 0.5), floor(v.y + 0.5)
+  local climb = v.climb or 3
+
+  if abs(v.speed) > 0.02 then                 -- follow the surface, climbing only what this vehicle can
+    local step = (v.speed > 0) and 1 or -1
+    for _ = 1, math.min(3, floor(abs(v.speed)) + 1) do
+      local nx = x + step
+      -- Wall and ledge both read as "no ground here" but must behave oppositely: a wall stalls the
+      -- vehicle, a ledge lets it drive off and fall. Distinguish by whether the next column is solid
+      -- at body level, or it drives straight into hillsides and ends up embedded.
+      if R.solidW(nx, y) then
+        local ny = groundYAt(nx, y, climb, 0)
+        if ny and (y - ny) <= climb then x, y = nx, ny; v.face = step
+        else v.speed = v.speed * 0.25; break end   -- too steep: it bogs down against the slope
+      else
+        local ny = spanGroundY(v, nx, y, 2)
+        x = nx; v.face = step
+        if ny then y = ny end                      -- else: drove off a ledge, gravity takes it below
+      end
+    end
+  end
+
+  local support = spanGroundY(v, x, y, 1)     -- ground under ANY part of the body, highest point wins
+  if support then
+    if (v.vy or 0) > HARD_LAND then           -- real fall damage, to the machine and to the rider
+      local dmg = floor(((v.vy or 0) - HARD_LAND) * 6)
+      v.hp = (v.hp or 100) - dmg
+      if R.ride == v and dmg > 0 then
+        local hit = math.min(15, dmg)
+        R.hp = math.max(0, R.hp - hit); R.hurt = R.frame
+        R.shake = { t = R.frame, mag = 4 }
+        R.say("Hard landing (-" .. hit .. " HP)")
+      end
+    end
+    v.vy = 0; y = support
+  else
+    v.vy = math.min(TERMINAL, (v.vy or 0) + GRAV_AIR)
+    for _ = 1, math.max(1, floor(v.vy)) do
+      if R.solidW(x, y + 1) then break end
+      y = y + 1
+    end
+  end
+
+  v.x, v.y = x, y
+  v.wheelAngle = (v.wheelAngle or 0) + v.speed * 0.4
+  return (v.hp or 100) > 0
 end
 local function nearestVehicle(wx, wy, range)
   local best, bestD
@@ -238,7 +341,7 @@ local function buildMinecart(mx, my)
   local x, y = c.seg.x1 + (c.seg.x2 - c.seg.x1) * c.t, c.seg.y1 + (c.seg.y2 - c.seg.y1) * c.t
   table.insert(R.vehicles, { kind = "minecart", label = "Minecart", x = x, y = y, dir = { x = c.dx, y = c.dy },
     speed = 0, seatY = 7, rideable = true, dead = false })
-  R.say("Minecart placed on the rail - press V to climb aboard")
+  R.say("Minecart placed on the rail - press E to climb aboard")
   return true
 end
 local function tickMinecart(v)
@@ -250,22 +353,40 @@ local function tickMinecart(v)
   end
   if not advanceOnRail(v, accel) then derailCrash(v) end
 end
+-- Ground-following snaps v.y to whole-pixel terrain heights, and 68% of adjacent surface columns differ
+-- by at least 1px (measured), so at ~2.8px/tick a ground vehicle's collision Y genuinely steps up and down
+-- every single frame. That is correct physics and terrible to look at -- reported as "looks super janky".
+-- Smooth the DRAWN y only; collision still uses the real v.y. Snap instead of easing on a big change so a
+-- real fall does not smear. Wheels sit on the true ground line while the body eases, which also reads as
+-- suspension travel rather than the whole vehicle teleporting.
+local function drawY(v)
+  local ty = v.y
+  if not v.drawYv or abs(ty - v.drawYv) > 10 then v.drawYv = ty
+  else v.drawYv = v.drawYv + (ty - v.drawYv) * 0.35 end
+  return v.drawYv
+end
 local function drawWheeled(v, bodyCol, bodyW, bodyH, wheelR)
-  local x, y = floor(v.x - R.cam.x), floor(v.y - R.cam.y)
-  local ang = math.atan and math.atan(v.dir.y, v.dir.x) or atan2(v.dir.y, v.dir.x)
-  -- body: a small rotated-look box approximated as a rect aligned to the rail (good enough at this scale)
+  local x = floor(v.x - R.cam.x)
+  local y = floor(drawY(v) - R.cam.y + 0.5)          -- body eases, killing the per-frame judder
   graphics.fillRect(x - bodyW / 2, y - bodyH - wheelR, bodyW, bodyH, bodyCol[1], bodyCol[2], bodyCol[3], 255)
   graphics.fillRect(x - bodyW / 2, y - bodyH - wheelR - 1, bodyW, 1, math.min(255, bodyCol[1] + 40), math.min(255, bodyCol[2] + 40), math.min(255, bodyCol[3] + 40), 255)
   for _, wx in ipairs({ -bodyW / 2 + wheelR, bodyW / 2 - wheelR }) do
-    graphics.fillCircle(x + wx, y - wheelR, wheelR, wheelR, 40, 40, 45, 255)
+    -- Per-wheel suspension: each wheel rests on the ground under ITSELF rather than under the vehicle
+    -- centre, so on a slope the machine visibly leans and one wheel rides a bump while the other stays
+    -- down. Reuses the physics' own groundYAt; clamped so a wheel can never detach from the chassis.
+    local gw = groundYAt(floor(v.x) + wx, floor(v.y), wheelR + 4, wheelR + 4)
+    local wy = gw and floor(gw - R.cam.y) or y
+    if abs(wy - y) > wheelR + 5 then wy = y end
+    graphics.fillCircle(x + wx, wy - wheelR, wheelR, wheelR, 40, 40, 45, 255)
     local sa = v.wheelAngle or 0
-    graphics.drawLine(x + wx, y - wheelR, x + wx + cos(sa) * wheelR, y - wheelR + sin(sa) * wheelR, 200, 200, 210, 255)
-    graphics.drawLine(x + wx, y - wheelR, x + wx - cos(sa) * wheelR, y - wheelR - sin(sa) * wheelR, 200, 200, 210, 255)
+    graphics.drawLine(x + wx, wy - wheelR, x + wx + cos(sa) * wheelR, wy - wheelR + sin(sa) * wheelR, 200, 200, 210, 255)
+    graphics.drawLine(x + wx, wy - wheelR, x + wx - cos(sa) * wheelR, wy - wheelR - sin(sa) * wheelR, 200, 200, 210, 255)
+    graphics.drawLine(x + wx, wy - wheelR * 2, x + wx, y - wheelR, 90, 90, 100, 255)   -- strut absorbs the travel
   end
   return x, y
 end
 local function drawMinecart(v)
-  local x, y = drawWheeled(v, { 120, 70, 40 }, 12, 6, 3)
+  local x, y = drawWheeled(v, { 120, 70, 40 }, 15, 8, 4)
   -- headlight cone when underground and moving
   if v.y > (R.surfaceAt(floor(v.x)) or 0) and abs(v.speed or 0) > 0.05 then
     local fx = (v.speed or 0) >= 0 and v.dir.x or -v.dir.x
@@ -285,7 +406,7 @@ local function buildHandcar(mx, my)
   local x, y = c.seg.x1 + (c.seg.x2 - c.seg.x1) * c.t, c.seg.y1 + (c.seg.y2 - c.seg.y1) * c.t
   table.insert(R.vehicles, { kind = "handcar", label = "Handcar", x = x, y = y, dir = { x = c.dx, y = c.dy },
     speed = 0, seatY = 6, rideable = true, dead = false, pumpFlash = 0 })
-  R.say("Handcar placed - press V to board, tap D to pump the lever")
+  R.say("Handcar placed - press E to board, tap D to pump the lever")
   return true
 end
 local function tickHandcar(v)
@@ -309,7 +430,7 @@ local function buildLoco(mx, my)
     speed = 0, seatY = 10, rideable = true, dead = false,
     firebox = { x1 = floor(x) - 2, y1 = floor(y) - 9, x2 = floor(x) - 1, y2 = floor(y) - 8 },
     padX = floor(x) + 4, padY = floor(y) - 12, trail = {}, wagons = {}, autoRoute = false, dwell = 0 })
-  R.say("Locomotive placed - light the coal firebox with the torch or wire the roof stud to a live grid, then press V")
+  R.say("Locomotive placed - light the coal firebox with the torch or wire the roof stud to a live grid, then press E")
   return true
 end
 local function buildWagon(mx, my)
@@ -396,7 +517,7 @@ local function toggleAutoRoute(v)
 end
 local function tickLoco(v)
   v.lit = fireboxLit(v)
-  v.gridPower = poweredNear(v.padX, v.padY, 1)
+  v.gridPower = poweredCached(v, v.padX, v.padY, 1)
   local powered = v.lit or v.gridPower
   local accel = 0
   if R.ride == v then
@@ -424,7 +545,7 @@ local function drawLoco(v)
   graphics.fillCircle(x + 8, y - 17, 2, 2, pw and 90 or 90, pw and 255 or 60, pw and 90 or 60, 255)
 end
 local function drawWagon(v)
-  local x, y = drawWheeled(v, { 90, 60, 35 }, 14, 7, 3)
+  local x, y = drawWheeled(v, { 90, 60, 35 }, 17, 9, 4)
   local n = 0; for _ in pairs(v.cargo or {}) do n = n + 1 end
   if n > 0 then graphics.fillRect(x - 3, y - 11, 6, 3, 200, 170, 90, 255) end
 end
@@ -459,7 +580,7 @@ local function buildLift(mx, my)
 end
 local ELEV_MAXSPD, ELEV_FALL = 2.0, 3.0
 local function tickLift(v)
-  local powered = poweredNear(v.padX, v.padY, 1)
+  local powered = poweredCached(v, v.padX, v.padY, 1)
   v.gridPower = powered
   if v.target then
     local dy = v.target - v.y
@@ -540,7 +661,7 @@ local function mineDrill(v, sign)
 end
 local function tickDrill(v)
   v.lit = fireboxLit(v)
-  v.gridPower = poweredNear(v.padX, v.padY, 1)
+  v.gridPower = poweredCached(v, v.padX, v.padY, 1)
   local powered = v.lit or v.gridPower
   if R.ride == v and powered then
     if R.keys.d then mineDrill(v, 1) end
@@ -563,10 +684,168 @@ local function drawDrill(v)
   graphics.fillRect(x - 4, y - 8, 2, 3, v.lit and 255 or 100, v.lit and 140 or 60, v.lit and 40 or 40, 255)
 end
 
+-- ================================================================ FREE-ROAMING VEHICLES (no rail needed).
+-- All three ride advanceOnGround above. Sized in player-heights: the player is ~12px, and the existing
+-- minecart is only ~9px tall (smaller than the rider), so these are deliberately larger -- a bike you can
+-- visibly sit astride, a dozer and hauler that read as heavy machinery.
+local function dropOnGround(kind, label, mx, my, cfg)
+  local wx = mx + R.cam.x
+  local gy = groundY(wx, my + R.cam.y)
+  local v = { kind = kind, label = label, x = wx, y = gy, dir = { x = 1, y = 0 }, face = 1,
+    speed = 0, vy = 0, rideable = true, dead = false, hp = 100 }
+  for k, val in pairs(cfg) do v[k] = val end
+  table.insert(R.vehicles, v)
+  return v
+end
+
+-- Fuel: the powered ground machines burn real COAL out of your bag while you actually drive them, so a
+-- vehicle has a running cost instead of being a free permanent upgrade. Deliberately NOT a refuel
+-- minigame -- no tank to fill, no UI, it just consumes from inventory, because a vehicle that strands you
+-- is worse than one that never needs fuel. Out of coal it simply stops pulling and coasts; it is never
+-- destroyed, and the Dirt bike burns nothing at all so you always have a way home.
+-- ponytail: flat burn rate, ignores load and grade. Scale it by cargo/slope only if that reads as too flat.
+local FUEL_TICKS = 600            -- ~16s of real driving per coal at the measured ~36fps
+local function engineRunning(v)
+  if not v.usesFuel then return true end
+  v.fuel = (v.fuel or 0) - 1
+  if v.fuel > 0 then return true end
+  if R.inv("COAL") > 0 then
+    R.inventory.COAL = R.inv("COAL") - 1; R.rebuildHotbar()
+    v.fuel = FUEL_TICKS
+    return true
+  end
+  v.fuel = 0
+  if R.ride == v and (R.frame % 90 == 0) then R.hint = (v.label or "The engine") .. " is out of coal" end
+  return false
+end
+
+-- DIRT BIKE: light, fast, climbs well. No fuel - it's an early traversal unlock, not a tech gate.
+local function buildBike(mx, my)
+  dropOnGround("bike", "Dirt bike", mx, my, { seatY = 9, bodyW = 16, bodyH = 11, climb = 6,
+    maxSpeed = 3.4, friction = 0.97 })
+  R.say("Dirt bike dropped - press E to get on, D/A to ride, S to brake")
+  return true
+end
+local function tickBike(v)
+  local accel = 0
+  if R.ride == v then
+    if R.keys.d then accel = 0.16 end
+    if R.keys.a then accel = accel - 0.16 end
+    if R.keys.s then v.speed = (v.speed or 0) * 0.80 end
+  end
+  if not advanceOnGround(v, accel) then derailCrash(v, "was wrecked") end
+end
+
+-- BULLDOZER: terrain-altering. The blade really deletes particles it pushes into, using the same
+-- pick-tier/hardness rules as the drill train, and credits the material.
+local DOZER_POWER = 3
+local function dozerBlade(v, sign)
+  if (R.frame - (v.lastBite or -99)) < 4 then return end
+  v.lastBite = R.frame
+  local aheadX = floor(v.x + sign * (v.bladeReach or 9))
+  for yy = -(v.bladeH or v.bodyH or 16) + 2, 0 do
+    local wy = floor(v.y) + yy
+    local p = sim.partID(aheadX - R.cam.x, wy - R.cam.y)
+    if p then
+      local nm = R.nameOf(sim.partProperty(p, "type")); local tier = R.MINEABLE[nm]
+      if tier and tier <= DOZER_POWER + 1 then
+        local need = math.max(1, R.HARD[nm] or 3)
+        local hits = (R.blockHits[p] or 0) + 1
+        if hits >= need then R.blockHits[p] = nil; sim.partKill(p); R.give((nm == "BCOL") and "COAL" or nm, 1)
+        else R.blockHits[p] = hits end
+      end
+    end
+  end
+  pcall(R.crumble, aheadX - R.cam.x, floor(v.y) - R.cam.y, 5)
+end
+local function buildDozer(mx, my)
+  dropOnGround("dozer", "Bulldozer", mx, my, { seatY = 13, bodyW = 26, bodyH = 16, climb = 6,
+    maxSpeed = 1.5, friction = 0.94, usesFuel = true })
+  R.say("Bulldozer dropped - E to board, D/A to drive; the blade carves whatever it can chew through")
+  return true
+end
+local function tickDozer(v)
+  local accel = 0
+  if R.ride == v then
+    local sign = R.keys.d and 1 or (R.keys.a and -1 or 0)
+    if sign ~= 0 and engineRunning(v) then
+      accel = 0.10 * sign; dozerBlade(v, sign); v.cutting = R.frame
+    end
+    if R.keys.s then v.speed = (v.speed or 0) * 0.75 end
+  end
+  if not advanceOnGround(v, accel) then derailCrash(v, "was wrecked") end
+end
+
+-- HAULER: heavy loading. Reuses the cargo wagon's v.cargo table and its left-click-to-load and
+-- dump-into-a-Storage-Crate behaviour; weight genuinely slows it down.
+local HAULER_CAP = 400
+local function buildHauler(mx, my)
+  dropOnGround("hauler", "Hauler", mx, my, { seatY = 15, bodyW = 30, bodyH = 18, climb = 4,
+    maxSpeed = 2.0, friction = 0.95, cargo = {}, usesFuel = true })
+  R.say("Hauler dropped - E to board; left-click it holding a material to load (up to " .. HAULER_CAP .. ")")
+  return true
+end
+local function cargoCount(v) local n = 0; for _, c in pairs(v.cargo or {}) do n = n + c end; return n end
+local function tickHauler(v)
+  local accel = 0
+  v.maxSpeed = math.max(0.8, 2.0 - cargoCount(v) * 0.003)   -- a full bed really is slower
+  if R.ride == v then
+    local sign = R.keys.d and 1 or (R.keys.a and -1 or 0)
+    if sign ~= 0 and engineRunning(v) then accel = 0.09 * sign end
+    if R.keys.s then v.speed = (v.speed or 0) * 0.78 end
+  end
+  if not advanceOnGround(v, accel) then derailCrash(v, "was wrecked") end
+end
+
+-- PROSPECTOR: free-roaming miner. Deliberately not a new system -- it is the dozer's config with a
+-- narrower, deeper bite, and it reuses tickDozer verbatim. The dozer already carves terrain; the only
+-- real difference a miner needs is a bore-shaped blade instead of a plough-shaped one.
+local function buildMiner(mx, my)
+  dropOnGround("miner", "Prospector", mx, my, { seatY = 11, bodyW = 20, bodyH = 13, climb = 5,
+    maxSpeed = 1.8, friction = 0.95, bladeReach = 7, bladeH = 8, usesFuel = true })
+  R.say("Prospector dropped - E to board, D/A to bore. Narrower cut than the dozer, but it drives anywhere")
+  return true
+end
+
+local function drawBike(v)
+  local x, y = drawWheeled(v, { 190, 60, 50 }, 17, 7, 5)
+  local f = v.face or 1
+  graphics.drawLine(x - f * 4, y - 9, x + f * 5, y - 6, 210, 210, 220, 255)   -- frame / handlebars
+end
+local function drawDozer(v)
+  local x, y = drawWheeled(v, { 220, 175, 45 }, 26, 10, 5)
+  local f = v.face or 1
+  local cutting = v.cutting and (R.frame - v.cutting) < 6
+  graphics.fillRect(x + f * 11, y - 13, 3, 13, 150, 150, 160, 255)            -- blade
+  if cutting then
+    graphics.fillRect(x + f * 13, y - 13, 2, 13, 255, 230, 150, 220)          -- blade edge lights up
+    for i = 1, 4 do                                                          -- debris kicked off the cut
+      graphics.fillRect(x + f * (14 + (i * 3) % 7), y - 3 - (i * 3) % 11, 2, 2, 190, 150, 100, 200)
+    end
+  end
+  graphics.fillRect(x - 5, y - 20, 10, 5, 70, 70, 80, 255)                    -- cab
+end
+local function drawMiner(v)
+  local x, y = drawWheeled(v, { 150, 140, 90 }, 20, 9, 5)
+  local f = v.face or 1
+  graphics.fillRect(x + f * 8, y - 11, 4, 6, 170, 170, 180, 255)              -- bore head
+  graphics.fillRect(x - 4, y - 16, 8, 4, 70, 70, 80, 255)                     -- cab
+end
+local function drawHauler(v)
+  local x, y = drawWheeled(v, { 90, 110, 160 }, 30, 11, 5)
+  graphics.drawRect(x - 13, y - 23, 26, 7, 60, 70, 100, 255)                  -- cargo bed
+  local load = cargoCount(v)
+  if load > 0 then
+    graphics.fillRect(x - 12, y - 22, math.max(1, math.min(24, floor(load / 16))), 5, 150, 120, 80, 255)
+  end
+end
+
 -- ================================================================ mount/interact + gated recipes
-local DRAW = { minecart = drawMinecart, handcar = function(v) drawWheeled(v, { 130, 100, 60 }, 10, 5, 3) end,
-  loco = drawLoco, wagon = drawWagon, lift = drawLift, drill = drawDrill }
-local TICK = { minecart = tickMinecart, handcar = tickHandcar, loco = tickLoco, lift = tickLift, drill = tickDrill }
+local DRAW = { minecart = drawMinecart, handcar = function(v) drawWheeled(v, { 130, 100, 60 }, 14, 7, 4) end,
+  loco = drawLoco, wagon = drawWagon, lift = drawLift, drill = drawDrill,
+  bike = drawBike, dozer = drawDozer, hauler = drawHauler, miner = drawMiner }
+local TICK = { minecart = tickMinecart, handcar = tickHandcar, loco = tickLoco, lift = tickLift, drill = tickDrill,
+  bike = tickBike, dozer = tickDozer, hauler = tickHauler, miner = tickDozer }
 
 hook(R.hooks.tick, function()
   for i = #R.vehicles, 1, -1 do
@@ -590,7 +869,36 @@ hook(R.hooks.draw, function()
   end
 end)
 
-local NAMEOF = { minecart = "Minecart", handcar = "Handcar", loco = "Locomotive", wagon = "Cargo wagon", lift = "Mine lift", drill = "Drill train" }
+local NAMEOF = { minecart = "Minecart", handcar = "Handcar", loco = "Locomotive", wagon = "Cargo wagon", lift = "Mine lift", drill = "Drill train",
+  bike = "Dirt bike", dozer = "Bulldozer", hauler = "Hauler", miner = "Prospector" }
+local BOARD_R = 26                          -- boarding range, shared by the prompt and the E key
+
+-- Lookup for ui.lua's hover tooltip: world point -> what vehicle is there and how it's doing.
+-- @ux owns the tooltip dispatch, this lane owns the vehicle data, so the split is a plain read-only
+-- query. Returns nil when nothing is under the point.
+function R.vehicleAt(wx, wy)
+  for _, v in ipairs(R.vehicles) do
+    if not v.dead then
+      local hw = floor((v.bodyW or 14) / 2) + 3
+      local hh = (v.bodyH or 12) + 4
+      if abs(wx - v.x) <= hw and wy <= v.y + 4 and wy >= v.y - hh then
+        local info = { name = v.label or NAMEOF[v.kind] or v.kind, kind = v.kind,
+                       rideable = v.rideable and true or false, ridden = (R.ride == v) }
+        if v.hp and v.hp < 100 then info.damage = math.max(0, 100 - v.hp) end
+        if v.cargo then
+          local n = 0; for _, c in pairs(v.cargo) do n = n + c end
+          info.cargo = n
+        end
+        if v.firebox then info.lit = fireboxLit(v) end
+        if v.padX then info.powered = v.gridPower == true end
+        if v.dir and v.kind ~= "bike" and v.kind ~= "dozer" and v.kind ~= "hauler" and v.kind ~= "miner" then
+          info.onRail = nearestRail(v.x, v.y, nil, nil, 4) ~= nil
+        end
+        return info
+      end
+    end
+  end
+end
 hook(R.hooks.drawHUD, function()
   local nearBoard
   for _, v in ipairs(R.vehicles) do
@@ -602,21 +910,32 @@ hook(R.hooks.drawHUD, function()
         if y > 4 then graphics.drawText(x - 2, y, NAMEOF[v.kind] or v.kind, 255, 230, 150, 220) end
         if v.kind == "loco" and v.autoRoute then graphics.drawText(x - 2, y - 10, "AUTO", 140, 220, 255, 220) end
       end
-      if v.rideable and not v.dead and not R.ride and d2 < 26 * 26 then nearBoard = v end
+      if v.rideable and not v.dead and not R.ride and d2 < BOARD_R * BOARD_R then nearBoard = v end
     end
   end
   if nearBoard then
-    R.hint = "[V] board " .. (nearBoard.label or NAMEOF[nearBoard.kind] or "vehicle") .. "   (S to climb off)"
+    -- Proximity highlight + a prompt that names the actual keys. PhoenixFire808 built a bike and could not work
+    -- out how to get on it: "it wasn't clear how to get in it or use it or anything."
+    local bx, by = floor(nearBoard.x - R.cam.x), floor(nearBoard.y - R.cam.y)
+    local hw = floor((nearBoard.bodyW or 14) / 2) + 3
+    local hh = (nearBoard.bodyH or 12) + 4
+    local pulse = 120 + floor(80 * math.abs(math.sin((R.frame or 0) * 0.08)))
+    graphics.drawRect(bx - hw, by - hh, hw * 2, hh + 3, 255, 220, 120, pulse)
+    R.hint = "[E] board " .. (nearBoard.label or NAMEOF[nearBoard.kind] or "vehicle") .. "    D/A drive   S brake   E to get off"
   end
 end)
 
 hook(R.hooks.key, function(k)
-  -- Only eat V when actually boarding/dismounting; otherwise core uses V for brush shape (Tab/V).
-  if k == "v" then
+  -- E boards. It is also the bag key, so only consume it when a vehicle is actually in range and no
+  -- panel is open -- otherwise fall through and ui.lua's bag toggle gets it as normal. Order matters:
+  -- runHooks short-circuits on the first truthy return and vehicles loads before ui, so returning true
+  -- here unconditionally would make the bag impossible to close.
+  if k == "e" then
+    if R.invOpen or R.menuOpen or R.uiPanelOpen or R.cratePanel or R.tptMenus then return end
     if R.ride and R.ride._vehTag then R.dismount(); return true end
-    local v = nearestVehicle(R.P.x, R.P.y, 26)
+    local v = nearestVehicle(R.P.x, R.P.y, BOARD_R)
     if v then v._vehTag = true; R.mount(v); return true end
-    return false
+    return                                   -- nothing to board: let the bag have it
   end
   if k == "p" and R.ride and R.ride.kind == "loco" then toggleAutoRoute(R.ride); return true end
   if k == "d" and R.ride and R.ride.kind == "handcar" then R.ride.speed = (R.ride.speed or 0) + 0.85; return true end
@@ -636,13 +955,17 @@ hook(R.hooks.mousedown, function(x, y, button)
         if v.btnTop and abs(wx - v.btnTop.x) < 6 and abs(wy - v.btnTop.y) < 5 then v.target = v.topY; return true end
         if v.btnBot and abs(wx - v.btnBot.x) < 6 and abs(wy - v.btnBot.y) < 5 then v.target = v.botY; return true end
       end
-      if v.kind == "wagon" and not v.dead and abs(wx - v.x) < 10 and abs(wy - v.y) < 8 then
+      if (v.kind == "wagon" or v.kind == "hauler") and not v.dead
+         and abs(wx - v.x) < (v.kind == "hauler" and 16 or 10) and abs(wy - v.y) < (v.kind == "hauler" and 12 or 8) then
         local sel = R.hotbar and R.hotbar[R.sel]
         if sel and not tostring(sel):find("^tool:") and not R.ITEMS[sel] and R.inv(sel) > 0 then
-          local n = math.min(20, R.inv(sel))
+          local cap = (v.kind == "hauler") and HAULER_CAP or 20
+          local held = 0; for _, c in pairs(v.cargo or {}) do held = held + c end
+          local n = math.min(cap - held, R.inv(sel))
+          if n <= 0 then R.hint = (v.label or "It") .. " is full"; return true end
           v.cargo[sel] = (v.cargo[sel] or 0) + n
           R.inventory[sel] = R.inv(sel) - n
-          R.rebuildHotbar(); R.say("Loaded " .. n .. " " .. nice(sel) .. " onto the wagon")
+          R.rebuildHotbar(); R.say("Loaded " .. n .. " " .. nice(sel) .. " onto the " .. string.lower(v.label or "wagon"))
           return true
         end
       end
@@ -653,37 +976,52 @@ hook(R.hooks.mouseup, function(x, y, button) if button == 3 then R.railAnchor = 
 
 -- ================================================================ items + recipes + place dispatch
 R.ITEMS.RAILKIT = { col = { 255, 240, 96 }, desc = "Rail kit: select it, hold LEFT mouse and drag along flat ground, a slope, or straight up to lay real track (METL sleepers + a bright rail line). Snaps to horizontal, 45-degree slopes and vertical shafts. Craft at a workbench; every vehicle below rides this." }
-R.ITEMS.MINECARTKIT = { col = { 120, 70, 40 }, desc = "Minecart: place it directly on laid track. Press V to climb aboard - D accelerates, A slows/reverses, S brakes (holding S also climbs you back out). Gravity does the rest on slopes; run off the end of the track and it derails." }
-R.ITEMS.HANDCARKIT = { col = { 130, 100, 60 }, desc = "Handcar: no power needed. Place on track, press V to board, then tap D to pump the lever - each fresh tap gives it a push. Coasts and obeys gravity like any other cart." }
-R.ITEMS.LOCOKIT = { col = { 40, 40, 45 }, desc = "Steam locomotive: place on track. Needs a lit coal firebox (torch it, same trick as the furnace) or a live grid connection at the roof stud to move under power. Board with V - D/A drive it, P toggles a two-stop auto-route." }
+R.ITEMS.MINECARTKIT = { col = { 120, 70, 40 }, desc = "Minecart: place it directly on laid track. Press E to climb aboard - D accelerates, A slows/reverses, S brakes (holding S also climbs you back out). Gravity does the rest on slopes; run off the end of the track and it derails." }
+R.ITEMS.HANDCARKIT = { col = { 130, 100, 60 }, desc = "Handcar: no power needed. Place on track, press E to board, then tap D to pump the lever - each fresh tap gives it a push. Coasts and obeys gravity like any other cart." }
+R.ITEMS.LOCOKIT = { col = { 40, 40, 45 }, desc = "Steam locomotive: place on track. Needs a lit coal firebox (torch it, same trick as the furnace) or a live grid connection at the roof stud to move under power. Board with E - D/A drive it, P toggles a two-stop auto-route." }
 R.ITEMS.WAGONKIT = { col = { 90, 60, 35 }, desc = "Cargo wagon: place on track near a locomotive to auto-couple (up to 3 per train). Left-click it while holding a material to load up to 20; it dumps its hold into any Storage Crate it stops beside." }
 R.ITEMS.TRAINSTOPKIT = { col = { 200, 170, 90 }, desc = "Train stop: place on track. A locomotive with auto-route (P) on will stop here, transfer cargo, then head for the next stop. Needs at least two stops on the line." }
 R.ITEMS.LIFTKIT = { col = { 60, 65, 75 }, desc = "Mine lift: place it on a VERTICAL rail shaft to drop in a powered cage plus call buttons at both ends. Needs a live grid spark at its stud to climb - lose power and it free-falls, so keep it wired." }
 R.ITEMS.DRILLTRAINKIT = { col = { 60, 60, 68 }, desc = "Drill train: place it against a rock wall. Needs a lit firebox or grid power; hold D/A to bore through anything your pick tier allows, crediting every block mined, and it lays its own track behind it as it goes." }
 
+R.ITEMS.BIKEKIT = { col = { 190, 60, 50 }, desc = "Dirt bike: no rail, no fuel - drop it on open ground and ride. Press E to get on, D/A to ride, S to brake. Light and quick, climbs steep ground other vehicles can't, but a bad drop hurts you and the bike." }
+R.ITEMS.DOZERKIT = { col = { 220, 175, 45 }, desc = "Bulldozer: free-roaming earthmover. The blade really carves through anything your pick tier allows and credits every block, so you can cut roads, level ground and open a hillside without laying track. Heavy, slow, poor climber." }
+R.ITEMS.HAULERKIT = { col = { 90, 110, 160 }, desc = "Hauler: free-roaming heavy transport with a big cargo bed. Left-click it while holding a material to load it (far more than you can carry), and it dumps into any Storage Crate it stops beside. The heavier it gets, the slower it goes." }
+
+R.ITEMS.MINERKIT = { col = { 150, 140, 90 }, desc = "Prospector: free-roaming miner. Drives anywhere the ground allows and bores a narrow shaft ahead of it, crediting every block it can chew through. Smaller cut than the Bulldozer, but it climbs better and fits where a dozer will not." }
+
 local function need(...) local t = {}; local a = { ... }; for i2 = 1, #a, 2 do t[a[i2]] = (t[a[i2]] or 0) + a[i2 + 1] end; return t end
 local BASE_RECIPES = {
-  { out = "RAILKIT", n = 10, need = need("METL", 2, "WOOD", 1), st = "workbench", txt = "Rail kit (10)", desc = R.ITEMS.RAILKIT.desc },
-  { out = "MINECARTKIT", n = 1, need = need("WOOD", 6, "METL", 10), st = "workbench", txt = "Minecart", desc = R.ITEMS.MINECARTKIT.desc },
-  { out = "HANDCARKIT", n = 1, need = need("WOOD", 10, "METL", 4), st = "workbench", txt = "Handcar", desc = R.ITEMS.HANDCARKIT.desc },
-  { out = "TRAINSTOPKIT", n = 1, need = need("WOOD", 8, "METL", 4), st = "workbench", txt = "Train stop", desc = R.ITEMS.TRAINSTOPKIT.desc },
-  { out = "WAGONKIT", n = 1, need = need("STEL", 4, "METL", 6, "WOOD", 4), st = "anvil", txt = "Cargo wagon", desc = R.ITEMS.WAGONKIT.desc },
+  { out = "RAILKIT", n = 10, need = need("METL", 2, "WOOD", 1), st = "workbench", txt = "Rail kit (10)", desc = R.ITEMS.RAILKIT.desc , _tag = "vehicles" },
+  { out = "MINECARTKIT", n = 1, need = need("WOOD", 6, "METL", 10), st = "workbench", txt = "Minecart", desc = R.ITEMS.MINECARTKIT.desc , _tag = "vehicles" },
+  { out = "HANDCARKIT", n = 1, need = need("WOOD", 10, "METL", 4), st = "workbench", txt = "Handcar", desc = R.ITEMS.HANDCARKIT.desc , _tag = "vehicles" },
+  { out = "TRAINSTOPKIT", n = 1, need = need("WOOD", 8, "METL", 4), st = "workbench", txt = "Train stop", desc = R.ITEMS.TRAINSTOPKIT.desc , _tag = "vehicles" },
+  { out = "WAGONKIT", n = 1, need = need("STEL", 4, "METL", 6, "WOOD", 4), st = "anvil", txt = "Cargo wagon", desc = R.ITEMS.WAGONKIT.desc , _tag = "vehicles" },
+  { out = "BIKEKIT", n = 1, need = need("METL", 8, "WOOD", 4), st = "workbench", txt = "Dirt bike", desc = R.ITEMS.BIKEKIT.desc , _tag = "vehicles" },
 }
 local GATED_RECIPES = {
-  { out = "LOCOKIT", n = 1, need = need("STEL", 15, "METL", 10, "COAL", 5, "CU", 4), st = "anvil", txt = "Locomotive", desc = R.ITEMS.LOCOKIT.desc },
-  { out = "LIFTKIT", n = 1, need = need("STEL", 10, "METL", 8, "CU", 4), st = "anvil", txt = "Mine lift", desc = R.ITEMS.LIFTKIT.desc },
-  { out = "DRILLTRAINKIT", n = 1, need = need("STEL", 18, "METL", 10, "CU", 6), st = "anvil", txt = "Drill train", desc = R.ITEMS.DRILLTRAINKIT.desc },
+  { out = "LOCOKIT", n = 1, need = need("STEL", 15, "METL", 10, "COAL", 5, "CU", 4), st = "anvil", txt = "Locomotive", desc = R.ITEMS.LOCOKIT.desc , _tag = "vehicles" },
+  { out = "LIFTKIT", n = 1, need = need("STEL", 10, "METL", 8, "CU", 4), st = "anvil", txt = "Mine lift", desc = R.ITEMS.LIFTKIT.desc , _tag = "vehicles" },
+  { out = "DRILLTRAINKIT", n = 1, need = need("STEL", 18, "METL", 10, "CU", 6), st = "anvil", txt = "Drill train", desc = R.ITEMS.DRILLTRAINKIT.desc , _tag = "vehicles" },
+  { out = "DOZERKIT", n = 1, need = need("STEL", 14, "METL", 12, "CU", 4), st = "anvil", txt = "Bulldozer", desc = R.ITEMS.DOZERKIT.desc , _tag = "vehicles" },
+  { out = "HAULERKIT", n = 1, need = need("STEL", 12, "METL", 14, "WOOD", 8), st = "anvil", txt = "Hauler", desc = R.ITEMS.HAULERKIT.desc , _tag = "vehicles" },
+  { out = "MINERKIT", n = 1, need = need("STEL", 10, "METL", 12, "CU", 3), st = "anvil", txt = "Prospector", desc = R.ITEMS.MINERKIT.desc , _tag = "vehicles" },
 }
 local function alreadyIn(out) for _, rc in ipairs(R.RECIPES) do if rc.out == out then return true end end; return false end
 for _, rc in ipairs(BASE_RECIPES) do if not alreadyIn(rc.out) then table.insert(R.RECIPES, rc) end end
 function R.vehiclesInstallGated()
   for _, rc in ipairs(GATED_RECIPES) do if not alreadyIn(rc.out) then table.insert(R.RECIPES, rc) end end
 end
-if (not R.tech) or R.tech.unlock10 then R.vehiclesTechOK = true; R.vehiclesInstallGated() end
+-- `or R.vehiclesTechOK` matters: that flag persists on R across a plugin reload, so once tech has ever
+-- unlocked (including via the sandbox hook) this condition is false forever afterwards, and any gated
+-- recipe ADDED LATER never installs. That stranded the Prospector. alreadyIn() inside installGated
+-- already guards duplicates, so re-running it costs nothing.
+if (not R.tech) or R.tech.unlock10 or R.vehiclesTechOK then R.vehiclesTechOK = true; R.vehiclesInstallGated() end
 
 local BUILDERS = {
   MINECARTKIT = buildMinecart, HANDCARKIT = buildHandcar, LOCOKIT = buildLoco, WAGONKIT = buildWagon,
   TRAINSTOPKIT = buildStop, LIFTKIT = buildLift, DRILLTRAINKIT = buildDrillTrain,
+  BIKEKIT = buildBike, DOZERKIT = buildDozer, HAULERKIT = buildHauler, MINERKIT = buildMiner,
 }
 hook(R.hooks.place, function(el, mx, my, fine)
   if el == "RAILKIT" then return placeRail(mx, my) end
@@ -700,9 +1038,10 @@ end)
 
 -- ================================================================ lifecycle
 hook(R.hooks.newworld, function() R.vehicles = {}; R.railSegs = {}; R.trainStops = {}; R.railAnchor = nil; R.railSegRef = nil end)
+-- Sandbox UNLOCKS, it does not stock. Pre-granting seven vehicle kits was part of ~120 item types all
+-- showing 999, which made the bag unreadable and made the guide's grant-an-item flow pointless. The
+-- intended route to a vehicle in sandbox is now the guide's Vehicles category -> select -> R.grantItem
+-- puts it straight on the hotbar. So this only flips the tech gate and installs the gated recipes.
 hook(R.hooks.sandbox, function()
-  R.inventory.RAILKIT = math.max(R.inventory.RAILKIT or 0, 999)
-  R.inventory.MINECARTKIT = math.max(R.inventory.MINECARTKIT or 0, 5)
-  R.inventory.LIFTKIT = math.max(R.inventory.LIFTKIT or 0, 2)
   R.vehiclesTechOK = true; R.vehiclesInstallGated(); R.rebuildHotbar()
 end)

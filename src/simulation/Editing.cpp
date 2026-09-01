@@ -81,6 +81,13 @@ void Simulation::Restore(const Snapshot &snap)
 	rng.state(snap.RngState);
 	parts.active = NPART;
 	RecalcFreeParticles(false);
+	// Active-cell culling: undo/redo/history rewind rewrites the whole particle array
+	// directly, bypassing create_part/kill_part/part_change_type (the only places that
+	// normally record a wake). None of the chunk-awake bookkeeping above is trustworthy
+	// against the just-restored content, so force every chunk awake -- safe default,
+	// costs at most one extra settle-and-resleep cycle, never a missed wake.
+	memset(chunkAwake, 1, sizeof(chunkAwake));
+	memset(chunkAwakeNext, 1, sizeof(chunkAwakeNext));
 }
 
 void Simulation::clear_area(int area_x, int area_y, int area_w, int area_h)

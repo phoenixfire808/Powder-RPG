@@ -514,13 +514,29 @@ void Graphics::RenderZoom()
 		drawHandle(zoomWindowPosition + Vec2{ boxSide, 0 });
 		drawHandle(zoomWindowPosition + Vec2{ 0, boxSide });
 		drawHandle(zoomWindowPosition + Vec2{ boxSide, boxSide });
+		// zoomWindowPosition, ZFACTOR and zoomScopeSize are mutated independently
+		// (ZFACTOR is persisted across restarts and clamped only to [1,200] with
+		// no relation to zoomScopeSize; zoomWindowPosition is persisted and
+		// clamped only to the screen edges, not to "edge minus box size"; a
+		// stale combination of the three -- e.g. a large ZFACTOR saved from a
+		// previous session paired with the freshly-reset default zoomScopeSize
+		// -- makes boxSide (zoomScopeSize * ZFACTOR) far exceed what
+		// zoomWindowPosition has room for). This used to write straight into
+		// `video` with no bounds check at all, so that combination walked the
+		// index millions of pixels past the end of the buffer. Route through
+		// the same clipRect-checked accessors the border/handles above already
+		// use instead of trusting the callers to keep the invariant.
 		for (j=0; j<zoomScopeSize; j++)
 			for (i=0; i<zoomScopeSize; i++)
 			{
-				pix = video[{ i + zoomScopePosition.X, j + zoomScopePosition.Y }];
+				ui::Point srcPos = { i + zoomScopePosition.X, j + zoomScopePosition.Y };
+				if (!clipRect.Contains(srcPos))
+					continue;
+				pix = video[srcPos];
+				RGB colour = RGB::Unpack(pix);
 				for (y=0; y<ZFACTOR-1; y++)
 					for (x=0; x<ZFACTOR-1; x++)
-						video[{ i * ZFACTOR + x + zoomWindowPosition.X, j * ZFACTOR + y + zoomWindowPosition.Y }] = pix;
+						DrawPixel({ i * ZFACTOR + x + zoomWindowPosition.X, j * ZFACTOR + y + zoomWindowPosition.Y }, colour);
 			}
 		// (Scope outline already drawn unconditionally above -- drawing it a
 		// second time here used to double-XOR those pixels back to their

@@ -17,6 +17,7 @@ local G = R.guide or {}
 R.guide = G
 G.search = G.search or ""
 G.searchFocused = G.searchFocused or false
+G.catScroll = G.catScroll or 0
 G.listScroll = G.listScroll or 0
 G.pageScroll = G.pageScroll or 0
 G.back = G.back or {}
@@ -45,18 +46,120 @@ local COL3X = COL2X + COL2W + 4
 local COL3W = GX + GW - 4 - COL3X
 local SBW = 5 -- scrollbar track width
 
--- ================================================================ static mirrors of data other plugins keep local
--- (guide only reads rpg.lua-level shared tables; these lists are hand-copied from the plugin source since
--- items.lua/machines.lua/enemies.lua don't expose them on R - ask in the hub if that changes)
-local WEAPON_CODES = { "MUSKET", "SHOTGUN", "GRENADE", "LIGHTGUN", "TPWAND", "FLAMETH", "WATERGUN", "ACIDGUN", "FREEZERAY", "LASERGUN", "DRILL", "JETPACK" }
-local WEAPON_SET = {}; for _, k in ipairs(WEAPON_CODES) do WEAPON_SET[k] = true end
-local MACHINE_CODES = { "BOILER", "TURBINE", "WIRECOIL", "LAMPKIT", "DOORKIT", "PUMPKIT", "CONVEYOR", "CRATE" }
-local MACHINE_SET = {}; for _, k in ipairs(MACHINE_CODES) do MACHINE_SET[k] = true end
-local MACHINE_KIND = { BOILER = "boiler", TURBINE = "turbine", DOORKIT = "door", PUMPKIT = "pump", CONVEYOR = "conveyor", CRATE = "crate" }
-local STATION_CODES = { "WORKBENCH", "FURNACE", "ANVIL" }
-local STATION_SET = {}; for _, k in ipairs(STATION_CODES) do STATION_SET[k] = true end
+-- ================================================================ live classification of every craftable code
+-- REPLACES the old hand-copied WEAPON_CODES / MACHINE_CODES / STATION_CODES lists (2026-08-31). Those had gone
+-- badly stale: they named 12 weapons and 8 machines while R.ITEMS now holds 121 entries and R.RECIPES 174, so
+-- roughly a hundred craftables all fell through into "Machines" as one flat undifferentiated dump. That is
+-- exactly the reported complaint ("machines and everything needs to get broken down significantly further").
+--
+-- Everything below is DERIVED from live tables and rebuilt whenever the recipe count changes, so kits added by
+-- any plugin - present or future - appear in the right place with no list to maintain here. Signals, strongest
+-- first, all exact except where noted:
+--   R.STATIONS[code:lower()]       -> crafting station                  (exact: core's own station table)
+--   recipe._tag == "terraweapons"  -> terrain-altering weapon           (exact: published by terraweapons.lua)
+--   desc "worn passively"          -> wearable / armor                  (exact: the phrase every passive-gear
+--                                                                        item's own description opens with)
+--   recipe._tag == "items"         -> weapon / gadget                   (exact: published by items.lua)
+--   VEHICLE_SET                    -> vehicle                           (the ONE hand-listed set left: vehicles.lua
+--                                                                        publishes no _tag yet. Hub request posted;
+--                                                                        delete this table once it tags its recipes.)
+--   otherwise, has a recipe        -> placeable machine, bucketed by the station that builds it (exact: rc.st)
+--
+-- Machines are split by build station rather than by guessed function on purpose: rc.st is present on 174/174
+-- recipes and is never inferred, and "what can I build at the bench I have now" is the question a player is
+-- actually asking. A keyword classifier over descriptions was tried first and rejected - nearly every machine's
+-- description contains the word "powered", which collapsed 34 unrelated kits into one bogus "power" bucket.
+local VEHICLE_SET = { BIKEKIT = 1, DOZERKIT = 1, HAULERKIT = 1, MINECARTKIT = 1, HANDCARKIT = 1, LOCOKIT = 1,
+                      WAGONKIT = 1, LIFTKIT = 1, DRILLTRAINKIT = 1, RAILKIT = 1, TRAINSTOPKIT = 1, ELEVATORKIT = 1 }
 local ORE_CODES = { "COAL", "BCOL", "IRON", "CU", "GOLD", "DU", "URAN", "QRTZ", "DMND", "TTAN", "ZIRC", "LEAD" }
 local ORE_SET = {}; for _, k in ipairs(ORE_CODES) do ORE_SET[k] = true end
+local MACH_CAT = { workbench = "m_workbench", furnace = "m_furnace", anvil = "m_anvil",
+                   research = "m_research", advlab = "m_advlab" }
+local function isMachineCat(c)
+  return c == "m_workbench" or c == "m_furnace" or c == "m_anvil"
+      or c == "m_research" or c == "m_advlab" or c == "m_other"
+end
+
+-- ================================================================ live material-section grouping (material browser)
+-- The design contract (knowledge/design-material-progression.md) groups all 195 stock elements by their
+-- real engine menu_section (SC_ELEC, SC_EXPLOSIVE, ...). That field is read live here through
+-- elem.property(id, "MenuSection") -- exactly the same call elemFactsLines() below already makes for
+-- Temperature/Hardness/etc, and the same field demo_create_element.lua itself stamps onto every custom
+-- RPG element (CU/STEL/BSLT/ZIRC/...) via applyBand(), so nothing in this game's material set is missing
+-- one. The numeric ids are the engine's own enum (src/simulation/MenuSection.h, not exposed to Lua by
+-- name) -- a stable 12-row ENUM MAPPING, not a per-material list, so it can never go stale as new
+-- materials land: a material sorts itself into the right bucket the moment its element exists, with
+-- nothing to maintain here.
+local SC_SECTION = {
+  [1]  = { id = "mat_elec",      label = "Mat: Electronics" },
+  [2]  = { id = "mat_powered",   label = "Mat: Powered" },
+  [3]  = { id = "mat_sensor",    label = "Mat: Sensors" },
+  [4]  = { id = "mat_force",     label = "Mat: Force & Motion" },
+  [5]  = { id = "mat_explosive", label = "Mat: Explosives" },
+  [6]  = { id = "mat_gas",       label = "Mat: Gases" },
+  [7]  = { id = "mat_liquid",    label = "Mat: Liquids" },
+  [8]  = { id = "mat_powders",   label = "Mat: Powders" },
+  [9]  = { id = "mat_solids",    label = "Mat: Solids/Metals" },
+  [10] = { id = "mat_nuclear",   label = "Mat: Nuclear/Exotic" },
+  [11] = { id = "mat_special",   label = "Mat: Special" },
+  [12] = { id = "mat_life",      label = "Mat: Life" },
+}
+local MAT_SECTION_CATS = {}
+for _, v in pairs(SC_SECTION) do MAT_SECTION_CATS[v.id] = true end
+local collectMatCodes   -- forward-declared; assigned below in "entry lists per category" - classMap() needs it
+local SECTION_ID_CACHE = {}
+-- One native elem.property call per code, ever (memoised) - a live element's MenuSection never changes
+-- mid-session, so there is no per-frame cost here after the first lookup of each code.
+local function sectionOf(code)
+  local v = SECTION_ID_CACHE[code]
+  if v ~= nil then return v or nil end
+  local tid = R.eid and R.eid(code)
+  local result
+  if tid then
+    local ok, sec = pcall(elem.property, tid, "MenuSection")
+    if ok and sec and SC_SECTION[sec] then result = SC_SECTION[sec].id end
+  end
+  SECTION_ID_CACHE[code] = result or false
+  return result
+end
+local function isHideableCat(c) return isMachineCat(c) or MAT_SECTION_CATS[c] end
+
+-- cached because getEntries() runs from the draw hook every frame; rebuilding it per frame would be a
+-- 121 x 174 scan. Keyed on the recipe count so a plugin registering new recipes invalidates it by itself.
+local CC = nil
+local function classMap()
+  local n = #(R.RECIPES or {})
+  if CC and CC.n == n then return CC end
+  local cat, rec = {}, {}
+  for _, rc in ipairs(R.RECIPES or {}) do if rc.out then rec[rc.out] = rc end end
+  for code, it in pairs(R.ITEMS or {}) do
+    local rc = rec[code]
+    local desc = ((it and it.desc) or ""):lower()
+    local c
+    if R.STATIONS and R.STATIONS[code:lower()] then c = "stations"
+    elseif rc and rc._tag == "terraweapons" then c = "terrain"
+    elseif desc:find("worn passively", 1, true) then c = "wearables"
+    elseif VEHICLE_SET[code] then c = "vehicles"
+    elseif rc and rc._tag == "items" then c = "weapons"
+    elseif rc then c = MACH_CAT[rc.st or ""] or "m_other" end
+    if c then cat[code] = c end
+  end
+  -- raw/mined/refined materials that aren't themselves a craftable/placeable - grouped by the design
+  -- doc's own SC_* menu-section (sectionOf above), falling back to "ores" (the existing progression
+  -- highlight, see ORE_SET) or the flat "materials" catch-all only for codes with no real backing
+  -- element at all (foraged foods, quest-only tokens).
+  for code in pairs(collectMatCodes()) do
+    if not cat[code] then
+      cat[code] = ORE_SET[code] and "ores" or (sectionOf(code) or "materials")
+    end
+  end
+  local cnt = {}
+  for _, c in pairs(cat) do cnt[c] = (cnt[c] or 0) + 1 end
+  CC = { n = n, cat = cat, rec = rec, cnt = cnt }
+  return CC
+end
+local function catOf(code) return classMap().cat[code] end
+local function recipeOf(code) return classMap().rec[code] end
 
 -- enemies.lua's KINDS table is local; mirrored here from its source (2026-08-26). If it drifts, the live
 -- HP/dmg/count still come from R.enemyList() where possible - only the flavour text is static.
@@ -95,29 +198,78 @@ local CONTROLS = {
   view  = { label = "Zoom / detail view", lines = { "Z - open the native TPT zoom: move, click to lock it in place, Z again to close",
             "Inside the zoom window: 1px-precise dig/place, wheel resizes the brush, a palette of your bag sits below it" } },
   world = { label = "World & mining", lines = { "Walk or dig in any direction - the world scrolls endlessly, nothing is pre-built",
-            "T - toggle the smart cursor (auto-targets the nearest diggable block along your aim)" } },
+            "T - toggle the smart cursor (auto-targets the nearest diggable block along your aim)",
+            "Buildings are generated as you explore - see the Structures tab for every one,",
+            "how big it really is next to you, and which of them have working doors" } },
   craft = { label = "Crafting stations", lines = { "by hand -> Workbench -> Furnace (light its coal with the torch) -> Anvil", "Open the bag (E) to see every recipe you can currently afford" } },
   items = { label = "Accessories & chests", lines = { "Chests hidden in caves hold accessories - see the Accessories tab", "X - Magic Mirror teleports you home (once owned)", "G - Grappling Hook (once owned)" } },
   other = { label = "Other keys", lines = { "K save   R respawn   N enemies on/off   M minimap   H HUD", "Esc - menu & controls card   F1 - debug overlay" } },
-  uiext = { label = "UI panels (ui.lua)", lines = { "J - quest log", "C - controls card" } },
+  uiext = { label = "UI panels (ui.lua)", lines = { "J - quest log", "C - controls card",
+            "Y - submit something to PhoenixFire808: drag a region for a machine/plant/cave/etc, or press Enter with no region for a quick bug report or suggestion" } },
   guide = { label = "This guide (L)", lines = { "L or Esc - open / close this database", "Click a category, then an entry, then any highlighted word to jump to it",
             "'< back' undoes a jump; click the search box, then type to filter the list" } },
 }
 local CONTROL_ORDER = { "move", "tools", "blocks", "select", "view", "world", "craft", "items", "other", "uiext", "guide" }
 
+-- Machines are five entries rather than one because a single "Machines" row was hiding ~90 kits behind it.
+-- They read in build order (workbench -> furnace -> anvil -> research -> advanced lab), so the column doubles
+-- as a progression ladder: everything you can build right now is in the rows above the bench you have.
 local CATS = {
+  -- Deliberately CATS[1] (PhoenixFire808, escalating 3x: "super, super important" -> "easily
+  -- submit" -> "EXTREMELY PROMINENT"). Was one bullet buried three clicks deep (Controls ->
+  -- UI panels (ui.lua) -> read the whole card) - now the very first thing anyone sees opening
+  -- the guide at all, category label carries the keybind so even a glance at the list teaches it.
+  { id = "submit", label = "Submit to PhoenixFire808 (Y)" },
+  { id = "progression", label = "Progression" },
   { id = "materials", label = "Materials" },
   { id = "ores", label = "Ores & Depths" },
+  -- Material browser: every raw/refined material bucketed by its real engine menu_section (see
+  -- SC_SECTION/sectionOf above) - the design doc's own categorisation, read live off elem.property so
+  -- new materials/veins any lane adds sort themselves with nothing to update here.
+  { id = "mat_elec", label = "Mat: Electronics" },
+  { id = "mat_powered", label = "Mat: Powered" },
+  { id = "mat_sensor", label = "Mat: Sensors" },
+  { id = "mat_force", label = "Mat: Force & Motion" },
+  { id = "mat_explosive", label = "Mat: Explosives" },
+  { id = "mat_gas", label = "Mat: Gases" },
+  { id = "mat_liquid", label = "Mat: Liquids" },
+  { id = "mat_powders", label = "Mat: Powders" },
+  { id = "mat_solids", label = "Mat: Solids/Metals" },
+  { id = "mat_nuclear", label = "Mat: Nuclear/Exotic" },
+  { id = "mat_special", label = "Mat: Special" },
+  { id = "mat_life", label = "Mat: Life" },
   { id = "tools", label = "Tools" },
   { id = "stations", label = "Stations & Processes" },
-  { id = "machines", label = "Machines" },
+  { id = "m_workbench", label = "Machines: Workbench" },
+  { id = "m_furnace", label = "Machines: Furnace" },
+  { id = "m_anvil", label = "Machines: Anvil" },
+  { id = "m_research", label = "Machines: Research" },
+  { id = "m_advlab", label = "Machines: Adv. Lab" },
+  { id = "m_other", label = "Machines: Other" },
+  { id = "vehicles", label = "Vehicles" },
   { id = "weapons", label = "Weapons & Gadgets" },
+  { id = "terrain", label = "Terrain Weapons" },
+  { id = "wearables", label = "Wearables & Armor" },
   { id = "accessories", label = "Accessories" },
   { id = "creatures", label = "Creatures" },
   { id = "biomes", label = "Biomes" },
+  { id = "structures", label = "Structures" },
   { id = "controls", label = "Controls" },
 }
 local NOSORT = { tools = true, stations = true, creatures = true, biomes = true, controls = true }
+-- A machine tier legitimately empties out when every kit built there is claimed by a more specific category
+-- (the Furnace's only two kits are the Magma Lance and Cryo Former, both terrain weapons; Research builds the
+-- Advanced Lab, two weapons and an armour plate). Showing three dead rows would be noise, so machine tiers are
+-- listed only when they actually hold something. Every other category always has entries, so nothing else is
+-- filtered - which also keeps this off the expensive buildEntries path and on the cached count instead.
+local function visibleCats()
+  local cnt = classMap().cnt
+  local out = {}
+  for _, c in ipairs(CATS) do
+    if (not isHideableCat(c.id)) or (cnt[c.id] or 0) > 0 then out[#out + 1] = c end
+  end
+  return out
+end
 
 -- ================================================================ colours
 local TITLECOL, HEADCOL, LABELCOL, VALCOL, DESCCOL, DIMCOL, LINKCOL =
@@ -157,24 +309,131 @@ local function hitRect(r, x, y) return r and x >= r[1] and x < r[3] and y >= r[2
 -- ================================================================ classify a raw code -> which category it links to
 local function classify(code)
   if R.ACCS and R.ACCS[code] then return "accessories" end
-  if WEAPON_SET[code] then return "weapons" end
-  if MACHINE_SET[code] then return "machines" end
-  if STATION_SET[code] then return "stations" end
-  if ORE_SET[code] then return "ores" end
-  return "materials"
+  local c = catOf(code)   -- live: every craftable bucket AND, now, every SC_*/ores material bucket too
+  if c then return c end
+  return "materials"      -- last resort: a code with no real backing element and no recipe/mine entry
 end
 -- true when (catId, id) is a real inventory-able code R.grantItem can act on (a hotbar block-slot item,
 -- not a tool/accessory/creature/biome/control which don't live in R.inventory)
 local function isTakeable(catId, id)
   if not id then return false end
-  if catId == "materials" or catId == "ores" or catId == "machines" or catId == "weapons" then return true end
+  if catId == "materials" or catId == "ores" or catId == "weapons"
+     or catId == "terrain" or catId == "wearables" or catId == "vehicles" then return true end
+  if MAT_SECTION_CATS[catId] then return true end
+  if isMachineCat(catId) then return true end
   if catId == "stations" and id ~= "hand" then return true end
   return false
 end
 
--- ================================================================ entry lists per category
-local function collectMatCodes()
+-- ================================================================ live acquisition index (2026-09-02, @acq_discover)
+-- PhoenixFire808: "all the elements need to be FOUND and ACQUIRED" - the material browser only ever listed a
+-- material if some OTHER table already referenced its code (R.NAMES/R.MINEABLE/R.HARD/a recipe/a pick/a sword).
+-- Anything nobody had wired up yet - most of the 124 measured-unobtainable stock elements - was invisible
+-- rather than shown as "not yet obtainable", which is dishonest (an empty search result reads as "doesn't
+-- exist", not "exists, nothing gives it to you yet"). allElementCodes() below fixes that at the source: it
+-- asks the live engine what elements actually exist THIS session (0..PT_NUM-1, exactly the same 0..511 scan
+-- rpg.lua's own id() helper already uses to resolve a name to a type id - PT_NUM=512 per
+-- src/simulation/ElementDefs.h), so every real element - stock or RPG-custom - is guaranteed to be findable
+-- and browsable even if nothing anywhere gives it to the player. Never a hand-typed 195-name list.
+local ALL_ELEM_CACHE = nil
+local function allElementCodes()
+  if ALL_ELEM_CACHE then return ALL_ELEM_CACHE end
   local set = {}
+  for tid = 0, 511 do
+    local ok, nm = pcall(elem.property, tid, "Name")
+    if ok and type(nm) == "string" and nm ~= "" then set[nm] = true end
+  end
+  ALL_ELEM_CACHE = set
+  return set
+end
+
+-- The over-count warning in this task's brief: a naive audit counting only R.MINEABLE/recipe-outputs/quest
+-- rewards misses two real acquisition paths that exist ONLY as literal Lua source in other lanes' plugin
+-- files, never on a shared R.* table - a machine/enemy/forage `R.give("CODE", n)` grant, and R.actorMine's
+-- mining-remap ("mine BCOL, receive COAL" - rpg.lua/vehicles.lua both have `(nm == "BCOL") and "COAL" or nm`).
+-- scanAcquisitionSources() closes that gap the same way this project's own check_reachable.py does it on the
+-- Python side (per @gates' 2026-09-02 hub post): read the REAL source text of every plugin R.PLUGINS lists
+-- plus rpg.lua itself, once, and pattern-match the two shapes directly - never a hand-copied duplicate of
+-- what those files grant. Only literal string arguments are found this way (`R.give("WOOD", n)`); a dynamic
+-- grant (`R.give(nm, 1)`) can't be resolved statically and is a stated, honest limitation, not silently
+-- claimed as covered - those codes still surface correctly via R.MINEABLE/R.RECIPES/R.QUESTS instead.
+local function openSourceFile(relPath)
+  local candidates = {
+    "../scripts/lua/" .. relPath, "scripts/lua/" .. relPath,
+    "D:/The-Powder-Toy/scripts/lua/" .. relPath, "D:/powder-toy/scripts/lua/" .. relPath,
+  }
+  for _, p in ipairs(candidates) do local f = io.open(p, "r"); if f then return f end end
+  return nil
+end
+local ACQSRC_CACHE = nil
+local function scanAcquisitionSources()
+  if ACQSRC_CACHE then return ACQSRC_CACHE end
+  local grants, mineRemap = {}, {}
+  local files = { "rpg.lua" }
+  for _, name in ipairs(R.PLUGINS or {}) do
+    if name ~= "guide" then files[#files + 1] = "rpg_plugins/" .. name .. ".lua" end
+  end
+  for _, rel in ipairs(files) do
+    local f = openSourceFile(rel)
+    if f then
+      local text = f:read("*a") or ""; f:close()
+      for code in text:gmatch('[%.%s]give%(%s*"([%u%d_%-]+)"') do
+        grants[code] = grants[code] or {}
+        grants[code][rel] = true
+      end
+      for from, to in text:gmatch('%(nm%s*==%s*"(%u+)"%)%s*and%s*"(%u+)"%s*or%s*nm') do
+        mineRemap[from] = to
+      end
+    end
+  end
+  ACQSRC_CACHE = { grants = grants, mineRemap = mineRemap }
+  return ACQSRC_CACHE
+end
+-- true if any R.QUESTS entry's one-time reward hands out this code - reads the live table directly
+-- (reward keys are already-resolved runtime values, e.g. the ROCK alias resolves to the real BSLT/BRCK
+-- string by the time this reads it), not a text scan.
+local function isQuestReward(id)
+  for _, q in ipairs(R.QUESTS or {}) do if q.reward and q.reward[id] then return true end end
+  return false
+end
+-- Built once, invalidated on the same recipe-count trigger every other cache in this file uses - never
+-- re-derived per frame or per row. Every acquisition fact a material page or an entry-list row needs
+-- (verb summary, plain obtainable/not flag, mine-remap target, which files grant it) lives here.
+local ACQ_CACHE = nil
+local function buildAcquisitionIndex()
+  local n = #(R.RECIPES or {})
+  if ACQ_CACHE and ACQ_CACHE.n == n then return ACQ_CACHE end
+  local src = scanAcquisitionSources()
+  local craftOut = {}
+  for _, rc in ipairs(R.RECIPES or {}) do craftOut[rc.out] = true end
+  local idx = {}
+  for code in pairs(allElementCodes()) do
+    local verbs = {}
+    local remapTo = src.mineRemap[code]
+    if R.MINEABLE[code] then
+      verbs[#verbs + 1] = remapTo and ("mine (yields " .. R.nice(remapTo) .. ")") or "mine"
+    end
+    if craftOut[code] then verbs[#verbs + 1] = "craft" end
+    if R.FOODS and R.FOODS[code] then verbs[#verbs + 1] = "forage/grow" end
+    if isQuestReward(code) then verbs[#verbs + 1] = "quest reward" end
+    if src.grants[code] then verbs[#verbs + 1] = "found/granted" end
+    idx[code] = {
+      verbs = verbs,
+      summary = (#verbs > 0) and table.concat(verbs, ", ") or "not currently obtainable",
+      obtainable = #verbs > 0,
+      remapTo = remapTo,
+      grantFiles = src.grants[code],
+    }
+  end
+  ACQ_CACHE = { n = n, idx = idx }
+  return ACQ_CACHE
+end
+local function acqInfo(id) return buildAcquisitionIndex().idx[id] end
+
+-- ================================================================ entry lists per category
+collectMatCodes = function()
+  local set = {}
+  for k in pairs(allElementCodes()) do set[k] = true end   -- every real element this session, obtainable or not
   for k in pairs(R.NAMES or {}) do set[k] = true end
   for k in pairs(R.MINEABLE or {}) do set[k] = true end
   for k in pairs(R.HARD or {}) do set[k] = true end
@@ -189,18 +448,26 @@ end
 
 local function buildEntries(catId)
   local out = {}
-  if catId == "materials" or catId == "ores" then
+  if catId == "materials" or catId == "ores" or MAT_SECTION_CATS[catId] then
     local set = collectMatCodes()
+    local cm = classMap()
     for k in pairs(set) do
-      local isOre = ORE_SET[k] and true or false
-      if (catId == "ores") == isOre and not STATION_SET[k] and not WEAPON_SET[k] and not MACHINE_SET[k] then
-        if R.eid(k) or R.NAMES[k] then out[#out + 1] = { id = k, label = R.nice(k) } end
+      -- classMap() already resolved every material code to exactly one bucket (its own craftable
+      -- category, "ores", an SC_* section, or the flat "materials" catch-all) - just filter on it.
+      if cm.cat[k] == catId then
+        if R.eid(k) or R.NAMES[k] then
+          local a = acqInfo(k)
+          out[#out + 1] = { id = k, label = R.nice(k), obtainable = a and a.obtainable or false }
+        end
       end
     end
     if catId == "ores" then
       for _, k in ipairs(ORE_CODES) do
         local exists = false; for _, e in ipairs(out) do if e.id == k then exists = true end end
-        if not exists and (R.eid(k) or R.MINEABLE[k]) then out[#out + 1] = { id = k, label = R.nice(k) } end
+        if not exists and (R.eid(k) or R.MINEABLE[k]) then
+          local a = acqInfo(k)
+          out[#out + 1] = { id = k, label = R.nice(k), obtainable = a and a.obtainable or false }
+        end
       end
     end
   elseif catId == "tools" then
@@ -209,41 +476,64 @@ local function buildEntries(catId)
     out[#out + 1] = { id = "TORCH", label = (R.TOOLS.torch and R.TOOLS.torch.name) or "torch" }
     out[#out + 1] = { id = "BUCKET", label = (R.TOOLS.bucket and R.TOOLS.bucket.name) or "bucket" }
   elseif catId == "stations" then
+    -- built from core's own R.STATIONS rather than a copied list, so Research Bench and Advanced Lab
+    -- (added later by other lanes) show up without this file being touched.
     out[#out + 1] = { id = "hand", label = "By hand" }
-    for _, k in ipairs(STATION_CODES) do out[#out + 1] = { id = k, label = R.nice(k) } end
-  elseif catId == "machines" then
-    local seen = {}
-    for _, k in ipairs(MACHINE_CODES) do if R.ITEMS[k] and not seen[k] then out[#out + 1] = { id = k, label = R.nice(k) }; seen[k] = true end end
-    -- MACHINE_CODES above is a small hand-copied list that goes stale every time a
-    -- plugin adds a new craftable kit -- exactly what happened to AIRLINEKIT/
-    -- AIRPUMPKIT/ALGAETANK (real, craftable, just never added to this list). Any
-    -- recipe output with a real R.ITEMS entry (raw materials never get one -- only
-    -- placeable kits/structures do) that isn't already a station/weapon/ore shows up
-    -- here automatically now, from any plugin, present or future.
-    for _, rc in ipairs(R.RECIPES or {}) do
-      local k = rc.out
-      if k and R.ITEMS[k] and not seen[k] and not STATION_SET[k] and not WEAPON_SET[k] and not ORE_SET[k] then
-        out[#out + 1] = { id = k, label = R.nice(k) }; seen[k] = true
-      end
+    local sts = {}
+    for k in pairs(R.STATIONS or {}) do if k ~= "hand" then sts[#sts + 1] = k end end
+    table.sort(sts)
+    for _, k in ipairs(sts) do
+      local code = k:upper()
+      out[#out + 1] = { id = R.ITEMS[code] and code or k, label = R.STATIONS[k] or R.nice(code) }
     end
-  elseif catId == "weapons" then
-    for _, k in ipairs(WEAPON_CODES) do if R.ITEMS[k] then out[#out + 1] = { id = k, label = R.nice(k) } end end
+  elseif isMachineCat(catId) or catId == "weapons" or catId == "terrain"
+      or catId == "wearables" or catId == "vehicles" then
+    -- one shared branch: every craftable category is just "which codes classMap() put in this bucket".
+    for code in pairs(R.ITEMS or {}) do
+      if catOf(code) == catId then out[#out + 1] = { id = code, label = R.nice(code) } end
+    end
   elseif catId == "accessories" then
     for _, k in ipairs(R.ACC_ORDER or {}) do if R.ACCS[k] then out[#out + 1] = { id = k, label = R.ACCS[k].name } end end
   elseif catId == "creatures" then
     for _, k in ipairs(CREATURE_ORDER) do out[#out + 1] = { id = k, label = CREATURES[k].name } end
   elseif catId == "biomes" then
     for _, k in ipairs(BIOME_ORDER) do out[#out + 1] = { id = k, label = BIOMES[k].label } end
+  elseif catId == "structures" then
+    -- Read straight off world.lua's live R.structDefs rather than a copied list here, so this page
+    -- reports what ACTUALLY parsed this session. A structure whose JSON failed to load is missing
+    -- from the list, which is the fastest way to see that from inside the game.
+    for _, cat in ipairs({ "surface", "underground", "deep", "detail" }) do
+      for _, d in ipairs((R.structDefs or {})[cat] or {}) do
+        out[#out + 1] = { id = d.id, label = (d.id:gsub("_", " ")) }
+      end
+    end
   elseif catId == "controls" then
     for _, k in ipairs(CONTROL_ORDER) do out[#out + 1] = { id = k, label = CONTROLS[k].label } end
+  elseif catId == "submit" then
+    out[#out + 1] = { id = "how", label = "How it works" }
+  elseif catId == "progression" then
+    out[#out + 1] = { id = "overview", label = "Your progress" }
   end
   if not NOSORT[catId] then table.sort(out, function(a, b) return a.label < b.label end) end
   return out
 end
 
+-- Cached the same way classMap() is (keyed on the recipe count) - getEntries() runs from the draw hook
+-- every frame, and buildEntries() for a material-heavy category was re-scanning R.NAMES/R.RECIPES/
+-- R.PICKS/R.SWORDS from scratch on EVERY frame the guide stayed open. Never rebuild per frame - only on
+-- the same recipe-count-changed trigger the rest of this rework already uses.
+local ENT_CACHE = {}
+local function cachedEntries(catId)
+  local n = #(R.RECIPES or {})
+  local c = ENT_CACHE[catId]
+  if c and c.n == n then return c.list end
+  local list = buildEntries(catId)
+  ENT_CACHE[catId] = { n = n, list = list }
+  return list
+end
 local function getEntries()
   if not G.cat then return {} end
-  local list = buildEntries(G.cat)
+  local list = cachedEntries(G.cat)
   if G.search ~= "" then
     local q = G.search:lower(); local filtered = {}
     for _, e in ipairs(list) do if e.label:lower():find(q, 1, true) or e.id:lower():find(q, 1, true) then filtered[#filtered + 1] = e end end
@@ -329,6 +619,10 @@ end
 local function mineInfoLines(id, lines)
   local tier = R.MINEABLE[id]; if not tier then return end
   addLine(lines, T("", VALCOL)); addLine(lines, T("MINING", HEADCOL))
+  local remapTo = scanAcquisitionSources().mineRemap[id]
+  if remapTo then
+    addLine(lines, { T("Mining this actually yields ", { 255, 200, 120 }), LK(R.nice(remapTo), classify(remapTo), remapTo), T(" in your inventory, not " .. R.nice(id) .. " itself.", { 255, 200, 120 }) })
+  end
   addLine(lines, T("Tier " .. tier .. ".  " .. (R.HARD[id] or "?") .. " hits at a pick matching this tier exactly.", VALCOL))
   local full, can = {}, {}
   for i, t in ipairs(R.PICKS or {}) do
@@ -363,6 +657,19 @@ local function usedInLines(id, lines)
     addLine(lines, { T(t.need[id] .. "x -> ", VALCOL), LK(t.name, "tools", "PICK:" .. i), T("  (" .. (R.STATIONS[t.st] or t.st) .. ")", DIMCOL) }) end end
   for i, t in ipairs(R.SWORDS or {}) do if t.need[id] then any = true
     addLine(lines, { T(t.need[id] .. "x -> ", VALCOL), LK(t.name, "tools", "SWORD:" .. i), T("  (" .. (R.STATIONS[t.st] or t.st) .. ")", DIMCOL) }) end end
+  -- Weapon ammo consumption (KINETIC_AMMO/w.alts) lives entirely inside items.lua, local to that file - not
+  -- something this page can see without items.lua exposing it, and hand-copying it here is exactly the
+  -- hardcoded-list antipattern that buried ~90 craftables before v1.15.98. Self-wires the moment items.lua
+  -- (or any plugin) publishes R.AMMO_CONSUMERS[code] = { {weapon=code, cost=n, continuous=bool}, ... } -
+  -- same defensive "if the table exists, use it" pattern this file already uses for R.hooks.wheel below.
+  -- Exact spec requested from @acq_discover, routed by the coordinator, 2026-09-02.
+  if R.AMMO_CONSUMERS and R.AMMO_CONSUMERS[id] then
+    for _, c in ipairs(R.AMMO_CONSUMERS[id]) do
+      any = true
+      local per = (c.cost or 1) .. "x " .. (c.continuous and "every few shots (while firing)" or "per shot")
+      addLine(lines, { T(per .. " -> ", VALCOL), LK(R.nice(c.weapon), classify(c.weapon), c.weapon), T("  (ammo)", DIMCOL) })
+    end
+  end
   if not any then addLine(lines, T("Not used in any known recipe.", DIMCOL)) end
 end
 local function producedByLines(id, lines)
@@ -390,18 +697,46 @@ local function stationUsers(stKey, lines)
   for i, t in ipairs(R.SWORDS or {}) do if (t.st or "hand") == stKey then any = true; addLine(lines, { LK(t.name, "tools", "SWORD:" .. i) }) end end
   if not any then addLine(lines, T("Nothing craftable here yet.", DIMCOL)) end
 end
+-- how many of a given station kind (workbench/furnace/anvil/research/advlab) are placed in this world -
+-- shared by the station page, the item/machine page's "you have a bench" line, and the progression page.
+local function stationBuiltCount(kind)
+  local n = 0
+  for _, st in ipairs(R.stations or {}) do if st.kind == kind then n = n + 1 end end
+  return n
+end
 
 -- ================================================================ page builders
+-- "How to get it" verb summary (mine/craft/forage/quest reward/found-granted) - read live off the cached
+-- acquisition index built above (R.MINEABLE/R.RECIPES/R.FOODS/R.QUESTS plus a real source-text scan for
+-- literal R.give("CODE",n) grants and the actorMine remap edge) - never a hand-written per-material list.
+local function grantedByLines(id, lines)
+  local a = acqInfo(id)
+  if not a or not a.grantFiles then return end
+  addLine(lines, T("", VALCOL)); addLine(lines, T("FOUND / GRANTED", HEADCOL))
+  local names = {}
+  for rel in pairs(a.grantFiles) do names[#names + 1] = rel end
+  table.sort(names)
+  for _, rel in ipairs(names) do
+    local label = rel:match("rpg_plugins/(%a+)%.lua") or rel:gsub("%.lua$", "")
+    addLine(lines, T("- " .. label .. " (a machine, creature drop, foraging or event hands this out)", VALCOL))
+  end
+end
 local function pageMaterialOrOre(id, catId)
   local lines = {}
   addLine(lines, { T(R.nice(id), TITLECOL), T("  [" .. id .. "]", DIMCOL) })
   local d = R.descOf(id)
   if d ~= "" then for _, s in ipairs(wrapText(d, 48)) do addLine(lines, T(s, DESCCOL)) end end
+  local a = acqInfo(id) or { summary = "not currently obtainable", obtainable = false }
+  addLine(lines, { T("How to get it: ", LABELCOL), T(a.summary, a.obtainable and { 140, 255, 140 } or { 255, 150, 90 }) })
+  if not a.obtainable then
+    addLine(lines, T("This element exists in the game but nothing currently gives it to the player.", { 255, 150, 90 }))
+  end
   addLine(lines, T("You have: " .. R.inv(id), VALCOL))
   addLine(lines, T("", VALCOL)); addLine(lines, T("PROPERTIES", HEADCOL))
   elemFactsLines(id, lines)
   mineInfoLines(id, lines)
   if catId == "ores" or R.MINEABLE[id] or id == "WATR" or id == "LAVA" then locationLines(id, lines) end
+  grantedByLines(id, lines)
   usedInLines(id, lines)
   producedByLines(id, lines)
   return lines
@@ -461,9 +796,8 @@ local function pageStation(id)
   end
   addLine(lines, { T(R.nice(id), TITLECOL), T("  [" .. id .. "]", DIMCOL) })
   local d = R.descOf(id); if d ~= "" then for _, s in ipairs(wrapText(d, 48)) do addLine(lines, T(s, DESCCOL)) end end
-  local kindLower = id:lower(); local count = 0
-  for _, st in ipairs(R.stations or {}) do if st.kind == kindLower then count = count + 1 end end
-  addLine(lines, T("Placed in this world: " .. count, VALCOL))
+  local kindLower = id:lower()
+  addLine(lines, T("Placed in this world: " .. stationBuiltCount(kindLower), VALCOL))
   if id == "FURNACE" then
     addLine(lines, T("", VALCOL))
     addLine(lines, T("Counts as lit when real fire, plasma, or anything hotter than 600K sits in its coal chamber - light the coal bed with the torch (slot 4). It slow-burns the coal (1/20th speed) so a full load lasts a long time.", DESCCOL))
@@ -475,21 +809,73 @@ local function pageStation(id)
   stationUsers(kindLower, lines)
   return lines
 end
-local function pageItemCode(id)
+-- how many of this kit are actually standing in the world right now. Machine tables key on a short "kind"
+-- string rather than the item code (BOILER -> "boiler", O2GENKIT -> "o2gen"), so strip the KIT suffix and
+-- match case-insensitively across both machine registries. Returns nil when nothing is placed AND the kind
+-- was never seen, so the page can stay quiet rather than asserting a confident "0".
+local function placedCount(id)
+  local kind = id:lower():gsub("kit$", "")
+  local n, seen = 0, false
+  for _, tbl in ipairs({ R.machines, R.machines2, R.stations }) do
+    for _, m in ipairs(tbl or {}) do
+      if m.kind then
+        seen = true
+        if m.kind == kind or m.kind == id:lower() then n = n + 1 end
+      end
+    end
+  end
+  return n, seen
+end
+local function pageItemCode(id, catId)
   local lines = {}
   addLine(lines, { T(R.nice(id), TITLECOL), T("  [" .. id .. "]", DIMCOL) })
-  local d = R.descOf(id); if d ~= "" then for _, s in ipairs(wrapText(d, 48)) do addLine(lines, T(s, DESCCOL)) end end
+  local d = R.descOf(id)
+  if d ~= "" then for _, s in ipairs(wrapText(d, 48)) do addLine(lines, T(s, DESCCOL)) end end
   addLine(lines, T("You have: " .. R.inv(id), VALCOL))
+
+  -- CRAFTING: station, cost, yield, and whether that station actually exists in this world yet
   addLine(lines, T("", VALCOL)); addLine(lines, T("CRAFTING", HEADCOL))
-  local any = false
-  for _, rc in ipairs(R.RECIPES or {}) do if rc.out == id then any = true
-    addLine(lines, { T("At " .. (R.STATIONS[rc.st] or rc.st) .. ": ", VALCOL), table.unpack(needSeg(rc.need)) }) end end
-  if not any then addLine(lines, T("(no recipe found - crafting plugin may not be loaded)", DIMCOL)) end
-  local kind = MACHINE_KIND[id]
-  if kind then
-    local count = 0; for _, m in ipairs(R.machines or {}) do if m.kind == kind then count = count + 1 end end
-    addLine(lines, T("", VALCOL)); addLine(lines, T("Placed in this world: " .. count, VALCOL))
+  local rc = recipeOf(id)
+  if rc then
+    local stKey = rc.st or "hand"
+    local seg = { T("At " .. (R.STATIONS[stKey] or stKey) .. ": ", VALCOL) }
+    for _, s in ipairs(needSeg(rc.need or {})) do seg[#seg + 1] = s end
+    addLine(lines, seg)
+    if (rc.n or 1) > 1 then addLine(lines, T("Yields " .. rc.n .. " per craft.", VALCOL)) end
+    if stKey ~= "hand" then
+      local built = stationBuiltCount(stKey)
+      addLine(lines, T(built > 0 and ("You have " .. built .. " " .. (R.STATIONS[stKey] or stKey) .. " placed.")
+                                  or ("You have no " .. (R.STATIONS[stKey] or stKey) .. " placed yet."),
+                       built > 0 and { 140, 255, 140 } or DIMCOL))
+    end
+  else
+    addLine(lines, T("(no recipe found - the plugin that registers it may not be loaded)", DIMCOL))
   end
+
+  -- IN THIS WORLD: live placed count, machines only
+  if isMachineCat(catId) or catId == "vehicles" then
+    local n, seen = placedCount(id)
+    if seen then
+      addLine(lines, T("", VALCOL)); addLine(lines, T("IN THIS WORLD", HEADCOL))
+      addLine(lines, T("Placed: " .. n, n > 0 and { 140, 255, 140 } or DIMCOL))
+      if n > 0 then addLine(lines, T("Right-click one in the world for its live inputs, outputs and next action.", DESCCOL)) end
+    end
+  end
+  if catId == "wearables" then
+    addLine(lines, T("", VALCOL)); addLine(lines, T("HOW IT WORKS", HEADCOL))
+    addLine(lines, T("Passive - simply carrying it is enough. No slot to equip, nothing to select.", DESCCOL))
+  end
+  -- v1.15.108 fixes (survival lane) with no guide-visible desc change of their own - noted by hand here
+  -- per CLAUDE.md rule 6, since the underlying desc text lives in a file this wave doesn't route through guide.lua.
+  if id == "OXYTANK" then
+    addLine(lines, T("", VALCOL)); addLine(lines, T("HOW IT WORKS", HEADCOL))
+    addLine(lines, T("Refills all the way to full (100) whenever there's genuine breathable OXYG in your breath radius - it no longer stalls part-way.", DESCCOL))
+  elseif id == "VENTFANKIT" then
+    addLine(lines, T("", VALCOL)); addLine(lines, T("HOW IT WORKS", HEADCOL))
+    addLine(lines, T("Actually destroys the CO2/SMKE it pulls in now, not just nudges it along its duct - a vent fan built before this fix looked like it worked and did nothing.", DESCCOL))
+  end
+
+  usedInLines(id, lines)   -- shared section: every recipe that consumes this code
   return lines
 end
 local function pageAccessory(id)
@@ -532,15 +918,156 @@ local function pageBiome(id)
   end
   return lines
 end
+local function pageStructure(id)
+  local lines, d = {}, nil
+  for _, pool in pairs(R.structDefs or {}) do
+    for _, def in ipairs(pool) do if def.id == id then d = def end end
+  end
+  if not d then addLine(lines, T("(structure library not loaded this session)", DIMCOL)); return lines end
+  addLine(lines, T((d.id:gsub("_", " ")), TITLECOL))
+  for _, s in ipairs(wrapText(d.description, 48)) do addLine(lines, T(s, DESCCOL)) end
+  addLine(lines, T("", VALCOL))
+  local sc = d._sc or 1
+  addLine(lines, { T("Category: ", LABELCOL), T(d.category, VALCOL) })
+  addLine(lines, { T("Grid: ", LABELCOL), T(d.width .. "x" .. d.height .. " cells at " .. sc .. "px/cell", VALCOL) })
+  -- Sizes are stated in WORLD PIXELS against the real player box, because grid cells hid exactly
+  -- this: 15x17 "px" was 15x17 CELLS, and the cabin that read as fine on paper was unenterable.
+  addLine(lines, { T("World size: ", LABELCOL),
+                   T(d.width * sc .. "x" .. d.height * sc .. "px  (you are 4x10px)", VALCOL) })
+  addLine(lines, { T("Biomes: ", LABELCOL), T(table.concat(d.biomes or {}, ", "), VALCOL) })
+  if d.depth_band then
+    addLine(lines, { T("Depth band: ", LABELCOL), T(d.depth_band.min .. " to " .. d.depth_band.max .. "px", VALCOL) })
+  end
+  addLine(lines, { T("Rarity: ", LABELCOL), T(tostring(d.rarity or "?"), VALCOL) })
+  addLine(lines, T("", VALCOL)); addLine(lines, T("DOORS", HEADCOL))
+  local nd = 0
+  for _, o in ipairs(d.objects or {}) do
+    if o.kind == "door" then
+      nd = nd + 1
+      addLine(lines, T(("%d) opening %dx%dpx  %s"):format(nd, (o.w or 1) * sc, (o.h or 1) * sc,
+        o.pad_gx and "- has a control pad" or "- no pad, inert until you wire one"), VALCOL))
+    end
+  end
+  if nd == 0 then addLine(lines, T("none - open terrain, not a sealed building", DIMCOL))
+  else
+    addLine(lines, T("A worldgen door is a REAL door machine, not a hole in a wall.", DESCCOL))
+    addLine(lines, T("Spark its pad from a powered grid and the slab lifts; let the", DESCCOL))
+    addLine(lines, T("spark fade and it drops back and seals the opening.", DESCCOL))
+  end
+  addLine(lines, T("", VALCOL)); addLine(lines, T("IN THIS WORLD", HEADCOL))
+  local live = 0
+  for _, m in ipairs(R.machines or {}) do if m.src then live = live + 1 end end
+  addLine(lines, T("worldgen machines instantiated so far: " .. live, live > 0 and { 140, 255, 140 } or DIMCOL))
+  addLine(lines, T("(counts every structure you have explored, not just this one -", DESCCOL))
+  addLine(lines, T("they are created the first time worldgen accepts a placement)", DESCCOL))
+  return lines
+end
 local function pageControl(id)
   local c = CONTROLS[id]; local lines = {}
   addLine(lines, T(c.label, TITLECOL))
   for _, l in ipairs(c.lines) do addLine(lines, T(l, VALCOL)) end
   return lines
 end
+local function pageSubmit()
+  local lines = {}
+  addLine(lines, T("Submit to PhoenixFire808", TITLECOL))
+  for _, s in ipairs(wrapText("Found a good build, a bug, or an idea? Send it in - PhoenixFire808 reviews every submission personally, and the best ones get built into the game.", 48)) do addLine(lines, T(s, DESCCOL)) end
+  addLine(lines, T("", VALCOL)); addLine(lines, T("THE FAST WAY", HEADCOL))
+  addLine(lines, T("1. Press Y anywhere in the world (or click the flag icon by your hotbar).", VALCOL))
+  addLine(lines, T("2. Drag a box around what you want to show, and release.", VALCOL))
+  addLine(lines, T("3. Type a short description.", VALCOL))
+  addLine(lines, T("4. Pick a category and click SUBMIT (or press Enter). A few seconds, done.", VALCOL))
+  addLine(lines, T("", VALCOL)); addLine(lines, T("NO BUILD TO SHOW?", HEADCOL))
+  addLine(lines, T("Press Y, then Enter with no drag - that's a quick bug report or", VALCOL))
+  addLine(lines, T("suggestion with no region needed.", VALCOL))
+  addLine(lines, T("", VALCOL)); addLine(lines, T("CATEGORIES", HEADCOL))
+  addLine(lines, T("machine, plant, cave, terrain, building, item, bug, suggestion, other", VALCOL))
+  addLine(lines, T("(only bug and suggestion can skip the drag)", DIMCOL))
+  addLine(lines, T("", VALCOL)); addLine(lines, T("ALWAYS THERE", HEADCOL))
+  addLine(lines, T("A small flag icon sits just right of your hotbar, always on screen - click it", VALCOL))
+  addLine(lines, T("any time to start a submission, same as pressing Y. Once you've sent one, a", VALCOL))
+  addLine(lines, T("small link above it opens everything you've submitted this session.", VALCOL))
+  return lines
+end
+-- Design doc's own T0-T6 tier ladder (knowledge/design-material-progression.md S3), mirrored here as
+-- flavour text only - same "small static mirror" pattern as CONTROLS/CREATURES/BIOMES above (the tier
+-- NAMES and one-line "why" are prose, not live data). Whether each row is REACHED is computed live below
+-- from R.stations placed counts and R.tech.reactor, never hand-set.
+local TIER_LADDER = {
+  { id = "T0", name = "Hand", verb = "GATHER",
+    why = "Chop, dig and forage with nothing built yet." },
+  { id = "T1", name = "Workbench", station = "workbench", verb = "WIRE",
+    why = "Assemble kits and basic circuits from wood and ore." },
+  { id = "T2", name = "Furnace + Anvil", station = "anvil", station2 = "furnace", verb = "SMELT & BLAST",
+    why = "Refine ore into bars and steel, and demolish terrain on purpose." },
+  { id = "T3", name = "Research Bench", station = "research", verb = "SYNTHESIZE & SENSE",
+    why = "Semiconductors, sensors and automation triggers." },
+  { id = "T4", name = "Advanced Lab", station = "advlab", verb = "REFINE EXOTIC MATTER",
+    why = "Cryogenics and vacuum-safe exotic-matter handling." },
+  { id = "T5", name = "Reactor Online", tech = "reactor", verb = "TRANSMUTE",
+    why = "Breed and harvest true nuclear fuel-cycle byproducts." },
+  { id = "T6", name = "Post-Completion", tech = "reactor", verb = "WIELD EXOTIC PHYSICS",
+    why = "Pure sandbox reward - never required to finish the game." },
+}
+local function tierReached(tier)
+  if tier.tech then return R.tech and R.tech[tier.tech] == true end
+  if not tier.station then return true end
+  return stationBuiltCount(tier.station) > 0 and (not tier.station2 or stationBuiltCount(tier.station2) > 0)
+end
+local function pageProgression()
+  local lines = {}
+  addLine(lines, T("Your Progression", TITLECOL))
+  for _, s in ipairs(wrapText("Where you actually are on the design doc's own tier ladder, and what to build next.", 48)) do addLine(lines, T(s, DESCCOL)) end
+  addLine(lines, T("", VALCOL))
+  addLine(lines, { T("Mining power now: ", LABELCOL), T(tostring(R.TOOLS.pick.power) .. "  (" .. R.TOOLS.pick.name .. ")", VALCOL) })
+  addLine(lines, { T("Peak power ever generated: ", LABELCOL), T(math.floor(R.tech and R.tech.peakW or 0) .. "W", VALCOL) })
+  addLine(lines, T("", VALCOL)); addLine(lines, T("TIER LADDER", HEADCOL))
+  -- Longest CONTIGUOUS reached prefix, not "last tier reached anywhere" - sandbox forces
+  -- R.tech.reactor true with zero stations physically placed, which would otherwise let T5/T6
+  -- (both tech="reactor") read as "current" while T1 (Workbench) is still unbuilt. Stopping at
+  -- the first gap is also the more honest reading in real survival play: a furnace-tier bypass
+  -- recipe lets ZIRC/GRPH skip Research/Advanced Lab, so tech.reactor can go true before either
+  -- station is ever placed - this page should say so, not silently skip ahead.
+  local curIdx = 1
+  for i, tier in ipairs(TIER_LADDER) do
+    if tierReached(tier) then curIdx = i else break end
+  end
+  for i, tier in ipairs(TIER_LADDER) do
+    local reached = tierReached(tier)
+    local isCur = (i == curIdx)
+    local mark = isCur and "-> " or (reached and "x  " or "   ")
+    local col = isCur and { 140, 255, 140 } or (reached and VALCOL or DIMCOL)
+    addLine(lines, T(mark .. tier.id .. "  " .. tier.name .. "  -  " .. tier.verb, col))
+    for _, s in ipairs(wrapText(tier.why, 44)) do addLine(lines, T("      " .. s, DESCCOL)) end
+  end
+  addLine(lines, T("", VALCOL)); addLine(lines, T("NEXT STEP", HEADCOL))
+  local nextTier = TIER_LADDER[curIdx + 1]
+  if not nextTier then
+    addLine(lines, T("You've reached every tier the design doc defines - T6 is pure sandbox reward from here.", VALCOL))
+  else
+    for _, s in ipairs(wrapText(nextTier.id .. ": " .. nextTier.name .. " - " .. nextTier.why, 48)) do addLine(lines, T(s, VALCOL)) end
+    if nextTier.id == "T2" then
+      addLine(lines, { T("Build: ", VALCOL), LK(R.STATIONS.furnace or "Furnace kit", "stations", "FURNACE"), T("  and  ", VALCOL), LK(R.STATIONS.anvil or "Anvil", "stations", "ANVIL") })
+    elseif nextTier.station then
+      local code = nextTier.station:upper()
+      if R.ITEMS and R.ITEMS[code] then
+        addLine(lines, { T("Build: ", VALCOL), LK(R.STATIONS[nextTier.station] or R.nice(code), "stations", code) })
+      end
+    elseif nextTier.tech == "reactor" then
+      addLine(lines, T("Build: reach 100W of live grid generation, then build the Fission Reactor at the anvil.", VALCOL))
+    end
+  end
+  addLine(lines, T("", VALCOL)); addLine(lines, T("TECH MILESTONES", HEADCOL))
+  local t = R.tech or {}
+  addLine(lines, T((t.unlock10 and "x  " or "   ") .. "10W generated - Electric Furnace + Battery Bank unlocked", t.unlock10 and { 140, 255, 140 } or DIMCOL))
+  addLine(lines, T((t.unlock100 and "x  " or "   ") .. "100W generated - Crusher, Autocrafter, Capacitor, Turret, Drill + Reactor kit unlocked", t.unlock100 and { 140, 255, 140 } or DIMCOL))
+  addLine(lines, T((t.reactor and "x  " or "   ") .. "Reactor online - Heavy Turret, RTG, Shield tier 4 unlocked", t.reactor and { 140, 255, 140 } or DIMCOL))
+  return lines
+end
 local function buildPage(catId, id)
   if not id then return { { T("Nothing matches your search.", DIMCOL) } } end
-  if catId == "materials" or catId == "ores" then return pageMaterialOrOre(id, catId) end
+  if catId == "progression" then return pageProgression() end
+  if catId == "materials" or catId == "ores" or MAT_SECTION_CATS[catId] then return pageMaterialOrOre(id, catId) end
   if catId == "tools" then
     if id == "TORCH" then return pageSimpleTool("Torch") end
     if id == "BUCKET" then return pageSimpleTool("Bucket") end
@@ -549,11 +1076,14 @@ local function buildPage(catId, id)
     if kind == "SWORD" then return pageSword(idx) end
   end
   if catId == "stations" then return pageStation(id) end
-  if catId == "machines" or catId == "weapons" then return pageItemCode(id) end
+  if isMachineCat(catId) or catId == "weapons" or catId == "terrain"
+     or catId == "wearables" or catId == "vehicles" then return pageItemCode(id, catId) end
   if catId == "accessories" then return pageAccessory(id) end
   if catId == "creatures" then return pageCreature(id) end
   if catId == "biomes" then return pageBiome(id) end
+  if catId == "structures" then return pageStructure(id) end
   if catId == "controls" then return pageControl(id) end
+  if catId == "submit" then return pageSubmit() end
   return { { T("(no data)", DIMCOL) } }
 end
 
@@ -582,26 +1112,32 @@ local function takeItem(catId, id)
   R.closeGuide()
 end
 -- public API so other plugins (the bag/E-menu) can open/close the guide cleanly:
---   R.openGuide()                       - open, resuming wherever it was left (or Materials/first entry if never opened)
+--   R.openGuide()                       - open, resuming wherever it was left (or the guide's own
+--                                          first category - CATS[1] - if never opened this session)
 --   R.openGuide("weapons")               - open and jump to a category (its first entry)
 --   R.openGuide({ cat = "materials", id = "GOO" }) - open and jump to one specific entry
 --   R.closeGuide()                       - close and reset transient UI state (search focus, drag)
 -- the caller is responsible for closing its own panel first (e.g. ui.lua closes its bag before calling this)
+-- "or 'materials'" below is a last-resort fallback only (visibleCats() is never empty in practice) -
+-- the REAL default is CATS[1], not a hardcoded string, so putting "submit" at CATS[1] (PhoenixFire808's
+-- 3x-escalated prominence ask) makes it the actual first thing shown on a never-opened guide, not just
+-- first in a list you'd still have to click into.
 function R.openGuide(entryOrNil)
   R.guideOpen = true
   G.searchFocused = false
   G.drag, G.dragMeta = nil, nil
   if type(entryOrNil) == "table" then
-    local catId = entryOrNil.cat or G.cat or "materials"
+    local catId = entryOrNil.cat or G.cat or (visibleCats()[1] and visibleCats()[1].id) or "materials"
     G.search = ""
     navigate(catId, entryOrNil.id, false)
   elseif type(entryOrNil) == "string" then
     G.search = ""
-    local es = buildEntries(entryOrNil)
+    local es = cachedEntries(entryOrNil)
     navigate(entryOrNil, es[1] and es[1].id, false)
   elseif not G.cat then
-    local es = buildEntries("materials")
-    navigate("materials", es[1] and es[1].id, false)
+    local firstCat = (visibleCats()[1] and visibleCats()[1].id) or "materials"
+    local es = cachedEntries(firstCat)
+    navigate(firstCat, es[1] and es[1].id, false)
   end
 end
 function R.closeGuide()
@@ -611,7 +1147,7 @@ function R.closeGuide()
 end
 local function entryLabel(catId, id)
   if not catId or not id then return "" end
-  for _, e in ipairs(buildEntries(catId)) do if e.id == id then return e.label end end
+  for _, e in ipairs(cachedEntries(catId)) do if e.id == id then return e.label end end
   return tostring(id)
 end
 
@@ -663,14 +1199,14 @@ hook(R.hooks.mousedown, function(x, y, button)
   if hitRect(B.search, x, y) then G.searchFocused = true; return true end
   if hitRect(B.back, x, y) and #G.back > 0 then popBack(); return true end
   if hitRect(B.take, x, y) then takeItem(G.cat, G.id); return true end
+  if G.catBar and hitRect(G.catBar.track, x, y) then G.catScroll = scrollbarSeek(G.catBar, y); G.drag, G.dragMeta = "cat", G.catBar; return true end
   if G.listBar and hitRect(G.listBar.track, x, y) then G.listScroll = scrollbarSeek(G.listBar, y); G.drag, G.dragMeta = "list", G.listBar; return true end
   if G.pageBar and hitRect(G.pageBar.track, x, y) then G.pageScroll = scrollbarSeek(G.pageBar, y); G.drag, G.dragMeta = "page", G.pageBar; return true end
-  for i, r in ipairs(G.catRects or {}) do
-    if hitRect(r, x, y) then
-      local catInfo = CATS[i]
+  for _, r in ipairs(G.catRects or {}) do
+    if hitRect(r, x, y) and r.id then
       G.search = ""; G.searchFocused = false; G.listScroll = 0
-      local es = buildEntries(catInfo.id)
-      if es[1] then navigate(catInfo.id, es[1].id, false) else G.cat = catInfo.id; G.id = nil; G.pageScroll = 0 end
+      local es = cachedEntries(r.id)
+      if es[1] then navigate(r.id, es[1].id, false) else G.cat = r.id; G.id = nil; G.pageScroll = 0 end
       return true
     end
   end
@@ -696,14 +1232,15 @@ hook(R.hooks.tick, function()
   if R.guideOpen then R.uiPanelOpen = true end   -- OR'd every frame; ui.lua sets its own state before this runs (loads earlier)
   if R.guideOpen and G.drag and G.dragMeta then
     local v = scrollbarSeek(G.dragMeta, R.mouse.y)
-    if G.drag == "list" then G.listScroll = v elseif G.drag == "page" then G.pageScroll = v end
+    if G.drag == "list" then G.listScroll = v elseif G.drag == "page" then G.pageScroll = v elseif G.drag == "cat" then G.catScroll = v end
   end
 end)
 if R.hooks.wheel then   -- self-wires in automatically once core exposes a wheel hook (checked at (re)load time)
   hook(R.hooks.wheel, function(x, y, d)
     if not R.guideOpen then return end
     if x >= COL3X and x < COL3X + COL3W then G.pageScroll = math.max(0, G.pageScroll - d)
-    elseif x >= COL2X and x < COL2X + COL2W then G.listScroll = math.max(0, G.listScroll - d) end
+    elseif x >= COL2X and x < COL2X + COL2W then G.listScroll = math.max(0, G.listScroll - d)
+    elseif x >= COL1X and x < COL1X + COL1W then G.catScroll = math.max(0, G.catScroll - d) end
     return true   -- consume regardless of column so wheel never leaks through to hotbar-select while the panel is open
   end)
 end
@@ -738,17 +1275,26 @@ hook(R.hooks.drawHUD, function()
     graphics.drawText(GX + GW - 210, GY + 78, "material in your hotbar.", 200, 255, 200, 255)
   end
 
-  -- COL1: categories (click + hover highlight)
-  for i, cinfo in ipairs(CATS) do
-    local y = BY + (i - 1) * 14
-    local r = { COL1X, y, COL1X + COL1W, y + 13 }
-    local sel = (G.cat == cinfo.id)
-    local hov = (not sel) and hitRect(r, mx, my)
-    local bg = sel and { 60, 64, 100 } or (hov and { 42, 46, 74 } or { 20, 22, 34 })
-    graphics.fillRect(r[1], r[2], COL1W, 13, bg[1], bg[2], bg[3], 255)
-    graphics.drawText(COL1X + 3, y + 3, cinfo.label, sel and 255 or (hov and 235 or 200), sel and 220 or (hov and 225 or 200), sel and 80 or (hov and 150 or 210), 255)
-    G.catRects[i] = r
+  -- COL1: categories (click + hover highlight), scrollable now that the material-browser sections
+  -- (SC_* menu-section split, see MAT_SECTION_CATS above) pushed the category count past one screen.
+  local cats = visibleCats()
+  local catAreaW = COL1W - SBW - 2
+  local catVisRows = math.max(1, math.floor((BOT - BY) / 14))
+  G.catScroll = math.max(0, math.min(G.catScroll, math.max(0, #cats - catVisRows)))
+  for i = 1, catVisRows do
+    local cinfo = cats[i + G.catScroll]
+    if cinfo then
+      local y = BY + (i - 1) * 14
+      local r = { COL1X, y, COL1X + catAreaW, y + 13, id = cinfo.id }   -- id travels on the rect: the click handler
+      local sel = (G.cat == cinfo.id)
+      local hov = (not sel) and hitRect(r, mx, my)
+      local bg = sel and { 60, 64, 100 } or (hov and { 42, 46, 74 } or { 20, 22, 34 })
+      graphics.fillRect(r[1], r[2], catAreaW, 13, bg[1], bg[2], bg[3], 255)
+      graphics.drawText(COL1X + 3, y + 3, cinfo.label, sel and 255 or (hov and 235 or 200), sel and 220 or (hov and 225 or 200), sel and 80 or (hov and 150 or 210), 255)
+      G.catRects[#G.catRects + 1] = r
+    end
   end
+  G.catBar = drawScrollbar(COL1X + catAreaW + 2, BY, BOT - BY, #cats, catVisRows, G.catScroll, "cat")
 
   -- COL2: search box (blinking cursor while focused) + entry list + drag scrollbar
   B.search = { COL2X, BY, COL2X + COL2W, BY + 12 }
@@ -773,7 +1319,17 @@ hook(R.hooks.drawHUD, function()
       local hov = (not sel) and hitRect(r, mx, my)
       if sel then graphics.fillRect(COL2X, y, listAreaW, rowH, 55, 58, 95, 255)
       elseif hov then graphics.fillRect(COL2X, y, listAreaW, rowH, 32, 34, 54, 255) end
-      graphics.drawText(COL2X + 2, y + 1, e.label:sub(1, 22), sel and 255 or (hov and 230 or 205), sel and 220 or (hov and 225 or 205), sel and 120 or (hov and 160 or 215), 255)
+      -- e.obtainable is only set for material/ore entries (buildEntries, precomputed from the cached
+      -- acquisition index - never a per-row recompute); nil for every other category, which draws as before.
+      local label = e.label:sub(1, 22)
+      local r_, g_, b_
+      if e.obtainable == false then
+        label = label .. " (?)"
+        r_, g_, b_ = sel and 255 or (hov and 235 or 200), sel and 150 or (hov and 130 or 110), sel and 100 or (hov and 90 or 80)
+      else
+        r_, g_, b_ = sel and 255 or (hov and 230 or 205), sel and 220 or (hov and 225 or 205), sel and 120 or (hov and 160 or 215)
+      end
+      graphics.drawText(COL2X + 2, y + 1, label, r_, g_, b_, 255)
       G.listRects[#G.listRects + 1] = { COL2X, y, COL2X + listAreaW, y + rowH, cat = G.cat, id = e.id }
     end
   end

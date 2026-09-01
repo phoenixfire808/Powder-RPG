@@ -1063,6 +1063,13 @@ ui::Point GameModel::AdjustZoomCoords(ui::Point position)
 	return position;
 }
 
+ui::Point GameModel::ResolveZoomedPoint(ui::Point screenPoint)
+{
+	if (MouseInZoom(screenPoint))
+		return AdjustZoomCoords(screenPoint);
+	return view->GetGraphics()->GetCamZoomTransform().ScreenToSim(screenPoint);
+}
+
 void GameModel::SetZoomWindowPosition(ui::Point position)
 {
 	view->GetGraphics()->zoomWindowPosition = position;
@@ -1781,7 +1788,16 @@ void GameModel::UpdateUpTo(int upTo)
 	{
 		BeforeSim();
 	}
-	sim->UpdateParticles(sim->debug_nextToUpdate, upTo);
+	{
+		// @engineperf, 2026-09-01: previously unspanned. A headless benchmark
+		// (build-tests/tests/test_particle_perf.cpp) measured this call alone costing
+		// ~16-19ms for a static 126,290-particle scene -- comparable to or larger than
+		// everything else in the frame combined -- so it needs its own visible line in
+		// the existing DEBUG_FRAMETIME overlay (GameView.cpp) instead of being silently
+		// absorbed into the parent "GameModel::UpdateUpTo" span.
+		FrameTime::Span updateParticlesSpan(frameTime.get(), "Simulation::UpdateParticles");
+		sim->UpdateParticles(sim->debug_nextToUpdate, upTo);
+	}
 	if (queuedFrames)
 	{
 		queuedFrames--;

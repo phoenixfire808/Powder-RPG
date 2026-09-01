@@ -26,7 +26,7 @@ OUT_DIR = Path("D:/powder-toy/knowledge/previews")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 ZOOM = 12
-PLAYER_H = 12  # px, matches rpg.lua's player scale used throughout world.lua's own sizing comments
+PLAYER_W, PLAYER_H = 4, 10  # the REAL player box, from BOXL/BOXR/BOXT in rpg.lua
 
 # Approximate real Powder Toy element colors for each logical material token
 # (same tokens as the has()-guarded resolve table in structures/README.md).
@@ -55,7 +55,9 @@ COLORS = {
     "sand":          (225, 200, 140),
     "water":         (40, 90, 200),
     "lava":          (255, 90, 10),
+    "control":       (255, 120, 120),   # PSCN control pad
 }
+DOOR_BG = (255, 200, 60)   # the "door" token: a real door object, not a hole in a wall
 AIR_BG = (18, 18, 22)     # forced-empty cavity: dark, like real cave air
 KEEP_BG = (54, 42, 34)    # transparent/terrain cell: muted earth tone so it visually recedes vs authored material
 GRID_LINE = (0, 0, 0, 40)
@@ -81,6 +83,8 @@ def render(id_: str) -> Path:
             token = legend.get(ch, "keep")
             if token == "air":
                 col = AIR_BG
+            elif token == "door":
+                col = DOOR_BG
             elif token == "keep":
                 col = KEEP_BG
             else:
@@ -100,17 +104,30 @@ def render(id_: str) -> Path:
     d.line([(cx - 8, cy), (cx + 8, cy)], fill=(255, 0, 255), width=2)
     d.line([(cx, cy - 8), (cx, cy + 8)], fill=(255, 0, 255), width=2)
 
-    # player-height scale bar (12px) drawn to the right of the structure
-    bar_x = pad + w * ZOOM + 14
-    if bar_x + 20 < img.width:
-        pass  # canvas sized without room for this in narrow structures; scale bar drawn below instead
+    # THE POINT OF THIS RENDERER: the player, at true relative size, standing in the doorway.
+    # One grid cell is `sc` WORLD pixels, so the 4x10px player is only 4/sc x 10/sc cells -- drawing
+    # him as a fixed 12px bar (which is what this did while a cell was worth one world pixel) makes
+    # every structure look correctly proportioned no matter how wrong it is.
+    sc = s.get("scale", 1)
+    pw = max(2, round(PLAYER_W / sc * ZOOM))
+    ph = max(3, round(PLAYER_H / sc * ZOOM))
+    doors = [o for o in s.get("objects", []) if o.get("kind") == "door"]
+    if doors:
+        o = doors[0]
+        fx = pad + o["gx"] * ZOOM + (ZOOM - pw) // 2
+        fy = pad + (o["gy"] + 1) * ZOOM        # feet on the row below the door's bottom cell
+        d.rectangle([fx, fy - ph, fx + pw, fy], fill=(255, 90, 200), outline=(255, 255, 255))
+
     scale_y0 = pad + h * ZOOM + 10
-    d.rectangle([pad, scale_y0, pad + 6, scale_y0 + PLAYER_H * ZOOM // 12 * 12], fill=(230, 210, 160))
+    d.rectangle([pad, scale_y0 + 12 - ph, pad + pw, scale_y0 + 12], fill=(255, 90, 200))
     try:
         font = ImageFont.load_default()
     except Exception:
         font = None
-    d.text((pad + 12, scale_y0), f"{id_}  {w}x{h}px  (bar = 12px player height)", fill=(230, 230, 230), font=font)
+    d.text((pad + pw + 6, scale_y0),
+           f"{id_}  {w}x{h} cells @ {sc}px = {w * sc}x{h * sc} world px"
+           f"  (pink = {PLAYER_W}x{PLAYER_H}px player, to scale)",
+           fill=(230, 230, 230), font=font)
 
     out = OUT_DIR / f"{id_}.png"
     img.save(out)

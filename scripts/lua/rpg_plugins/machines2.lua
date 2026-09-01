@@ -1098,6 +1098,21 @@ local BASE2_RECIPES = {
   { out = "DECOPANELKIT", n = 1, need = need("METL", 3, "GLAS", 2), st = "workbench", txt = "Decorative panel",
     desc = "A framed wall panel for base interiors - purely aesthetic" },
 }
+-- All 25 kits above were UNCRAFTABLE. R.craft (rpg.lua:2319) refuses any recipe whose `out` is neither an
+-- R.ITEMS entry nor a real element name, and this file defined R.ITEMS only for its two reagents
+-- (FERTILISER, GUNPOWDER). So every kit rendered normally in the crafting UI and then silently refused with
+-- "<CODE> is not defined in this session" -- no Lua error, nothing in the log, which is why it survived.
+-- Derived from BASE2_RECIPES rather than hand-written so the two can never drift: the recipe already carries
+-- the player-facing desc, and any kit added later defines its own item automatically. Colour is keyed to the
+-- crafting station so the hotbar reads at a glance -- anvil steel, workbench timber, hand pale.
+for _, rc in ipairs(BASE2_RECIPES) do
+  R.ITEMS[rc.out] = R.ITEMS[rc.out] or {
+    col = (rc.st == "anvil") and { 150, 155, 165 }
+       or (rc.st == "workbench") and { 150, 115, 70 }
+       or { 190, 185, 175 },
+    desc = rc.desc,
+  }
+end
 local installRecipes2
 installRecipes2 = function()
   for i = #R.RECIPES, 1, -1 do if R.RECIPES[i]._plugin == TAG then table.remove(R.RECIPES, i) end end

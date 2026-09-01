@@ -1,0 +1,102 @@
+# Catch2 engine tests.
+#
+# Separate from build.yaml (the upstream game-packaging workflow) on purpose: this one
+# only builds and runs the test suite, so it stays fast and its failures are unambiguous.
+#
+# Contains no credentials and needs none. If a future step ever needs one, add it as a
+# repository secret and reference it as ${{ secrets.NAME }} - never inline a token here.
+name: tests
+
+on:
+  push:
+    branches: [ rpg-and-realism ]
+  pull_request:
+    branches: [ rpg-and-realism ]
+  workflow_dispatch:
+
+# Superseded runs on the same branch are pointless; cancel them.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  engine-tests:
+    # Windows matches the dev environment (MSVC + Meson + Ninja), so a CI failure means
+    # a real failure rather than a toolchain difference.
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Meson and Ninja
+        run: python -m pip install --disable-pip-version-check meson==1.12.0 ninja
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # Meson downloads prebuilt tpt-libs and Catch2 into subprojects/packagecache.
+      # Cache it so CI is not re-downloading the same archives on every push.
+      - name: Cache Meson subproject downloads
+        uses: actions/cache@v4
+        with:
+          path: subprojects/packagecache
+          key: packagecache-${{ runner.os }}-${{ hashFiles('subprojects/*.wrap') }}
+          restore-keys: packagecache-${{ runner.os }}-
+
+      - name: Configure
+        run: meson setup build-tests -Dbuild_tests=true --buildtype=release
+
+      - name: Build tests
+        run: ninja -C build-tests tests/engine_tests.exe
+
+      # meson test runs the suite over TAP and fails the job on any failing assertion,
+      # including the asserted performance bar in the benchmark case.
+      - name: Run tests
+        run: meson test -C build-tests --print-errorlogs
+
+      # The benchmark case is tagged [!benchmark] so it is hidden from the default run.
+      # Execute it explicitly so a performance regression fails CI too.
+      - name: Run benchmarks
+        run: .\build-tests\tests\engine_tests.exe "[!benchmark]"
+
+      # SECURITY GATE - do not remove, and do not upload the raw log.
+      # `meson test` writes an "Inherited environment:" block into testlog.txt containing the
+      # ENTIRE environment of whatever invoked it. On a dev machine that is the developer's real
+      # shell, and it was verified on 2026-09-01 to contain live plaintext credentials
+      # (a GitHub token, and three third-party API keys). On a runner it contains the
+      # automatically-provisioned GITHUB_TOKEN. Uploading that file as an artifact publishes
+      # those values to anyone who can read this repository's artifacts.
+      # Nothing has ever leaked - this workflow has never run, and git history was verified clean
+      # with `git log --all -S` in both clones - and this step exists so that stays true.
+      - name: Redact secrets from test log
+        if: always()
+        shell: pwsh
+        run: |
+          $log = 'build-tests/meson-logs/testlog.txt'
+          if (-not (Test-Path $log)) { Write-Host 'no testlog to redact'; exit 0 }
+          $lines = Get-Content $log
+          $out = foreach ($line in $lines) {
+            if ($line -match '^Inherited environment:') { 'Inherited environment: <REDACTED - see tests.yaml security gate>' }
+            else { $line -replace '(?i)((?:TOKEN|SECRET|KEY|PASSWORD|PAT|CREDENTIAL)[A-Z0-9_]*\s*[=:]\s*)\S+', '$1<REDACTED>' -replace '(gh[pousr]_[A-Za-z0-9]{16,})', '<REDACTED-GITHUB-TOKEN>' -replace '(sk-[A-Za-z0-9\-_]{16,})', '<REDACTED-API-KEY>' }
+          }
+          Set-Content -Path $log -Value $out
+          $residual = Select-String -Path $log -Pattern 'gh[pousr]_[A-Za-z0-9]{16,}', 'sk-[A-Za-z0-9\-_]{16,}' -AllMatches
+          if ($residual) { Write-Error 'Secret-shaped string survived redaction; refusing to upload.'; exit 1 }
+          Write-Host 'testlog redacted'
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meson-testlog
+          path: build-tests/meson-logs/testlog.txt
+          if-no-files-found: ignore

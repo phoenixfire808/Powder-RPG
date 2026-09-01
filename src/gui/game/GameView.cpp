@@ -2931,7 +2931,45 @@ void GameView::OnDraw()
 		}
 	}
 
-	std::copy_n(rendererFrame->data(), rendererFrame->Size().X * rendererFrame->Size().Y, g->Data());
+	// Camera zoom: scale the rendered simulation as it lands in the screen buffer.
+	// This is the only place the sim image crosses into the screen buffer, and every
+	// UI/HUD draw happens after it, so scaling here magnifies the world while leaving
+	// all overlaid text and panels at a crisp 1:1.
+	//
+	// g->camZoom == 1.0f takes the original verbatim copy, byte for byte, so this is a
+	// no-op unless something raises it (see Graphics.h).
+	//
+	// The sampling rectangle (z/ox/oy) comes from Graphics::GetCamZoomTransform,
+	// the single authoritative computation of it -- the brush/shape overlay
+	// below and GameModel::ResolveZoomedPoint (screen->sim mouse mapping) read
+	// the exact same transform, so the cursor and clicks agree with whatever
+	// this loop actually draws.
+	if (g->camZoom > 1.0f)
+	{
+		auto srcSize = rendererFrame->Size();
+		const auto zoomXform = g->GetCamZoomTransform();
+		const float z = zoomXform.z;
+		const float ox = zoomXform.ox, oy = zoomXform.oy;
+		auto *dst = g->Data();
+		const auto *src = rendererFrame->data();
+		for (int y = 0; y < srcSize.Y; ++y)
+		{
+			int sy = int(oy + y / z);
+			if (sy < 0) sy = 0; else if (sy >= srcSize.Y) sy = srcSize.Y - 1;
+			const auto *srcRow = src + sy * srcSize.X;
+			auto *dstRow = dst + y * srcSize.X;
+			for (int x = 0; x < srcSize.X; ++x)
+			{
+				int sx = int(ox + x / z);
+				if (sx < 0) sx = 0; else if (sx >= srcSize.X) sx = srcSize.X - 1;
+				dstRow[x] = srcRow[sx];
+			}
+		}
+	}
+	else
+	{
+		std::copy_n(rendererFrame->data(), rendererFrame->Size().X * rendererFrame->Size().Y, g->Data());
+	}
 
 	if (showBrush && selectMode == SelectNone && (!zoomEnabled || zoomCursorFixed) && activeBrush && (isMouseDown || (currentMouse.X >= 0 && currentMouse.X < XRES && currentMouse.Y >= 0 && currentMouse.Y < YRES)))
 	{
@@ -2943,6 +2981,17 @@ void GameView::OnDraw()
 			finalCurrentMouse = c->NormaliseBlockCoord(finalCurrentMouse);
 			initialDrawPoint = c->NormaliseBlockCoord(initialDrawPoint);
 		}
+
+		// finalCurrentMouse/initialDrawPoint are sim-space points (PointTranslate
+		// already resolves camZoom, see GameModel::ResolveZoomedPoint), and all the
+		// snapping/wall-cell math above and below needs to stay in that space. But
+		// the Render* calls draw directly into the screen buffer *after* camZoom's
+		// blit, so every point actually handed to one must be converted through the
+		// same transform the blit used -- otherwise the overlay is positioned (and,
+		// for the brush shape itself, sized) for an unzoomed world that isn't what's
+		// on screen. See the camZoom comment in Graphics.h.
+		const auto camZoomXform = g->GetCamZoomTransform();
+		auto toScreen = [&camZoomXform](ui::Point simPoint) { return camZoomXform.SimToScreen(simPoint); };
 
 		if (drawMode == DrawRect && isMouseDown)
 		{
@@ -2964,7 +3013,7 @@ void GameView::OnDraw()
 			}
 			ui::Point rectCorner1(0, 0), rectCorner2(0, 0);
 			ComputeAnchoredRect(initialDrawPoint, finalCurrentMouse, centerAnchorBehaviour, rectCorner1, rectCorner2);
-			activeBrush->RenderRect(g, rectCorner1, rectCorner2);
+			activeBrush->RenderRect(g, toScreen(rectCorner1), toScreen(rectCorner2));
 		}
 		else if (drawMode == DrawLine && isMouseDown)
 		{
@@ -2972,20 +3021,20 @@ void GameView::OnDraw()
 			{
 				finalCurrentMouse = lineSnapCoords(initialDrawPoint, finalCurrentMouse);
 			}
-			activeBrush->RenderLine(g, initialDrawPoint, finalCurrentMouse);
+			activeBrush->RenderLine(g, toScreen(initialDrawPoint), toScreen(finalCurrentMouse));
 		}
 		else if (drawMode == DrawFill)// || altBehaviour)
 		{
 			if (!decoBrush)
-				activeBrush->RenderFill(g, finalCurrentMouse);
+				activeBrush->RenderFill(g, toScreen(finalCurrentMouse));
 		}
 		if (drawMode == DrawPoints || drawMode==DrawLine || (drawMode == DrawRect && !isMouseDown))
 		{
 			if (wallBrush)
 			{
 				ui::Point finalBrushRadius = c->NormaliseBlockCoord(activeBrush->GetRadius());
-				auto topLeft     = finalCurrentMouse - finalBrushRadius;
-				auto bottomRight = finalCurrentMouse + finalBrushRadius + Vec2{ CELL - 1, CELL - 1 };
+				auto topLeft     = toScreen(finalCurrentMouse - finalBrushRadius);
+				auto bottomRight = toScreen(finalCurrentMouse + finalBrushRadius + Vec2{ CELL - 1, CELL - 1 });
 				g->XorLine({     topLeft.X,     topLeft.Y     }, { bottomRight.X,     topLeft.Y     });
 				g->XorLine({     topLeft.X, bottomRight.Y     }, { bottomRight.X, bottomRight.Y     });
 				g->XorLine({     topLeft.X,     topLeft.Y + 1 }, {     topLeft.X, bottomRight.Y - 1 }); // offset by 1 so the corners don't get xor'd twice
@@ -2993,7 +3042,7 @@ void GameView::OnDraw()
 			}
 			else
 			{
-				activeBrush->RenderPoint(g, finalCurrentMouse);
+				activeBrush->RenderPoint(g, toScreen(finalCurrentMouse), camZoomXform.z);
 			}
 		}
 	}

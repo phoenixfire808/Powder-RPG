@@ -120,7 +120,14 @@ public:
 	// which fills the matching shape).
 	virtual void RenderRect(Graphics *g, ui::Point position1, ui::Point position2) const;
 	void RenderLine(Graphics *g, ui::Point position1, ui::Point position2) const;
-	void RenderPoint(Graphics *g, ui::Point position) const;
+	// scale magnifies the cached outline bitmap about position via nearest-
+	// neighbor upscaling -- needed because camZoom (Graphics.h) stretches the
+	// world as it's copied into the screen buffer, but this brush shape is a
+	// fixed-resolution bitmap generated once in sim-pixel units (GenerateBitmap),
+	// so it has to be blown up to match or it reads as an undersized handful of
+	// pixels next to a magnified world. 1.0f (the default) is the original,
+	// unscaled 1:1 blit.
+	void RenderPoint(Graphics *g, ui::Point position, float scale = 1.0f) const;
 	void RenderFill(Graphics *g, ui::Point position) const;
 
 	void SetRadius(ui::Point newRadius);

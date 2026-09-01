@@ -14,9 +14,9 @@ local floor, sqrt, random = math.floor, math.sqrt, math.random
 
 -- ================================================================ weapon/gadget definitions
 local WEAPONS = {
-  MUSKET    = { col={100, 90, 80},  cd=16, ammo="METL", cost=1, txt="Musket",
+  MUSKET    = { col={100, 90, 80},  cd=16, ammo="METL", cost=1, txt="Musket", alts="KINETIC",
                 desc="Fires a real METL slug at the cursor - punches a crater, hurts enemies. Ammo: METL (1/shot)" },
-  SHOTGUN   = { col={70, 70, 85},   cd=32, ammo="METL", cost=4, txt="Shotgun",
+  SHOTGUN   = { col={70, 70, 85},   cd=32, ammo="METL", cost=4, txt="Shotgun", alts="KINETIC",
                 desc="Blasts 6 red-hot pellets in a spread - short range, heavy knockback. Ammo: METL (4/shot)" },
   GRENADE   = { col={95, 115, 45},  cd=40, ammo="COAL", cost=3, txt="Grenade Launcher",
                 desc="Lobs a real bomb that arcs under gravity and explodes on impact. Ammo: COAL (3/shot)" },
@@ -39,9 +39,9 @@ local WEAPONS = {
   JETPACK   = { col={195, 90, 40}, cd=1, ammo="COAL", ammoEvery=8, continuous=true, txt="Jetpack",
                 desc="Equip it, then hold W/Space in the air to fly - burns COAL for real fire and gas thrust. Left mouse stays free for your other tool" },
   -- ===== round 2 (the player 16:00 "I want way more items") =====
-  NAILGUN     = { col={180, 150, 90},  cd=6,  ammo="METL", cost=1, txt="Steam Nail Gun",
+  NAILGUN     = { col={180, 150, 90},  cd=6,  ammo="METL", cost=1, txt="Steam Nail Gun", alts="KINETIC",
                   desc="Rapid-fire steam-pressure nails - weaker than the musket but fires much faster. Ammo: METL (1/shot)" },
-  RAILGUN     = { col={90, 180, 255},  cd=60, ammo="METL", cost=3, txt="Rail Gun",
+  RAILGUN     = { col={90, 180, 255},  cd=60, ammo="METL", cost=3, txt="Rail Gun", alts="KINETIC",
                   desc="An instant hyper-velocity slug that punches straight through blocks and enemies in a line. Ammo: METL (3/shot)" },
   PLASMATORCH = { col={255, 140, 255}, cd=1,  ammo="COAL", ammoEvery=4, continuous=true, txt="Plasma Torch",
                   desc="Short-range arc of real superheated plasma - vaporizes rock in its path, heavy melee damage. Ammo: COAL (drains while held)" },
@@ -75,16 +75,55 @@ local WEAPONS = {
                   desc="Worn passively. Press toward a wall in mid-air to grip and slide down slowly instead of falling" },
   BALLOON     = { col={230, 90, 140},  txt="Balloon", passive=true,
                   desc="Worn passively. Caps your fall speed to a gentle float whenever you're airborne" },
+  -- ===== round 3: weapons (real element mechanisms, see knowledge/design-arsenal-2026-08-31.md) =====
+  THERMLANCE  = { col={255, 200, 90},  cd=2,  ammo="IRON", ammoEvery=5, continuous=true, txt="Thermite Lance",
+                  desc="Sprays real thermite - burns far hotter than fire and cuts through metal and rock that shrugs off a flamethrower. Ammo: Iron ore (drains while held)" },
+  TUNGSNIPER  = { col={110, 100, 95},  cd=75, ammo="TUNG", cost=2, txt="Tungsten Sniper",
+                  desc="A single hyper-dense tungsten slug at extreme velocity - punches clean through several blocks in a line. Ammo: Tungsten (2/shot)" },
+  TESLAARC    = { col={120, 200, 255}, cd=22, ammo="CU", cost=1, txt="Tesla Arc",
+                  desc="Throws real lightning that chains between nearby conductive targets instead of stopping at the first. Ammo: Copper (1/shot)" },
+  GRAVWELL    = { col={140, 60, 200},  cd=110, ammo="GOLD", cost=4, txt="Gravity Well Grenade",
+                  desc="Lobs a real gravitational well that drags loose matter and enemies inward, then collapses. Ammo: Gold (4/shot)" },
+  EMPCHARGE   = { col={90, 220, 200},  cd=90, ammo="CU", cost=3, txt="EMP Charge",
+                  desc="Bursts a real electromagnetic pulse - kills sparks and powered machinery in radius without touching the terrain. Ammo: Copper (3/shot)" },
+  FOAMGUN     = { col={225, 225, 240}, cd=3,  ammo="GLAS", ammoEvery=4, continuous=true, txt="Aerogel Foam Gun",
+                  desc="Sprays real aerogel - sets into a lightweight solid you can bridge gaps, plug leaks and insulate with. Ammo: Glass (drains while held)" },
+  DISINT      = { col={40, 40, 50},    cd=4,  ammo="QRTZ", ammoEvery=8, continuous=true, txt="Disintegrator",
+                  desc="A void beam that deletes matter outright instead of blasting it - no crater, no debris, no shockwave. Ammo: Quartz (drains while held)" },
+  -- ===== round 3: armor (passive, counters the real survival accumulators) =====
+  PADHARNESS  = { col={150, 110, 70},  txt="Padded Harness", passive=true, armor="caver",
+                  desc="Worn passively. Absorbs landing impact - heavy falls that would break your legs merely hurt. Deep Caver set piece" },
+  LAMPHELM    = { col={230, 210, 120}, txt="Miner's Lamp Helm", passive=true, armor="caver",
+                  desc="Worn passively. Sheds real light around your head so you can see what you're mining. Deep Caver set piece" },
+  LEADVEST    = { col={90, 90, 105},   txt="Lead-Lined Vest", passive=true, armor="reactor",
+                  desc="Worn passively. Real lead shielding - steadily bleeds off accumulated radiation dose instead of letting it build. Reactor Engineer set piece" },
+  ZIRCPLATE   = { col={190, 200, 210}, txt="Zirconium Faceplate", passive=true, armor="reactor",
+                  desc="Worn passively. Reactor-grade heat shielding - sheds the geothermal heat load that cooks you at depth. Reactor Engineer set piece" },
+  SEALSUIT    = { col={120, 170, 190}, txt="Sealed Pressure Suit", passive=true, armor="diver",
+                  desc="Worn passively. Fully sealed - keeps a real breathable pocket at your head in gas AND underwater, not just one or the other. Void Diver set piece" },
 }
 local WEAPON_ORDER = { "MUSKET", "SHOTGUN", "GRENADE", "LIGHTGUN", "TPWAND", "FLAMETH", "WATERGUN", "ACIDGUN", "FREEZERAY", "LASERGUN", "DRILL", "JETPACK",
   "NAILGUN", "RAILGUN", "PLASMATORCH", "CRYOGRENADE", "C4CHARGE", "STICKYBOMB", "BOW", "BOOMERANG", "HARPOON", "LAVABUCKET", "DYNAMITE", "SMOKEBOMB", "MAGNET",
-  "OXYTANK", "DIVEHELMET", "GASMASK", "CLIMBGLOVES", "BALLOON" }
+  "OXYTANK", "DIVEHELMET", "GASMASK", "CLIMBGLOVES", "BALLOON",
+  "THERMLANCE", "TUNGSNIPER", "TESLAARC", "GRAVWELL", "EMPCHARGE", "FOAMGUN", "DISINT",
+  "PADHARNESS", "LAMPHELM", "LEADVEST", "ZIRCPLATE", "SEALSUIT" }
 
 for _, k in ipairs(WEAPON_ORDER) do R.ITEMS[k] = { col = WEAPONS[k].col, desc = WEAPONS[k].desc } end
 
 -- recipes: strip our own tagged recipes first (reload-safe), then re-add
 for i = #R.RECIPES, 1, -1 do if R.RECIPES[i]._tag == TAG then table.remove(R.RECIPES, i) end end
-local function addRecipe(out, n, need, st, txt, desc) R.RECIPES[#R.RECIPES + 1] = { out = out, n = n, need = need, st = st, txt = txt, desc = desc, _tag = TAG } end
+local function addRecipe(out, n, need, st, txt, desc)
+  R.RECIPES[#R.RECIPES + 1] = { out = out, n = n, need = need, st = st, txt = txt, desc = desc, _tag = TAG }
+  -- Same bug class machines2.lua already fixed at its BASE2_RECIPES loop: a recipe whose `out` has no
+  -- R.ITEMS entry is invisible to classMap()/the catalog and silently refuses to craft (R.craft requires
+  -- `out` to resolve to R.ITEMS or a real element). WEAPON_ORDER above covers every weapon/gadget code, but
+  -- ammo materials like ARROW/ACID/C-4 were never in WEAPONS, so they fell through. Auto-register from the
+  -- recipe itself so no future addRecipe call here can reopen this gap - station colour matches machines2.lua.
+  if not R.ITEMS[out] then
+    R.ITEMS[out] = { col = (st == "anvil") and { 150, 155, 165 } or (st == "workbench") and { 150, 115, 70 }
+                     or (st == "furnace") and { 200, 120, 60 } or { 190, 185, 175 }, desc = desc }
+  end
+end
 addRecipe("MUSKET", 1, { METL=6, WOOD=3 }, "anvil", "Musket", WEAPONS.MUSKET.desc)
 addRecipe("SHOTGUN", 1, { METL=10, WOOD=2 }, "anvil", "Shotgun", WEAPONS.SHOTGUN.desc)
 addRecipe("GRENADE", 1, { STEL=6, GOLD=2 }, "anvil", "Grenade Launcher", WEAPONS.GRENADE.desc)
@@ -121,6 +160,43 @@ addRecipe("DIVEHELMET", 1, { GLAS=6, STEL=4 }, "anvil", "Diving Helmet", WEAPONS
 addRecipe("GASMASK", 1, { GLAS=4, CU=2, COAL=2 }, "workbench", "Gas Mask", WEAPONS.GASMASK.desc)
 addRecipe("CLIMBGLOVES", 1, { WOOD=4, METL=2 }, "workbench", "Climbing Gloves", WEAPONS.CLIMBGLOVES.desc)
 addRecipe("BALLOON", 1, { GLAS=3, WOOD=2 }, "workbench", "Balloon", WEAPONS.BALLOON.desc)
+-- round 3 weapons
+addRecipe("THERMLANCE", 1, { STEL=6, IRON=8, CU=2 }, "anvil", "Thermite Lance", WEAPONS.THERMLANCE.desc)
+-- ADDED 2026-09-02 (@deadlock, GAME-FLOW.md S10 finding #2): TUNG ("Tungsten") is a real
+-- stock TPT element (src/simulation/elements/TUNG.cpp, TYPE_SOLID, Falldown=0 -- verified
+-- safe per CLAUDE.md rule 4; also the exact particle type fireTungsten() below spawns for
+-- the "hyper-dense slug punches through several blocks" mechanic, so it's not just an
+-- inventory token here) but had zero sources anywhere in this fork: not mined, not crafted,
+-- not looted. It was BOTH the build cost (6xTUNG) and the ammo (2/shot) for TUNGSNIPER --
+-- permanently unbuildable, and unfireable even if it somehow existed. Gave it a real furnace
+-- recipe (refined from Steel at extreme heat) instead of a worldgen placement, since the
+-- weapon's own physics already depend on real TUNG particles and a crafted route is the
+-- smaller, same-file fix -- matches the tier/pattern of ACID (also crafted ammo, furnace).
+addRecipe("TUNG", 2, { STEL=2, COAL=3 }, "furnace", "Tungsten", "Refined from steel at extreme heat -- dense, brittle, very heat-resistant. Ammo for the Tungsten Sniper")
+addRecipe("TUNGSNIPER", 1, { TUNG=6, STEL=8, GOLD=2 }, "anvil", "Tungsten Sniper", WEAPONS.TUNGSNIPER.desc)
+-- ADDED 2026-09-02 (@matimpl, design-material-progression.md S0/S4 chain 4): THRM ("Thermite") and
+-- NITR ("Nitroglycerin") are real stock TPT elements already wired as kinetic-weapon ammo
+-- (KINETIC_AMMO above, both in KINETIC_ORDER) but had zero acquisition route anywhere in this fork --
+-- no recipe, no R.MINEABLE entry, no quest reward. Confirmed by grep against every R.give/R.MINEABLE/
+-- recipe `out=` in the whole tree before this fix: zero matches for either. Exact same bug shape as the
+-- historic NSCN/TUNG deadlocks fixed just above -- a real, live deadlock (the player could select THRM/NITR
+-- rounds in a kinetic gun's ammo cycle but could never actually hold one). Gave both a furnace recipe
+-- matching their own in-game descriptions: THRM "burns into extremely hot molten metal" (iron bar + coal
+-- at extreme furnace heat, same station/tier as the TUNG fix above); NITR is native TPT's own "mix with
+-- CLST to make TNT" precursor, built here from GOO heated in the furnace (GOO is unlimited-supply topsoil).
+addRecipe("THRM", 2, { METL=3, COAL=4 }, "furnace", "Thermite", "Iron bar and coal, fired to extreme heat -- burns into white-hot molten metal, cutting through what a flamethrower can't. Ammo for kinetic weapons (incendiary rounds)")
+addRecipe("NITR", 2, { GOO=6 }, "furnace", "Nitroglycerin", "Pressure-sensitive explosive liquid, rendered from dirt at high furnace heat -- mixes with Clay dust for TNT. Ammo for kinetic weapons (explosive rounds)")
+addRecipe("TESLAARC", 1, { CU=10, GOLD=3, QRTZ=2 }, "anvil", "Tesla Arc", WEAPONS.TESLAARC.desc)
+addRecipe("GRAVWELL", 1, { GOLD=8, DMND=1, QRTZ=4 }, "research", "Gravity Well Grenade", WEAPONS.GRAVWELL.desc)
+addRecipe("EMPCHARGE", 1, { CU=8, GOLD=2, QRTZ=3 }, "research", "EMP Charge", WEAPONS.EMPCHARGE.desc)
+addRecipe("FOAMGUN", 1, { GLAS=8, STEL=4, CU=2 }, "anvil", "Aerogel Foam Gun", WEAPONS.FOAMGUN.desc)
+addRecipe("DISINT", 1, { DMND=2, QRTZ=8, GOLD=4 }, "advlab", "Disintegrator", WEAPONS.DISINT.desc)
+-- round 3 armor
+addRecipe("PADHARNESS", 1, { WOOD=6, GOO=8 }, "workbench", "Padded Harness", WEAPONS.PADHARNESS.desc)
+addRecipe("LAMPHELM", 1, { METL=4, GLAS=3, COAL=2 }, "workbench", "Miner's Lamp Helm", WEAPONS.LAMPHELM.desc)
+addRecipe("LEADVEST", 1, { LEAD=10, STEL=4 }, "anvil", "Lead-Lined Vest", WEAPONS.LEADVEST.desc)
+addRecipe("ZIRCPLATE", 1, { ZIRC=6, STEL=4, GLAS=2 }, "research", "Zirconium Faceplate", WEAPONS.ZIRCPLATE.desc)
+addRecipe("SEALSUIT", 1, { STEL=8, GLAS=6, CU=3 }, "anvil", "Sealed Pressure Suit", WEAPONS.SEALSUIT.desc)
 
 -- ================================================================ shared state (persists across reload)
 R.itemsCD = R.itemsCD or {}              -- name -> frame last fired
@@ -162,6 +238,61 @@ local function crater(cx, cy, r)
   end end
   if type(R.crumble) == "function" then pcall(R.crumble, cx, cy, r + 2) end  -- the player 17:58: collapse leftover micro-specks into real rubble
 end
+-- ================================================================ impact FX
+-- ONE helper driven by a per-weapon `fx` style, rather than bespoke effect code in every fire
+-- function. Everything it emits is a REAL particle obeying real physics - the spectacle IS the
+-- simulation, not an overlay painted on top of it.
+-- ponytail: styles are a flat if-chain; fine at this size, make it a lookup table past ~10.
+local function impactFX(x, y, style, ux, uy)
+  if not style then return end
+  local function put(el, n, spd, life, temp)
+    local t = eid(el); if not t then return end
+    for _ = 1, n do
+      local a = random() * math.pi * 2
+      local px, py = floor(x + math.cos(a) * 2), floor(y + math.sin(a) * 2)
+      if not sim.partID(px, py) then
+        local id = sim.partCreate(-1, px, py, t)
+        if id and id >= 0 then
+          sim.partProperty(id, "vx", math.cos(a) * spd); sim.partProperty(id, "vy", math.sin(a) * spd)
+          if life then sim.partProperty(id, "life", life) end
+          if temp then sim.partProperty(id, "temp", temp) end
+        end
+      end
+    end
+  end
+  if style == "burn" then       put("FIRE", 5, 1.6, 14, 1200); put("SMKE", 3, 0.8, 20)
+  elseif style == "spark" then  put("SPRK", 3, 2.2, 6); put("PHOT", 4, 3.0, 8)
+  elseif style == "frost" then  put("LN2", 5, 1.2, nil, 60)
+  elseif style == "plasma" then put("PLSM", 4, 1.8, 10, 4000); put("SMKE", 2, 0.7, 16)
+  elseif style == "void" then   put("PHOT", 6, 2.4, 10)
+  elseif style == "blast" then
+    put("FIRE", 6, 2.2, 12, 1400); put("SMKE", 4, 1.0, 24)
+    -- real thrown debris: rubble with genuine outward velocity, so a hit visibly scatters ground
+    local dt = eid("STNE") or eid("BRMT")
+    if dt then for _ = 1, 6 do
+      local a = random() * math.pi * 2; local s = 1.5 + random() * 2
+      local px, py = floor(x + math.cos(a) * 3), floor(y + math.sin(a) * 3)
+      if not sim.partID(px, py) then
+        local id = sim.partCreate(-1, px, py, dt)
+        if id and id >= 0 then sim.partProperty(id, "vx", math.cos(a) * s); sim.partProperty(id, "vy", math.sin(a) * s - 1) end
+      end
+    end end
+  elseif style == "pierce" then
+    -- directional: sparks spray back along the entry line, so a punch-through reads as one
+    local t = eid("SPRK")
+    if t and ux then for _ = 1, 5 do
+      local j = (random() - 0.5) * 0.8
+      local px, py = floor(x - ux * 2), floor(y - uy * 2)
+      if not sim.partID(px, py) then
+        local id = sim.partCreate(-1, px, py, t)
+        if id and id >= 0 then sim.partProperty(id, "vx", (-ux + j) * 2.5); sim.partProperty(id, "vy", (-uy + j) * 2.5); sim.partProperty(id, "life", 6) end
+      end
+    end end
+    put("SMKE", 2, 0.6, 14)
+  end
+end
+R.itemsImpactFX = impactFX  -- exported like R.itemsDispatch: lets a bridge test render an
+-- impact in open air to prove the effect works, without firing a destructive round through terrain.
 local function ready(name, w) return (R.frame - (R.itemsCD[name] or -9999)) >= w.cd end
 local function fired(name) R.itemsCD[name] = R.frame end
 local function flash(x, y)  -- muzzle flash marker + a small real smoke puff, per the player 17:22
@@ -177,6 +308,41 @@ local function addBeam(x1, y1, x2, y2, col) R.itemsBeams[#R.itemsBeams + 1] = { 
 local function canAmmo(w) if not w.ammo then return true end; return inv(w.ammo) >= (w.cost or 1) end
 local function spendAmmo(w) if w.ammo then R.inventory[w.ammo] = inv(w.ammo) - (w.cost or 1) end end
 local function ammoOk(w) return (not w.ammo) or inv(w.ammo) >= 1 end
+-- ================================================================ ammo as a modifier
+-- Load a different real element into a kinetic gun and it genuinely behaves differently, because
+-- the projectile IS that element and TPT's own physics does the rest - NITR really detonates,
+-- THRM really burns what it hits, LEAD is really denser. One shared table drives every kinetic
+-- gun, and the values are MULTIPLIERS so each weapon keeps the balance it already had.
+local KINETIC_AMMO = {
+  METL = { el = "BMTL", v = 1.00, dmg = 1.00, label = "standard",   fx = "spark"  },
+  LEAD = { el = "LEAD", v = 0.80, dmg = 1.55, label = "dense",      fx = "pierce" },
+  THRM = { el = "THRM", v = 0.95, dmg = 0.85, temp = 2500, label = "incendiary", fx = "burn"  },
+  NITR = { el = "NITR", v = 0.90, dmg = 1.20, temp = 500,  label = "explosive",  fx = "blast" },
+}
+-- Exotic rounds are preferred over plain METL, so what you carry is how you "load" a gun.
+-- ponytail: inventory IS the ammo selector; add a cycle key if carrying both and choosing matters.
+local KINETIC_ORDER = { "THRM", "NITR", "LEAD", "METL" }
+-- WEAPONS is declared above this point, so guns opt in with the string "KINETIC" and it is
+-- resolved to the real table here, once, instead of duplicating the table on every weapon.
+for _, wdef in pairs(WEAPONS) do if wdef.alts == "KINETIC" then wdef.alts = KINETIC_AMMO end end
+local function pickAmmo(w)
+  if not w.alts then return w.ammo, nil end
+  local cost = w.cost or 1
+  for _, a in ipairs(KINETIC_ORDER) do
+    if w.alts[a] and inv(a) >= cost then return a, w.alts[a] end
+  end
+  return w.ammo, nil   -- nothing carried: the caller's shortfall hint path reports it
+end
+local function spendPicked(a, w) R.inventory[a] = inv(a) - (w.cost or 1) end
+R.itemsPickAmmo = function(k) local w = WEAPONS[k]; if not w then return nil end; return pickAmmo(w) end
+-- exported like R.itemsDispatch: lets a bridge test confirm which round a gun would load WITHOUT
+-- firing it, so selection logic is verifiable without putting real projectiles in a live world.
+local function anyAmmo(w)  -- true if ANY accepted round is carried, not just the default
+  if not w.alts then return canAmmo(w) end
+  local cost = w.cost or 1
+  for a in pairs(w.alts) do if inv(a) >= cost then return true end end
+  return false
+end
 local function ammoTick(name, w)  -- continuous weapons: consume 1 ammo every ammoEvery calls, only when ammo available
   if not w.ammo then return true end
   R.itemsFireCounter[name] = (R.itemsFireCounter[name] or 0) + 1
@@ -216,42 +382,57 @@ local SHAPES = {
   DYNAMITE    = { len = 9,  thick = true, tank = { 180, 40, 30 } },
   SMOKEBOMB   = { len = 7,  thick = true },
   MAGNET      = { len = 8,  coil = true },
+  THERMLANCE  = { len = 15, coil = true,  tank = { 255, 190, 80 } },
+  TUNGSNIPER  = { len = 18, thick = true },
+  TESLAARC    = { len = 10, coil = true },
+  GRAVWELL    = { len = 8,  thick = true, tank = { 140, 60, 200 } },
+  EMPCHARGE   = { len = 8,  coil = true },
+  FOAMGUN     = { len = 12, tank = { 225, 225, 240 } },
+  DISINT      = { len = 14, coil = true },
 }
 
 -- ================================================================ single-shot weapons (real projectile particles)
 local function fireMusket(mx, my)
   local w = WEAPONS.MUSKET; if not ready("MUSKET", w) then return end
-  if not canAmmo(w) then R.hint = "Musket needs " .. R.nice("METL"); return end
+  if not anyAmmo(w) then R.hint = "Musket needs " .. R.nice("METL"); return end
   local ux, uy, cx, cy = aimAt(mx, my)
   local MUZZLE = SHAPES.MUSKET.len
-  fired("MUSKET"); spendAmmo(w)
-  local t = eid("BMTL")
+  local an, mod = pickAmmo(w)
+  fired("MUSKET"); spendPicked(an, w)
+  local t = eid(mod and mod.el or "BMTL")
   local sx, sy = floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)
   local id = t and sim.partCreate(-1, sx, sy, t)
   if id and id >= 0 then
-    sim.partProperty(id, "vx", ux * 6); sim.partProperty(id, "vy", uy * 6)
-    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "musket", born = R.frame, dmg = 28, kb = 6, r = 2, lastx = sx, lasty = sy }
+    local sp = 6 * (mod and mod.v or 1)
+    sim.partProperty(id, "vx", ux * sp); sim.partProperty(id, "vy", uy * sp)
+    if mod and mod.temp then sim.partProperty(id, "temp", mod.temp) end
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "musket", fx = (mod and mod.fx) or "spark", ux = ux, uy = uy, born = R.frame, dmg = floor(28 * (mod and mod.dmg or 1)), kb = 6, r = 2, lastx = sx, lasty = sy }
   end
-  flash(sx, sy); recoil(ux, uy, 0.5); R.hint = "Musket fired - " .. R.nice("METL") .. " x" .. inv("METL")
+  flash(sx, sy); recoil(ux, uy, 0.5)
+  R.hint = "Musket (" .. (mod and mod.label or "standard") .. ") - " .. R.nice(an) .. " x" .. inv(an)
 end
 local function fireShotgun(mx, my)
   local w = WEAPONS.SHOTGUN; if not ready("SHOTGUN", w) then return end
-  if not canAmmo(w) then R.hint = "Shotgun needs " .. R.nice("METL") .. " x4"; return end
+  if not anyAmmo(w) then R.hint = "Shotgun needs " .. R.nice("METL") .. " x4"; return end
   local ux, uy, cx, cy = aimAt(mx, my)
   local MUZZLE = SHAPES.SHOTGUN.len
-  fired("SHOTGUN"); spendAmmo(w)
-  local t = eid("BRMT")
+  local an, mod = pickAmmo(w)
+  fired("SHOTGUN"); spendPicked(an, w)
+  local t = eid(mod and mod.el or "BRMT")
   for _ = 1, 6 do
     local a = (random() - 0.5) * 0.5; local ca, sa = math.cos(a), math.sin(a)
     local pux, puy = ux * ca - uy * sa, ux * sa + uy * ca
     local sx, sy = floor(cx + pux * MUZZLE), floor(cy + puy * MUZZLE)
     local id = t and sim.partCreate(-1, sx, sy, t)
     if id and id >= 0 then
-      sim.partProperty(id, "vx", pux * 11); sim.partProperty(id, "vy", puy * 11)
-      R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "pellet", born = R.frame, dmg = 10, kb = 10, r = 1, life = 220, lastx = sx, lasty = sy }
+      local sp = 11 * (mod and mod.v or 1)
+      sim.partProperty(id, "vx", pux * sp); sim.partProperty(id, "vy", puy * sp)
+      if mod and mod.temp then sim.partProperty(id, "temp", mod.temp) end
+      R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "pellet", fx = (mod and mod.fx) or "spark", ux = ux, uy = uy, born = R.frame, dmg = floor(10 * (mod and mod.dmg or 1)), kb = 10, r = 1, life = 220, lastx = sx, lasty = sy }
     end
   end
-  flash(floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)); recoil(ux, uy, 1.1); R.hint = "Shotgun blast - " .. R.nice("METL") .. " x" .. inv("METL")
+  flash(floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)); recoil(ux, uy, 1.1)
+  R.hint = "Shotgun (" .. (mod and mod.label or "standard") .. ") - " .. R.nice(an) .. " x" .. inv(an)
 end
 local function fireGrenade(mx, my)
   local w = WEAPONS.GRENADE; if not ready("GRENADE", w) then return end
@@ -264,7 +445,7 @@ local function fireGrenade(mx, my)
   local id = t and sim.partCreate(-1, sx, sy, t)
   if id and id >= 0 then
     sim.partProperty(id, "vx", ux * 5); sim.partProperty(id, "vy", uy * 5 - 2.2)
-    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "grenade", born = R.frame, dmg = 90, kb = 14, r = 22, lastx = sx, lasty = sy }
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "grenade", fx = "blast", born = R.frame, dmg = 90, kb = 14, r = 22, lastx = sx, lasty = sy }
   end
   flash(sx, sy); recoil(ux, uy, 1.4); R.hint = "Grenade away! - " .. R.nice("COAL") .. " x" .. inv("COAL")
 end
@@ -479,25 +660,32 @@ end
 -- ================================================================ round 2 weapons/gadgets
 local function fireNailgun(mx, my)
   local w = WEAPONS.NAILGUN; if not ready("NAILGUN", w) then return end
-  if not canAmmo(w) then R.hint = "Steam Nail Gun needs " .. R.nice("METL"); return end
+  if not anyAmmo(w) then R.hint = "Steam Nail Gun needs " .. R.nice("METL"); return end
   local ux, uy, cx, cy = aimAt(mx, my)
   local MUZZLE = SHAPES.NAILGUN.len
-  fired("NAILGUN"); spendAmmo(w)
-  local t = eid("BMTL")
+  local an, mod = pickAmmo(w)
+  fired("NAILGUN"); spendPicked(an, w)
+  local t = eid(mod and mod.el or "BMTL")
   local sx, sy = floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)
   local id = t and sim.partCreate(-1, sx, sy, t)
   if id and id >= 0 then
-    sim.partProperty(id, "vx", ux * 7); sim.partProperty(id, "vy", uy * 7)
-    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "nail", born = R.frame, dmg = 10, kb = 3, r = 1, lastx = sx, lasty = sy }
+    local sp = 7 * (mod and mod.v or 1)
+    sim.partProperty(id, "vx", ux * sp); sim.partProperty(id, "vy", uy * sp)
+    if mod and mod.temp then sim.partProperty(id, "temp", mod.temp) end
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "nail", fx = (mod and mod.fx) or "spark", ux = ux, uy = uy, born = R.frame, dmg = floor(10 * (mod and mod.dmg or 1)), kb = 3, r = 1, lastx = sx, lasty = sy }
   end
-  flash(sx, sy); R.hint = "Nail gun - " .. R.nice("METL") .. " x" .. inv("METL")
+  flash(sx, sy)
+  R.hint = "Nail gun (" .. (mod and mod.label or "standard") .. ") - " .. R.nice(an) .. " x" .. inv(an)
 end
 local function fireRailgun(mx, my)
   local w = WEAPONS.RAILGUN; if not ready("RAILGUN", w) then return end
-  if not canAmmo(w) then R.hint = "Rail Gun needs " .. R.nice("METL") .. " x3"; return end
+  if not anyAmmo(w) then R.hint = "Rail Gun needs " .. R.nice("METL") .. " x3"; return end
   local ux, uy, cx, cy = aimAt(mx, my)
   local MUZZLE = SHAPES.RAILGUN.len
-  fired("RAILGUN"); spendAmmo(w)
+  local an, mod = pickAmmo(w)
+  fired("RAILGUN"); spendPicked(an, w)
+  -- hitscan: there is no projectile particle to swap, so the loaded round scales the hit instead
+  local railDmg = floor(55 * (mod and mod.dmg or 1))
   local range = 260; local fg = eid("FIGH"); local hits = 0
   local lastx, lasty = floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)
   for st = MUZZLE, range, 3 do
@@ -510,7 +698,8 @@ local function fireRailgun(mx, my)
           sim.partKill(p)  -- pierces anything short of the hardest ores/bedrock
           if type(R.crumble) == "function" then pcall(R.crumble, x, y, 4) end
         end
-        dealDamage(x + R.cam.x, y + R.cam.y, 6, 55, 10); hits = hits + 1
+        dealDamage(x + R.cam.x, y + R.cam.y, 6, railDmg, 10); hits = hits + 1
+        impactFX(x, y, (mod and mod.fx) or "pierce", ux, uy)
         if not (R.MINEABLE[nm] and (R.HARD[nm] or 3) <= 6) then break end
       end
     end
@@ -519,7 +708,7 @@ local function fireRailgun(mx, my)
   -- entire visual, per the player 18:02 "rail gun leaves behind a bunch of leftover particles"
   addBeam(floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE), lastx, lasty, { 140, 210, 255 })
   flash(floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)); recoil(ux, uy, 1.6)
-  R.hint = "Rail Gun - pierced " .. hits .. " - " .. R.nice("METL") .. " x" .. inv("METL")
+  R.hint = "Rail Gun (" .. (mod and mod.label or "standard") .. ") - pierced " .. hits .. " - " .. R.nice(an) .. " x" .. inv(an)
 end
 local function streamPlasma(mx, my)
   local w = WEAPONS.PLASMATORCH; if not ready("PLASMATORCH", w) then return end
@@ -554,7 +743,7 @@ local function fireCryo(mx, my)
   local id = t and sim.partCreate(-1, sx, sy, t)
   if id and id >= 0 then
     sim.partProperty(id, "vx", ux * 5); sim.partProperty(id, "vy", uy * 5 - 1.5)
-    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "cryo", born = R.frame, dmg = 15, kb = 4, r = 3, lastx = sx, lasty = sy }
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "cryo", fx = "frost", born = R.frame, dmg = 15, kb = 4, r = 3, lastx = sx, lasty = sy }
   end
   flash(sx, sy); recoil(ux, uy, 0.8); R.hint = "Cryo Grenade - " .. R.nice("COAL") .. " x" .. inv("COAL")
 end
@@ -595,7 +784,7 @@ local function fireSticky(mx, my)
   local id = t and sim.partCreate(-1, sx, sy, t)
   if id and id >= 0 then
     sim.partProperty(id, "vx", ux * 5); sim.partProperty(id, "vy", uy * 5 - 1)
-    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "sticky", born = R.frame, dmg = 80, kb = 12, r = 16, lastx = sx, lasty = sy }
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "sticky", fx = "blast", born = R.frame, dmg = 80, kb = 12, r = 16, lastx = sx, lasty = sy }
   end
   flash(sx, sy); recoil(ux, uy, 1.0); R.hint = "Sticky Bomb thrown - " .. R.nice("COAL") .. " x" .. inv("COAL")
 end
@@ -610,7 +799,7 @@ local function fireBow(mx, my)
   local id = t and sim.partCreate(-1, sx, sy, t)
   if id and id >= 0 then
     sim.partProperty(id, "vx", ux * 6); sim.partProperty(id, "vy", uy * 6); sim.partProperty(id, "temp", 700)
-    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "arrow", born = R.frame, dmg = 20, kb = 5, r = 1, lastx = sx, lasty = sy }
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "arrow", fx = "burn", born = R.frame, dmg = 20, kb = 5, r = 1, lastx = sx, lasty = sy }
   end
   flash(sx, sy); R.hint = "Arrow loosed - " .. R.nice("ARROW") .. " x" .. inv("ARROW")
 end
@@ -639,7 +828,7 @@ local function fireHarpoon(mx, my)
   local id = t and sim.partCreate(-1, sx, sy, t)
   if id and id >= 0 then
     sim.partProperty(id, "vx", ux * 10); sim.partProperty(id, "vy", uy * 10)
-    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "harpoon", born = R.frame, dmg = 20, kb = 10, r = 1, ux = ux, uy = uy, lastx = sx, lasty = sy }
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "harpoon", fx = "pierce", born = R.frame, dmg = 20, kb = 10, r = 1, ux = ux, uy = uy, lastx = sx, lasty = sy }
   end
   flash(sx, sy); recoil(ux, uy, 0.6); R.hint = "Harpoon fired - " .. R.nice("METL") .. " x" .. inv("METL")
 end
@@ -676,7 +865,7 @@ local function fireDynamite(mx, my)
     local id = t and not sim.partID(sx, sy) and sim.partCreate(-1, sx, sy, t)
     if id and id >= 0 then
       sim.partProperty(id, "vx", ux * 4.5 + jx * 0.3); sim.partProperty(id, "vy", uy * 4.5 - 2 + jy * 0.3)
-      R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "grenade", born = R.frame, dmg = 70, kb = 16, r = 18, lastx = sx, lasty = sy }
+      R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "grenade", fx = "blast", born = R.frame, dmg = 70, kb = 16, r = 18, lastx = sx, lasty = sy }
     end
   end
   flash(floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)); recoil(ux, uy, 2.0); R.hint = "Dynamite thrown - " .. R.nice("COAL") .. " x" .. inv("COAL")
@@ -720,8 +909,167 @@ local function magnetPull()
   R.hint = n > 0 and ("Magnet pulling " .. n .. " particle" .. (n > 1 and "s" or "")) or "Magnet: nothing loose nearby"
 end
 
+-- ================================================================ round 3 weapons
+-- Every one of these is a real element doing its real job; none of them apply a scripted damage
+-- number without a matching particle actually existing in the sim.
+local function streamThermite(mx, my)
+  local w = WEAPONS.THERMLANCE; if not ready("THERMLANCE", w) then return end
+  if not ammoOk(w) then R.hint = "Thermite Lance needs " .. R.nice("IRON"); return end
+  fired("THERMLANCE"); ammoTick("THERMLANCE", w)
+  local ux, uy, cx, cy = aimAt(mx, my); local t = eid("THRM")
+  local MUZZLE = SHAPES.THERMLANCE.len
+  -- real THRM, spawned already hot so it lights immediately instead of falling as inert powder
+  for _ = 1, 2 do
+    local j = (random() - 0.5) * 0.22
+    local jx, jy = ux + j, uy + j
+    local sx, sy = floor(cx + jx * MUZZLE), floor(cy + jy * MUZZLE)
+    local id = t and sim.partCreate(-1, sx, sy, t)
+    if id and id >= 0 then
+      sim.partProperty(id, "vx", jx * 3); sim.partProperty(id, "vy", jy * 3)
+      sim.partProperty(id, "temp", 2500)
+    end
+  end
+  dealDamage(cx + R.cam.x + ux * 18, cy + R.cam.y + uy * 18, 10, 3, 2)
+  if R.frame % 4 == 0 then impactFX(floor(cx + ux * 20), floor(cy + uy * 20), "burn", ux, uy) end
+  flash(floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)); R.hint = "Thermite Lance - " .. R.nice("IRON") .. " x" .. inv("IRON")
+end
+local function fireTungsten(mx, my)
+  local w = WEAPONS.TUNGSNIPER; if not ready("TUNGSNIPER", w) then return end
+  if not canAmmo(w) then R.hint = "Tungsten Sniper needs " .. R.nice("TUNG") .. " x2"; return end
+  local ux, uy, cx, cy = aimAt(mx, my)
+  local MUZZLE = SHAPES.TUNGSNIPER.len
+  fired("TUNGSNIPER"); spendAmmo(w)
+  local t = eid("TUNG")
+  local sx, sy = floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)
+  local id = t and sim.partCreate(-1, sx, sy, t)
+  if id and id >= 0 then
+    -- genuinely hyper-velocity: real TUNG is dense enough to keep going through several cells
+    sim.partProperty(id, "vx", ux * 26); sim.partProperty(id, "vy", uy * 26)
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "musket", fx = "pierce", ux = ux, uy = uy, born = R.frame, dmg = 85, kb = 12, r = 2, lastx = sx, lasty = sy }
+  end
+  flash(sx, sy); recoil(ux, uy, 2.2); R.hint = "Tungsten Sniper - " .. R.nice("TUNG") .. " x" .. inv("TUNG")
+end
+local function fireTesla(mx, my)
+  local w = WEAPONS.TESLAARC; if not ready("TESLAARC", w) then return end
+  if not canAmmo(w) then R.hint = "Tesla Arc needs " .. R.nice("CU"); return end
+  local ux, uy, cx, cy = aimAt(mx, my)
+  fired("TESLAARC"); spendAmmo(w)
+  local lt = eid("LIGH")
+  -- chain: each link starts where the last ended, bending toward the nearest live enemy
+  local px, py = cx + ux * SHAPES.TESLAARC.len, cy + uy * SHAPES.TESLAARC.len
+  local dx, dy = ux, uy
+  for link = 1, 4 do
+    local nx, ny = px + dx * 26, py + dy * 26
+    if lt then
+      local id = sim.partCreate(-1, floor(px), floor(py), lt)
+      if id and id >= 0 then sim.partProperty(id, "vx", dx * 9); sim.partProperty(id, "vy", dy * 9); sim.partProperty(id, "life", 12) end
+    end
+    addBeam(px, py, nx, ny, { 140, 210, 255 })
+    dealDamage(nx + R.cam.x, ny + R.cam.y, 16, 20, 3)
+    -- steer the next link toward the closest enemy in range, else keep going straight
+    local best, bx, by = 90 * 90, nil, nil
+    if R.enemyList then
+      for _, e in ipairs(R.enemyList()) do
+        if not e.dead then
+          local ex, ey = e.x - R.cam.x, e.y - R.cam.y
+          local d2 = (ex - nx) ^ 2 + (ey - ny) ^ 2
+          if d2 < best then best, bx, by = d2, ex, ey end
+        end
+      end
+    end
+    px, py = nx, ny
+    if bx then
+      local len = math.max(0.001, sqrt((bx - px) ^ 2 + (by - py) ^ 2))
+      dx, dy = (bx - px) / len, (by - py) / len
+    end
+  end
+  flash(floor(cx + ux * 10), floor(cy + uy * 10)); R.hint = "Tesla Arc - " .. R.nice("CU") .. " x" .. inv("CU")
+end
+local function fireGravWell(mx, my)
+  local w = WEAPONS.GRAVWELL; if not ready("GRAVWELL", w) then return end
+  if not canAmmo(w) then R.hint = "Gravity Well needs " .. R.nice("GOLD") .. " x4"; return end
+  local ux, uy, cx, cy = aimAt(mx, my)
+  fired("GRAVWELL"); spendAmmo(w)
+  local sx, sy = floor(cx + ux * SHAPES.GRAVWELL.len), floor(cy + uy * SHAPES.GRAVWELL.len)
+  local t = eid("GOLD")
+  local id = t and sim.partCreate(-1, sx, sy, t)
+  if id and id >= 0 then
+    sim.partProperty(id, "vx", ux * 5); sim.partProperty(id, "vy", uy * 5)
+    R.itemsProj[#R.itemsProj + 1] = { id = id, kind = "gravwell", born = R.frame, dmg = 0, kb = 0, r = 2, lastx = sx, lasty = sy }
+  end
+  flash(sx, sy); R.hint = "Gravity well launched - " .. R.nice("GOLD") .. " x" .. inv("GOLD")
+end
+local function fireEMP(mx, my)
+  local w = WEAPONS.EMPCHARGE; if not ready("EMPCHARGE", w) then return end
+  if not canAmmo(w) then R.hint = "EMP Charge needs " .. R.nice("CU") .. " x3"; return end
+  local ux, uy, cx, cy = aimAt(mx, my)
+  fired("EMPCHARGE"); spendAmmo(w)
+  local tx, ty = floor(cx + ux * 40), floor(cy + uy * 40)
+  local et = eid("EMP")
+  -- real EMP: the element itself does the work on sparks/electronics when it activates
+  if et then
+    local id = sim.partCreate(-1, tx, ty, et)
+    if id and id >= 0 then sim.partProperty(id, "life", 2) end
+  end
+  -- visible pulse ring, and kill live SPRK in radius so the effect reads immediately
+  local sp = eid("SPRK")
+  local killed = 0
+  if sp then
+    for oy = -34, 34, 2 do for ox = -34, 34, 2 do
+      if ox * ox + oy * oy <= 34 * 34 then
+        local p = sim.partID(tx + ox, ty + oy)
+        if p and sim.partProperty(p, "type") == sp then sim.partKill(p); killed = killed + 1 end
+      end
+    end end
+  end
+  for a = 0, 11 do
+    local ang = a * math.pi / 6
+    addBeam(tx, ty, tx + math.cos(ang) * 34, ty + math.sin(ang) * 34, { 90, 220, 200 })
+  end
+  flash(tx, ty); R.hint = "EMP burst - " .. killed .. " sparks killed"
+end
+local function streamFoam(mx, my)
+  local w = WEAPONS.FOAMGUN; if not ready("FOAMGUN", w) then return end
+  if not ammoOk(w) then R.hint = "Foam Gun needs " .. R.nice("GLAS"); return end
+  fired("FOAMGUN"); ammoTick("FOAMGUN", w)
+  local ux, uy, cx, cy = aimAt(mx, my)
+  local t = eid("AERO") or eid("INSL")
+  local MUZZLE = SHAPES.FOAMGUN.len
+  local sx, sy = floor(cx + ux * MUZZLE), floor(cy + uy * MUZZLE)
+  if t and not sim.partID(sx, sy) then
+    local id = sim.partCreate(-1, sx, sy, t)
+    if id and id >= 0 then sim.partProperty(id, "vx", ux * 2.5); sim.partProperty(id, "vy", uy * 2.5) end
+  end
+  R.hint = "Aerogel foam - " .. R.nice("GLAS") .. " x" .. inv("GLAS")
+end
+local function streamDisint(mx, my)
+  local w = WEAPONS.DISINT; if not ready("DISINT", w) then return end
+  if not ammoOk(w) then R.hint = "Disintegrator needs " .. R.nice("QRTZ"); return end
+  fired("DISINT"); ammoTick("DISINT", w)
+  local ux, uy, cx, cy = aimAt(mx, my)
+  local MUZZLE = SHAPES.DISINT.len
+  -- walk the beam out and delete the first solid it meets - clean removal, no crater, no debris
+  local hit = false
+  for step = MUZZLE, 70, 2 do
+    local sx, sy = floor(cx + ux * step), floor(cy + uy * step)
+    local p = sim.partID(sx, sy)
+    if p then
+      local nm = nameOf(sim.partProperty(p, "type"))
+      if R.MINEABLE[nm] then give(nm == "BCOL" and "COAL" or nm, 1) end
+      sim.partKill(p); hit = true
+      impactFX(sx, sy, "void", ux, uy)
+      addBeam(cx + ux * MUZZLE, cy + uy * MUZZLE, sx, sy, { 90, 60, 140 })
+      R.hint = "Disintegrated " .. R.nice(nm)
+      break
+    end
+  end
+  if not hit then addBeam(cx + ux * MUZZLE, cy + uy * MUZZLE, cx + ux * 70, cy + uy * 70, { 90, 60, 140 }) end
+end
+
 local DISPATCH = {
   MUSKET = fireMusket, SHOTGUN = fireShotgun, GRENADE = fireGrenade, LIGHTGUN = fireLightning, TPWAND = fireTeleport,
+  THERMLANCE = streamThermite, TUNGSNIPER = fireTungsten, TESLAARC = fireTesla, GRAVWELL = fireGravWell,
+  EMPCHARGE = fireEMP, FOAMGUN = streamFoam, DISINT = streamDisint,
   FLAMETH = streamFlamethrower, WATERGUN = streamWatergun, ACIDGUN = streamAcid, FREEZERAY = streamFreeze,
   LASERGUN = streamLaser, DRILL = drillMine,
   -- JETPACK is deliberately absent here: it is not a left-mouse weapon, see the W/Space thrust check in the tick hook
@@ -840,14 +1188,60 @@ local function headInWater()
   local p = sim.partID(floor(R.P.x) - R.cam.x, floor(R.P.y) - 5 - R.cam.y)
   return p and WETGAS[nameOf(sim.partProperty(p, "type"))]
 end
+-- ================================================================ worn oxygen tank (on-body)
+-- A real shape on his back whose fill level IS the readout - the resource and its gauge are the
+-- same object, so reserve is readable without opening anything.
+-- Honest limitation: TPT particles cannot be attached to a moving entity, so the tank does not
+-- literally contain loose OXYG particles walking around. What IS real: it is FILLED by consuming
+-- real OXYG particles from the air around you, and it VENTS real OXYG back out at your head when
+-- you run low. Storage in between is a scalar (R.itemsO2Charge), which is the physically honest
+-- version of "holds oxygen" that this engine can actually support.
+local function drawBackTank()
+  if inv("OXYTANK") <= 0 then return end
+  local P = R.P
+  local x, y = floor(P.x) - R.cam.x, floor(P.y) - R.cam.y
+  local f = P.face or 1
+  -- mirror core drawPlayer's walk bob exactly so the tank stays glued to the sprite rather than
+  -- floating a pixel off during the walk cycle
+  local moving = P.onGround and math.abs(P.vx) > 0.2
+  local cyc = moving and floor(((P.anim or 0) / 3) % 4) or 0
+  local by = y - ((cyc == 1 or cyc == 3) and 1 or 0)
+  local tx = x + (f > 0 and -4 or 3)      -- on the BACK: opposite whichever way he faces
+  local ty, TH = by - 9, 6                -- torso spans by-9..by-4 in core's sprite
+  graphics.fillRect(tx, ty, 2, TH, 55, 60, 70, 255)                 -- steel cylinder
+  local frac = math.max(0, math.min(1, (R.itemsO2Charge or 0) / 400))
+  local fh = floor(TH * frac + 0.5)
+  if fh > 0 then graphics.fillRect(tx, ty + (TH - fh), 2, fh, 90, 200, 235, 255) end  -- fills bottom-up
+  graphics.fillRect(tx, ty - 1, 2, 1, 150, 155, 165, 255)           -- valve cap
+  graphics.drawLine(tx + (f > 0 and 2 or 0), ty + 1, x + (f > 0 and -1 or 1), by - 12, 140, 150, 160, 200)  -- hose to the mask
+end
 local function passiveGearTick()
   if inv("DIVEHELMET") > 0 and headInWater() then clearHeadAir(WETGAS, false) end
   if inv("GASMASK") > 0 and not headInWater() then clearHeadAir(TOXGAS, false) end
   if inv("OXYTANK") > 0 then
     if (R.o2 or 100) < 40 and R.itemsO2Charge > 0 then
       if clearHeadAir(BADGAS, true) > 0 then R.itemsO2Charge = math.max(0, R.itemsO2Charge - 2) end
-    elseif (R.o2 or 100) >= 80 then
-      R.itemsO2Charge = math.min(400, R.itemsO2Charge + 1)
+    elseif (R.o2 or 100) >= 80 and R.itemsO2Charge < 400 then
+      -- Fill from REAL oxygen: consume an actual OXYG particle from the air around you and bank
+      -- it. Deliberately NO free fallback - if there is no real oxygen nearby the tank does not
+      -- fill, which is the whole point. Refilling is therefore something you do somewhere with
+      -- genuinely breathable air, not a number that ticks up for free.
+      local ot = eid("OXYG")
+      if ot then
+        local px, py = floor(R.P.x) - R.cam.x, floor(R.P.y) - R.cam.y
+        local done = false
+        for oy = -14, 2, 4 do
+          if done then break end
+          for ox = -10, 10, 5 do
+            local p = sim.partID(px + ox, py + oy)
+            if p and sim.partProperty(p, "type") == ot then
+              sim.partKill(p)
+              R.itemsO2Charge = math.min(400, R.itemsO2Charge + 12)
+              done = true; break
+            end
+          end
+        end
+      end
     end
   end
   if inv("BALLOON") > 0 and not R.P.onGround and R.P.vy > 1.2 then R.P.vy = 1.2; R.P.apex = R.P.y end
@@ -856,6 +1250,49 @@ local function passiveGearTick()
     if (R.keys.a or R.keys.d) and R.solidW(floor(R.P.x) + face * 2, floor(R.P.y) - 4) and R.P.vy > 0.4 then
       R.P.vy = 0.4; R.P.apex = R.P.y
     end
+  end
+  -- ===== round 3 armor =====
+  -- Each piece counters a REAL survival accumulator that core already damages you from, rather
+  -- than adding a parallel "defense" number. Set bonuses are just a count of owned pieces, so no
+  -- new equip slots or UI are needed - ownership is the equip, same as every other passive here.
+  local caver   = (inv("PADHARNESS") > 0 and 1 or 0) + (inv("LAMPHELM") > 0 and 1 or 0)
+  local reactor = (inv("LEADVEST") > 0 and 1 or 0) + (inv("ZIRCPLATE") > 0 and 1 or 0)
+  local diver   = (inv("SEALSUIT") > 0 and 1 or 0) + (inv("OXYTANK") > 0 and 1 or 0)
+
+  -- Padded Harness: bleed off landing impact. Core's fall damage keys off the fall height it
+  -- measured, so softening the descent shortly before touchdown is the honest lever.
+  if inv("PADHARNESS") > 0 and not R.P.onGround and R.P.vy > 3.0 then
+    if R.solidW(floor(R.P.x), floor(R.P.y) + 3) then R.P.vy = 3.0; R.P.apex = R.P.y end
+  end
+  -- Miner's Lamp Helm: real GLOW particles at the head, so it genuinely lights the area.
+  if inv("LAMPHELM") > 0 and R.frame % 12 == 0 then
+    local gt = eid("GLOW")
+    if gt then
+      local hx, hy = floor(R.P.x) - R.cam.x, floor(R.P.y) - 6 - R.cam.y
+      if not sim.partID(hx, hy) then
+        local id = sim.partCreate(-1, hx, hy, gt)
+        if id and id >= 0 then sim.partProperty(id, "life", 40) end
+      end
+    end
+  end
+  -- Lead-Lined Vest: real attenuation - bleeds accumulated dose down instead of blocking a number.
+  if inv("LEADVEST") > 0 and (R.radAccum or 0) > 0 and R.frame % 30 == 0 then
+    R.radAccum = math.max(0, R.radAccum - (reactor >= 2 and 2.5 or 1.2))
+  end
+  -- Zirconium Faceplate: sheds the geothermal heat load core builds up at depth.
+  if inv("ZIRCPLATE") > 0 and R.gas and (R.gas.heat or 0) > 0 and R.frame % 20 == 0 then
+    R.gas.heat = math.max(0, R.gas.heat - (reactor >= 2 and 3.0 or 1.5))
+  end
+  -- Sealed Pressure Suit: sealed in BOTH mediums - the gap the Gas Mask and Diving Helmet each leave.
+  if inv("SEALSUIT") > 0 then clearHeadAir(BADGAS, false) end
+  -- Deep Caver set: shaded and padded, so daylight burns you far more slowly.
+  if caver >= 2 and (R.uvAccum or 0) > 0 and R.frame % 60 == 0 then
+    R.uvAccum = math.max(0, R.uvAccum - 1.5)
+  end
+  -- Void Diver set: sealed suit + tank keeps the poisonous stuff off your face for real.
+  if diver >= 2 and R.gas and R.frame % 45 == 0 then
+    R.gas.co  = math.max(0, (R.gas.co  or 0) - 4)
+    R.gas.co2 = math.max(0, (R.gas.co2 or 0) - 4)
   end
 end
 
@@ -917,7 +1354,40 @@ hook(R.hooks.tick, function()
   end
   for i = #R.itemsProj, 1, -1 do
     local pr = R.itemsProj[i]
-    if pr.kind == "boomerang" then
+    if pr.kind == "gravwell" then
+      -- Real gravitational confinement: while it lives it drags loose matter and enemies inward
+      -- by setting real velocities, then collapses. No scripted explosion - the inrush IS the effect.
+      if not sim.partExists(pr.id) or R.frame - pr.born > 260 then
+        local x, y = pr.lastx, pr.lasty
+        pcall(sim.partKill, pr.id); table.remove(R.itemsProj, i)
+        if x then for _ = 1, 8 do
+          local pt = eid("PHOT"); if pt then local id = sim.partCreate(-1, floor(x + (random() - 0.5) * 10), floor(y + (random() - 0.5) * 10), pt); if id and id >= 0 then sim.partProperty(id, "life", 8) end end
+        end end
+      else
+        local x, y = sim.partPosition(pr.id); pr.lastx, pr.lasty = x, y
+        if R.frame - pr.born > 26 then
+          sim.partProperty(pr.id, "vx", 0); sim.partProperty(pr.id, "vy", 0)  -- anchored once armed
+          local RAD = 48
+          for oy = -RAD, RAD, 3 do for ox = -RAD, RAD, 3 do
+            local d2 = ox * ox + oy * oy
+            if d2 > 16 and d2 <= RAD * RAD then
+              local p = sim.partID(x + ox, y + oy)
+              if p and p ~= pr.id then
+                local d = sqrt(d2)
+                local pull = (1 - d / RAD) * 2.4
+                sim.partProperty(p, "vx", -ox / d * pull)
+                sim.partProperty(p, "vy", -oy / d * pull)
+              end
+            end
+          end end
+          if R.frame % 6 == 0 then dealDamage(x + R.cam.x, y + R.cam.y, RAD, 8, 0) end
+          if R.frame % 3 == 0 then
+            local a = random() * math.pi * 2
+            addBeam(x + math.cos(a) * RAD, y + math.sin(a) * RAD, x, y, { 170, 90, 230 })
+          end
+        end
+      end
+    elseif pr.kind == "boomerang" then
       if not sim.partExists(pr.id) or R.frame - pr.born > 220 then pcall(sim.partKill, pr.id); table.remove(R.itemsProj, i)
       else
         local x, y = sim.partPosition(pr.id)
@@ -977,7 +1447,13 @@ hook(R.hooks.tick, function()
               -- from origin" points back toward the player instead of further out
               dealDamage(x + R.cam.x + pr.ux * 50, y + R.cam.y + pr.uy * 50, 14, pr.dmg, pr.kb)
             end
-            if pr.kind ~= "smoke" then crater(x, y, pr.r); dealDamage(x + R.cam.x, y + R.cam.y, 8, pr.dmg, pr.kb) end
+            if pr.kind ~= "smoke" then
+              crater(x, y, pr.r); dealDamage(x + R.cam.x, y + R.cam.y, 8, pr.dmg, pr.kb)
+              -- every projectile impact funnels through here, so one call covers them all;
+              -- pr.fx is set at fire time from the weapon (and from the loaded round, so ammo
+              -- choice is visibly different on impact, not just numerically different)
+              impactFX(x, y, pr.fx or "spark", pr.ux, pr.uy)
+            end
             pcall(sim.partKill, pr.id); table.remove(R.itemsProj, i)
           end
         end
@@ -1010,6 +1486,12 @@ hook(R.hooks.drawHUD, function()
     graphics.fillCircle(floor(h.x), floor(h.y), h.r + 1, h.r + 1, 255, 120, 30, 130)
     graphics.fillCircle(floor(h.x), floor(h.y), h.r, h.r, 255, 245, 220, 255)
   end
+  -- Worn oxygen tank, drawn on the player's back with a live fill level. Deliberately drawn
+  -- BEFORE the `if not w then return end` below, so it shows whenever the tank is owned rather
+  -- than only while it happens to be the selected hotbar slot. Drawn from this plugin's own hook
+  -- rather than by editing core's drawPlayer, which keeps the core file (and its scarce top-level
+  -- local budget) untouched while several other lanes are working in it.
+  local okt, errt = pcall(drawBackTank); if not okt then R.lastErr = tostring(errt) end
   local sel = R.hotbar and R.hotbar[R.sel or 1]; local w = sel and WEAPONS[sel]
   if not w then return end
   graphics.fillRect(4, R.H - 42, 230, 13, 0, 0, 0, 170)

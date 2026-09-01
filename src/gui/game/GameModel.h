@@ -302,6 +302,17 @@ public:
 	ui::Point GetZoomPosition();
 	bool MouseInZoom(ui::Point position);
 	ui::Point AdjustZoomCoords(ui::Point position);
+	// Resolves a raw screen point (e.g. a mouse position, already clamped to
+	// the sim viewport by the caller) to a sim-space point, accounting for
+	// whichever of the two independent zoom systems applies. The 'z' magnifier
+	// window is checked first since it draws its own zoomed content directly
+	// onto the screen at a literal, un-zoomed pixel rect (RenderZoom runs after
+	// camZoom's blit in GameView::OnDraw) -- a point inside it is resolved by
+	// that system alone. Everywhere else, camera zoom (Graphics::camZoom)
+	// applies. This is the one shared place both systems get consulted, so
+	// every input path (tool clicks, brush preview, sign dragging, ...) agrees
+	// with what GameView::OnDraw actually drew.
+	ui::Point ResolveZoomedPoint(ui::Point screenPoint);
 	void SetZoomWindowPosition(ui::Point position);
 	ui::Point GetZoomWindowPosition();
 	ui::Point GetZoomWindowSize();

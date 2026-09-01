@@ -35,7 +35,15 @@ R.beds     = R.beds     or {}   -- {wx, wy}
 R.warmth   = R.warmth   or 100  -- 0-100 comfort meter (cold side of temperature; heat side reuses R.gas.heat)
 R.survSick = R.survSick or nil  -- frame until which the player is ill from bad food/water
 R.sEvent   = R.sEvent   or nil  -- {key, phase="warn"|"active", t0, warnFor, activeFor, data={}}
-for _, k in ipairs({ "farms", "saplings", "tanks", "beds", "warmth", "survSick", "sEvent", "need", "gas" }) do
+-- Needs toggle (2026-09-01, PhoenixFire808: "for now I think I want to turn off the thirst and
+-- all that.") "For now" is explicit -- a toggle, not a deletion. rpg.lua's need-drain tick (not
+-- this file -- rpg.lua is a different lane's file this wave, see knowledge/rpg-hub.md 2026-09-01
+-- @foliage for the exact one-hunk edit specified and routed) is the only place that should ever
+-- read this table; this file just owns the state + a way to flip it today. Default thirst=false
+-- (off) because that is the one need he actually named. hunger defaults ON (true, not left to
+-- infer from nil) -- asked rather than guessed whether "and all that" covers it too.
+R.survivalNeeds = R.survivalNeeds or { thirst = false, hunger = true }
+for _, k in ipairs({ "farms", "saplings", "tanks", "beds", "warmth", "survSick", "sEvent", "survivalNeeds", "need", "gas" }) do
   R.PLUGIN_SAVE_KEYS = R.PLUGIN_SAVE_KEYS or {}
   local seen = false; for _, kk in ipairs(R.PLUGIN_SAVE_KEYS) do if kk == k then seen = true end end
   if not seen then table.insert(R.PLUGIN_SAVE_KEYS, k) end
@@ -564,6 +572,30 @@ hook(R.hooks.drawHUD, function()
     local x, y = R.rcLine and R.rcLine(12) or 310, 48
     graphics.drawText(x, y, "SICK", 180, 220, 90, 255)
   end
+end)
+
+-- Chat command for the toggle above: "needs thirst off", "needs hunger on", "needs status".
+-- Lets it actually be switched today without waiting on a UI control (ui.lua) or a rpg.lua
+-- edit (both other lanes' files this wave). Registers on the shared R.hooks.chat list the same
+-- way companion.lua already does -- does not consume or block the message, so a companion, if
+-- active, still sees the same line and may also reply to it; that is how this hook list already
+-- works for every other listener on it, not something introduced here.
+hook(R.hooks.chat, function(msg)
+  if msg:match("^%s*needs?%s+status%s*$") then
+    local t = (R.survivalNeeds and R.survivalNeeds.thirst == false) and "OFF" or "ON"
+    local hgr = (R.survivalNeeds and R.survivalNeeds.hunger == false) and "OFF" or "ON"
+    say("Needs: thirst " .. t .. ", hunger " .. hgr)
+    return
+  end
+  local what, state = msg:match("^%s*needs?%s+(%a+)%s+(%a+)%s*$")
+  if not what then return end
+  what, state = what:lower(), state:lower()
+  if what ~= "thirst" and what ~= "hunger" then return end
+  if state ~= "on" and state ~= "off" then return end
+  R.survivalNeeds = R.survivalNeeds or {}
+  R.survivalNeeds[what] = (state == "on")
+  say((what:sub(1, 1):upper() .. what:sub(2)) .. " need turned " .. state:upper() ..
+      (state == "off" and " -- it will no longer drain or hurt you" or " -- back to normal"))
 end)
 
 -- ================================================================ sandbox / new-world resets

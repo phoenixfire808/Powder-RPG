@@ -79,7 +79,7 @@ bool ParticleDebug::KeyPress(int key, int scan, bool shift, bool ctrl, bool alt,
 			else if (mouse.Y < 0)
 				mouse.Y = 0;
 
-			mouse = model->AdjustZoomCoords(mouse);
+			mouse = model->ResolveZoomedPoint(mouse);
 			Debug(1, mouse.X, mouse.Y);
 		}
 		else

@@ -651,3 +651,8 @@ if host_platform == 'emscripten'
 		depends: powder_exe,
 	)
 endif
+
+# Catch2 engine tests. Off by default so the game build is never affected.
+if get_option('build_tests')
+	subdir('tests')
+endif

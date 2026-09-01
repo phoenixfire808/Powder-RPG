@@ -362,7 +362,7 @@ ui::Point GameController::PointTranslate(ui::Point point)
 	if(point.X < 0)
 		point.X = 0;
 
-	return gameModel->AdjustZoomCoords(point);
+	return gameModel->ResolveZoomedPoint(point);
 }
 
 ui::Point GameController::NormaliseBlockCoord(ui::Point point)
@@ -536,7 +536,7 @@ bool GameController::MouseDown(int x, int y, unsigned button)
 	bool ret = commandInterface->HandleEvent(MouseDownEvent{ x, y, button });
 	if (ret && y<YRES && x<XRES && !gameView->GetPlacingSave() && !gameView->GetPlacingZoom())
 	{
-		ui::Point point = gameModel->AdjustZoomCoords(ui::Point(x, y));
+		ui::Point point = gameModel->ResolveZoomedPoint(ui::Point(x, y));
 		x = point.X;
 		y = point.Y;
 		if (!gameModel->GetActiveTool(0) || gameModel->GetActiveTool(0)->Identifier != "DEFAULT_UI_SIGN" || button != SDL_BUTTON_LEFT) //If it's not a sign tool or you are right/middle clicking
@@ -561,7 +561,7 @@ bool GameController::MouseUp(int x, int y, unsigned button, MouseupReason reason
 		return ret;
 	if (ret && foundSignID != -1 && y<YRES && x<XRES && !gameView->GetPlacingSave())
 	{
-		ui::Point point = gameModel->AdjustZoomCoords(ui::Point(x, y));
+		ui::Point point = gameModel->ResolveZoomedPoint(ui::Point(x, y));
 		x = point.X;
 		y = point.Y;
 		if (!gameModel->GetActiveTool(0) || gameModel->GetActiveTool(0)->Identifier != "DEFAULT_UI_SIGN" || button != SDL_BUTTON_LEFT) //If it's not a sign tool or you are right/middle clicking

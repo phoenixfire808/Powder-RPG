@@ -300,3 +300,10 @@ option(
 	value: false,
 	description: 'Run clang-tidy to lint programming issues'
 )
+
+option(
+	'build_tests',
+	type: 'boolean',
+	value: false,
+	description: 'Build the Catch2 engine test suite (use a separate build dir, e.g. build-tests)'
+)

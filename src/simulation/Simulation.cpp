@@ -1031,6 +1031,10 @@ void Simulation::clear_sim(void)
 	signs.clear();
 	memset(bmap, 0, sizeof(bmap));
 	memset(emap, 0, sizeof(emap));
+	// Active-cell culling: a fresh/cleared sim has no settled-quiet history to trust yet,
+	// so start every chunk awake (safe default -- "sleep cautiously").
+	memset(chunkAwake, 1, sizeof(chunkAwake));
+	memset(chunkAwakeNext, 1, sizeof(chunkAwakeNext));
 	parts.Reset();
 	NUM_PARTS = 0;
 	memset(pmap, 0, sizeof(pmap));
@@ -1213,8 +1217,19 @@ int Simulation::try_move(int i, int x, int y, int nx, int ny)
 		if (rt == PT_WOOD)
 		{
 			//@ WOOD -> SAWD
+			// RPG fork change: gases no longer abrade wood into sawdust.
+			// Vanilla converts WOOD -> SAWD for ANY particle colliding above speed 5, and stock
+			// OXYG carries Diffusion = 3.0, whose random jitter alone reaches ~4.3-5.1 (measured
+			// live). Vanilla rarely exposes this because a forest is not normally full of oxygen;
+			// this fork's atmosphere system deliberately keeps a standing population of OXYG in
+			// the trees, which turned a rare vanilla edge case into constant, visible erosion of
+			// healthy trunks and canopies ("sawdust coming out of the trees").
+			// Physically a gas molecule cannot mechanically abrade timber into sawdust -- sawdust
+			// comes from cutting or solid impact -- so restricting this to non-gas particles is
+			// both the fix and the more realistic rule. Powders, liquids and solids hitting wood
+			// at speed still produce sawdust exactly as before.
 			float vel = std::sqrt(std::pow(parts[i].vx, 2) + std::pow(parts[i].vy, 2));
-			if (vel > 5)
+			if (vel > 5 && !(elements[parts[i].type].Properties & TYPE_GAS))
 				part_change_type(ID(r), nx, ny, PT_SAWD);
 		}
 		if (!(elements[parts[i].type].Properties & TYPE_ENERGY))
@@ -1751,6 +1766,31 @@ Simulation::GetNormalResult Simulation::get_normal_interp(Sim &sim, int pt, floa
 template
 Simulation::GetNormalResult Simulation::get_normal_interp<false, const Simulation>(const Simulation &sim, int pt, float x0, float y0, float dx, float dy);
 
+// Active-cell / dirty-rectangle culling (@culling). Marks the CELL-chunk containing (x,y)
+// and its 8 neighbours awake for the NEXT UpdateParticles pass. Deliberately deferred, not
+// immediate: the only reader is UpdateParticles's fast-path check, which always runs at the
+// start of the next frame's pass regardless of whether this call happened mid-frame (from
+// inside UpdateParticles itself, e.g. part_change_type during a transition) or between
+// frames (a Lua tick hook creating/killing/editing particles before physics runs that frame).
+void Simulation::WakeChunk(int x, int y)
+{
+	auto cx = x / CELL;
+	auto cy = y / CELL;
+	for (auto oy = -1; oy <= 1; ++oy)
+	{
+		auto ny = cy + oy;
+		if (ny < 0 || ny >= YCELLS)
+			continue;
+		for (auto ox = -1; ox <= 1; ++ox)
+		{
+			auto nx = cx + ox;
+			if (nx < 0 || nx >= XCELLS)
+				continue;
+			chunkAwakeNext[ny][nx] = 1;
+		}
+	}
+}
+
 void Simulation::kill_part(int i)//kills particle number i
 {
 	if (i < 0 || i >= NPART)
@@ -1758,6 +1798,9 @@ void Simulation::kill_part(int i)//kills particle number i
 	
 	int x = (int)(parts[i].x + 0.5f);
 	int y = (int)(parts[i].y + 0.5f);
+	// WAKE CONDITION: particle removed. A neighbour's GetNeighbourhood surround_space/nt
+	// counts change, and something could now fall/flow into the freed cell next frame.
+	WakeChunk(x, y);
 
 	auto &sd = SimulationData::CRef();
 	auto &elements = sd.elements;
@@ -1798,6 +1841,10 @@ bool Simulation::part_change_type(int i, int x, int y, int t)
 {
 	if (x<0 || y<0 || x>=XRES || y>=YRES || i>=NPART || t<0 || t>=PT_NUM || !parts[i].type)
 		return false;
+	// WAKE CONDITION: particle type changed via the generic choke point every spark
+	// (PT_SPRK), phase-change and element-reaction type swap goes through -- covers
+	// "sparks/electricity" from the brief without needing a separate hook per element.
+	WakeChunk(x, y);
 
 	auto &sd = SimulationData::CRef();
 	auto &elements = sd.elements;
@@ -1847,6 +1894,12 @@ int Simulation::create_part(int p, int x, int y, int t, int v)
 	auto &elements = sd.elements;
 	if (x<0 || y<0 || x>=XRES || y>=YRES || t<=0 || t>=PT_NUM || !elements[t].Enabled)
 		return -1;
+	// WAKE CONDITION: particle entered (or was attempted at) this cell -- covers Lua's
+	// sim.partCreate, brush/tool placement, worldgen, and every element's own reproduction
+	// path (fire spread, explosions, etc), all of which funnel through this one function.
+	// Called even when creation ultimately fails below (e.g. blocked by an existing
+	// particle) -- deliberately generous per the brief's "wake generously" instruction.
+	WakeChunk(x, y);
 
 	if (t == PT_SPRK && p != -3 && !(p == -2 && elements[TYP(pmap[y][x])].CtypeDraw))
 	{
@@ -2340,6 +2393,73 @@ void SimulationImpl::UpdateParticles(int start, int end)
 		if (bmap[y/CELL][x/CELL]==WL_DETECT && emap[y/CELL][x/CELL]<8)
 			set_emap(x/CELL, y/CELL);
 
+		// Active-cell / dirty-rectangle culling (@culling). Records, uniformly and
+		// regardless of which path below actually runs (Update(), TransitionPhase,
+		// MovementPhase, legacyUpdate, or the fast-sleep skip just below), whether this
+		// particle moved, changed type, or drifted in temperature this frame, and wakes
+		// its origin/destination CELL-chunk (+ their 8 neighbours, via WakeChunk) if so.
+		// This is what lets the fast-sleep skip below be safe without auditing every
+		// internal mutation site in TransitionPhase's ~1000-line body: nothing is ever
+		// cached across frames without being re-verified live, so a missed hook anywhere
+		// inside the body still shows up here as "type/x/y/temp differs from before" and
+		// wakes correctly, just one frame later than an explicit hook would have.
+		auto wakeOrigType = t;
+		auto wakeOrigX = x;
+		auto wakeOrigY = y;
+		auto wakeOrigTemp = parts[i].temp;
+		Defer wakeOnChange([this, i, wakeOrigType, wakeOrigX, wakeOrigY, wakeOrigTemp]() {
+			if (parts[i].type == 0)
+			{
+				// Killed this iteration -- kill_part() already woke the origin chunk.
+				return;
+			}
+			auto newX = int(parts[i].x + 0.5f);
+			auto newY = int(parts[i].y + 0.5f);
+			if (parts[i].type != wakeOrigType || newX != wakeOrigX || newY != wakeOrigY ||
+			    std::abs(parts[i].temp - wakeOrigTemp) > 0.5f)
+			{
+				WakeChunk(wakeOrigX, wakeOrigY);
+				WakeChunk(newX, newY);
+			}
+		});
+
+		// Fast-sleep path: skip the neighbourhood scan, TransitionPhase, Update() and
+		// MovementPhase entirely for a particle that is, THIS FRAME, live-verified to be
+		// structurally incapable of acting on its own (zero velocity; no gravity, advection,
+		// diffusion or ambient-pressure write; no custom Update() body) AND is not currently
+		// within reach of a pressure/temperature transition threshold (checked fresh every
+		// frame from the real pv/temp values -- immune to staleness regardless of how the
+		// value got there, Lua included) AND either cannot conduct heat at all, or its
+		// surrounding chunk has recorded no activity recently (chunkAwake, maintained by
+		// WakeChunk above and at every create_part/kill_part/part_change_type call).
+		{
+			auto &et = elements[t];
+			// GetNeighbourhood only ever calls GetGravityField (the thing that would inject
+			// gravity-driven velocity) when !(Properties & TYPE_SOLID); TYPE_SOLID elements
+			// are gravity-immune in this engine regardless of their own Gravity/
+			// NewtonianGravity numbers -- confirmed live: PT_BRCK reads NewtonianGravity=1.0
+			// despite being an immobile solid, because that field doubles as "this element is
+			// a mass SOURCE for others" for TYPE_SOLID elements, not "this particle falls".
+			// Mirror the engine's own condition exactly rather than re-deriving it.
+			bool gravityImmune = (et.Properties & TYPE_SOLID) || (et.Gravity == 0.0f && !et.NewtonianGravity);
+			if (!et.Update && et.Falldown == 0 && gravityImmune &&
+			    et.Advection == 0.0f && et.HotAir == 0.0f && et.Diffusion == 0.0f &&
+			    parts[i].vx == 0.0f && parts[i].vy == 0.0f)
+			{
+				auto cx = x / CELL;
+				auto cy = y / CELL;
+				bool nearTransition =
+					(et.HighPressureTransition != NT && pv[cy][cx] >= et.HighPressure) ||
+					(et.LowPressureTransition  != NT && pv[cy][cx] <  et.LowPressure)  ||
+					(et.HighTemperatureTransition != NT && parts[i].temp >= et.HighTemperature) ||
+					(et.LowTemperatureTransition  != NT && parts[i].temp <  et.LowTemperature);
+				if (!nearTransition && (et.HeatConduct == 0 || !chunkAwake[cy][cx]))
+				{
+					continue;
+				}
+			}
+		}
+
 		//adding to velocity from the particle's velocity
 		vx[y/CELL][x/CELL] = vx[y/CELL][x/CELL]*elements[t].AirLoss + elements[t].AirDrag*parts[i].vx;
 		vy[y/CELL][x/CELL] = vy[y/CELL][x/CELL]*elements[t].AirLoss + elements[t].AirDrag*parts[i].vy;
@@ -2408,6 +2528,20 @@ void SimulationImpl::UpdateParticles(int start, int end)
 			continue;
 
 		MovementPhase(i, neighbourhood);
+	}
+
+	// Active-cell / dirty-rectangle culling (@culling): chunkAwakeNext accumulates every
+	// wake signal seen since the last full pass completed (from the Defer above, and from
+	// create_part/kill_part/part_change_type calls that may have run mid-pass or between
+	// frames). Only commit it to chunkAwake -- what next frame's fast-sleep check reads --
+	// once a pass has covered every live particle; GameModel's normal call always does
+	// (start=0, end=NPART), but the debug slow-step path can call this in sub-ranges, and
+	// swapping mid-range would apply a partial frame's activity as if it were the whole
+	// world's, which could wrongly put an unvisited region to sleep.
+	if (end >= parts.active)
+	{
+		memcpy(chunkAwake, chunkAwakeNext, sizeof(chunkAwake));
+		memset(chunkAwakeNext, 0, sizeof(chunkAwakeNext));
 	}
 }
 

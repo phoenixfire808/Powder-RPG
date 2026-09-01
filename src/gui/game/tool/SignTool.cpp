@@ -194,7 +194,7 @@ void SignWindow::DoMouseMove(int x, int y, int dx, int dy) {
 		ui::Window::DoMouseMove(x, y, dx, dy);
 	else
 	{
-		ui::Point pos = tool->gameModel.AdjustZoomCoords(ui::Point(x, y));
+		ui::Point pos = tool->gameModel.ResolveZoomedPoint(ui::Point(x, y));
 		if(pos.X < XRES && pos.Y < YRES)
 		{
 			movingSign->x = pos.X;

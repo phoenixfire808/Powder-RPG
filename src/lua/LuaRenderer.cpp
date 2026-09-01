@@ -174,6 +174,36 @@ static int zoomEnabled(lua_State *L)
 	}
 }
 
+// Whole-view camera zoom -- scales the world itself, unlike the zoomWindow
+// magnifier box below which blits a scope into a panel over a 1:1 world.
+// ren.cameraZoom()            -> current factor
+// ren.cameraZoom(z)           -> set factor (1.0 = off, clamped 1..8)
+// ren.cameraZoom(z, fx, fy)   -> also pin the focus point in sim coords
+// Passing z <= 1 restores the plain unscaled copy, so there is always a way out.
+static int cameraZoom(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	lsi->AssertInterfaceEvent();
+	if (lua_gettop(L) == 0)
+	{
+		lua_pushnumber(L, lsi->g->camZoom);
+		return 1;
+	}
+	float z = float(luaL_checknumber(L, 1));
+	if (!(z >= 1.0f)) z = 1.0f;   // also catches NaN
+	if (z > 8.0f) z = 8.0f;
+	lsi->g->camZoom = z;
+	if (lua_gettop(L) >= 3)
+	{
+		lsi->g->camZoomFocus = ui::Point(int(luaL_checknumber(L, 2)), int(luaL_checknumber(L, 3)));
+	}
+	else if (z == 1.0f)
+	{
+		lsi->g->camZoomFocus = ui::Point(-1, -1);
+	}
+	return 0;
+}
+
 static int zoomWindow(lua_State *L)
 {
 	auto *lsi = GetLSI();
@@ -330,6 +360,7 @@ void LuaRenderer::Open(lua_State *L)
 		LFUNC(hud),
 		LFUNC(showBrush),
 		LFUNC(depth3d),
+		LFUNC(cameraZoom),
 		LFUNC(zoomEnabled),
 		LFUNC(zoomWindow),
 		LFUNC(zoomScope),
