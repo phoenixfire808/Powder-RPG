@@ -4,8 +4,22 @@
 -- real PHOT beam. Right-click (place) is a no-op for these - see the `place` hook below.
 local R = PBX.state.rpg
 local TAG = "items"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -337,9 +351,15 @@ local function flash(x, y)  -- muzzle flash marker + a small real smoke puff, pe
 end
 local function recoil(ux, uy, mag) R.P.vx = R.P.vx - ux * mag end
 local function addBeam(x1, y1, x2, y2, col) R.itemsBeams[#R.itemsBeams + 1] = { x1 = x1, y1 = y1, x2 = x2, y2 = y2, frame = R.frame, col = col } end
-local function canAmmo(w) if not w.ammo then return true end; return inv(w.ammo) >= (w.cost or 1) end
-local function spendAmmo(w) if w.ammo then R.inventory[w.ammo] = inv(w.ammo) - (w.cost or 1) end end
-local function ammoOk(w) return (not w.ammo) or inv(w.ammo) >= 1 end
+-- SANDBOX: weapons never need ammunition. "When I give myself a weapon I don't want to have
+-- to give myself a bunch of ammo -- there's so much extra work." A testing sandbox should
+-- let you fire the thing you just spawned. Normal play is completely unchanged.
+local function canAmmo(w) if R.sandboxMode then return true end
+  if not w.ammo then return true end; return inv(w.ammo) >= (w.cost or 1) end
+local function spendAmmo(w) if R.sandboxMode then return end
+  if w.ammo then R.inventory[w.ammo] = inv(w.ammo) - (w.cost or 1) end end
+local function ammoOk(w) if R.sandboxMode then return true end
+  return (not w.ammo) or inv(w.ammo) >= 1 end
 -- ================================================================ ammo as a modifier
 -- Load a different real element into a kinetic gun and it genuinely behaves differently, because
 -- the projectile IS that element and TPT's own physics does the rest - NITR really detonates,

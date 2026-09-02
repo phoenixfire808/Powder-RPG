@@ -42,8 +42,22 @@
 
 local R = PBX.state.rpg
 local TAG = "fieldtools"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -228,7 +242,7 @@ local function buildReplicore(mx, my)
   R.say("Replicator Core online, locked to " .. nice(REPLICORE_TARGET) .. " -- " .. REPLICORE_CHARGES
     .. " charges. Power the pad, keep the vent below it clear to harvest. Right-click with a Vibranium in hand to recharge once it burns out")
 end
--- ORDER-DEPENDENT TRAP FIX: the Replicator Core is capped at ONE per world
+-- ORDER-DEPENDENT TRAP FIX (@balance): the Replicator Core is capped at ONE per world
 -- (buildReplicore above refuses a second build unconditionally, permanently, per-world) and its
 -- only recovery path is the right-click-with-VIBR handler below, which only fires once
 -- `m.burnedOut` is true. Before this fix, `burnedOut` was ONLY ever set by the charge-countdown

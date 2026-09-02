@@ -33,7 +33,7 @@
 local function elemId(name)
 	local id = elem["DEFAULT_PT_" .. name]
 	if id then return id end
-	for j = 0, 511 do
+	for j = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do
 		local ok, n = pcall(elem.property, j, "Name")
 		if ok and n == name then return j end
 	end
@@ -108,10 +108,20 @@ local POWDERS = {
 -- SC_NUCLEAR -- also force-sets native MenuSection (see applyBand below),
 -- since AM24/CF25 in particular were created with no MenuSection at all and
 -- were previously unreachable from any menu chip.
+-- 09_isotopes_seed.lua (@isotopes, scripts/gen_isotope_elements.py) adds 50 more real nuclide
+-- elements on top of the codes this table already anticipated (U235/RA26/THOR/CO60/AM24/CF25
+-- were already here, unfilled, before that generator existed -- reused verbatim, not renamed).
+-- Each seed entry already sets menuSection="NUCLEAR" itself (so it is reachable even before this
+-- file runs), but this table is still the single source of truth for MenuSort chip ORDER, so the
+-- new codes are added here too, same convention as every other custom element.
 local NUCLEAR = {
-	[10] = { "U235", "UO2", "DU" },                                              -- Fuel
+	[10] = { "U235", "UO2", "DU", "U233", "U238", "PU38", "PU39", "PU41" },        -- Fuel
 	[50] = { "B4C", "CD", "HF", "BPE", "ZIRC", "BE", "LEAD", "STEL", "CNCR" }, -- Control & Shielding
-	[60] = { "CO60", "AM24", "CF25", "RA26", "THOR" },                           -- Sources
+	[60] = { "CO60", "AM24", "CF25", "RA26", "THOR", "TRIT", "HE3", "LI6", "LI7", "B10", "B11",
+	         "C14", "F18", "K40", "CO6N", "GA67", "SR89", "SR90", "MO99", "TC99", "CD13", "I123",
+	         "I131", "XE35", "CS37", "SM49", "GD55", "GD57", "IR92", "PO10" },      -- Sources
+	[70] = { "NI60", "Y89", "Y90", "RU99", "IN13", "TE23", "XE31", "CS35", "BA37", "RN22", "RA28",
+	         "TH29", "TH31", "TH34", "U234", "NP37", "CM48" },                        -- Decay Products (one-hop daughters, see 09_isotopes_seed.lua)
 }
 
 local POWERED = {

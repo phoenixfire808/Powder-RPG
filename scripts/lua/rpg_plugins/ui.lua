@@ -4,8 +4,22 @@
 -- Owns: key "j" (quest log), "c" (controls card), intercepts "e" (own bag panel).
 local R = PBX.state.rpg
 local TAG = "ui"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -954,7 +968,16 @@ local function handleBagClickItems(x, y, button)
           U.catalogCollapsed[r.cat] = not U.catalogCollapsed[r.cat]; U.itemsScroll = 0; return
         end
       elseif x >= ITEMS_X0 and x < ITEMS_X0 + ITEMS_W and y >= ry and y < ry + ITEMS_ROWH then
-        if R.inv(r.el) > 0 then assignHotbar(r.el) end
+        -- SANDBOX: clicking a catalog entry GIVES it to you. Asked for directly -- "when I select
+        -- the items out of the catalog I should be able to give them to myself." In a testing
+        -- sandbox, browsing a catalogue you cannot take anything from is just a list.
+        -- Normal play is unchanged: there, the catalogue only assigns things you already own.
+        if R.sandboxMode then
+          pcall(R.give, r.el, 100)
+          if R.tlog then R.tlog("info", "sandbox", "catalog grant", { code = r.el, n = 100 }) end
+          R.say((R.typeLabel and R.typeLabel(R.eid and R.eid(r.el) or 0, 0) or r.el) .. " x100 given")
+          assignHotbar(r.el)
+        elseif R.inv(r.el) > 0 then assignHotbar(r.el) end
         return
       end
     end
@@ -1137,6 +1160,31 @@ end
 
 local GUIDE_TAB_X = BPX + 60 + 2 * 70
 local function guideAvailable() return type(R.openGuide) == "function" end
+
+-- ================================================================ accessibility: real mouse-clickable
+-- "CLOSE" button on every full panel this file owns. PhoenixFire808, verbatim, is a hard
+-- requirement, not a style preference: "We don't want to have to push function hotkeys at the
+-- top of our shit. We want button options for stuff. I hate having to push buttons on my
+-- keyboard. My hand is broken." Before this pass the BAG/QUEST/CONTROLS panels only ever
+-- closed via E/J/C/Esc -- Quest and Controls in particular had NO mouse path to close at all
+-- (their whole click handler in the mousedown hook below was `return true`, unconditionally
+-- swallowing every click with no action). Shared so the three panels can never drift out of
+-- sync with each other on exactly where/how big this button is.
+local PANEL_CLOSE_W, PANEL_CLOSE_H = 44, 14
+local function panelCloseRect(px, py, pw) return px + pw - 50, py + 2, PANEL_CLOSE_W, PANEL_CLOSE_H end
+local function drawPanelClose(px, py, pw, keyHint)
+  graphics.drawText(px + pw - 50 - textW(keyHint) - 8, py + 5, keyHint, 150, 150, 160, 200)
+  local cx, cy, cw, ch = panelCloseRect(px, py, pw)
+  local hov = R.mouse.x >= cx and R.mouse.x < cx + cw and R.mouse.y >= cy and R.mouse.y < cy + ch
+  graphics.fillRect(cx, cy, cw, ch, hov and 90 or 55, hov and 45 or 30, hov and 45 or 32, 255)
+  graphics.drawRect(cx, cy, cw, ch, hov and 255 or 190, hov and 150 or 120, hov and 150 or 122, 255)
+  graphics.drawText(cx + 6, cy + 3, "CLOSE", hov and 255 or 220, hov and 190 or 175, hov and 190 or 177, 255)
+end
+local function hitPanelClose(px, py, pw, x, y)
+  local cx, cy, cw, ch = panelCloseRect(px, py, pw)
+  return x >= cx and x < cx + cw and y >= cy and y < cy + ch
+end
+
 local function drawBagPanel()
   graphics.fillRect(BPX, BPY, BPW, BPH, 14, 16, 32, 245); graphics.drawRect(BPX, BPY, BPW, BPH, 255, 220, 80, 255)
   graphics.fillRect(BPX, BPY, BPW, 18, 40, 44, 80, 255)
@@ -1156,12 +1204,13 @@ local function drawBagPanel()
       drawCursorTip("Guide", { "Not loaded yet - press L" })
     end
   end
-  graphics.drawText(BPX + BPW - 96, BPY + 5, "E / Esc closes", 190, 190, 200, 255)
+  drawPanelClose(BPX, BPY, BPW, "E/Esc")
   if U.bagTab == "items" then drawBagItemsTab() else drawBagRecipesTab() end
 end
 local function handleBagClick(x, y, button)
   if button ~= 1 and button ~= 3 then return end
   if y >= BPY + 2 and y < BPY + 16 then
+    if hitPanelClose(BPX, BPY, BPW, x, y) then closeAllPanels(); return end
     if x >= BPX + 60 and x < BPX + 124 then U.bagTab = "items"; return end
     if x >= BPX + 130 and x < BPX + 194 then U.bagTab = "recipes"; return end
     if x >= GUIDE_TAB_X and x < GUIDE_TAB_X + 64 then
@@ -1217,7 +1266,7 @@ local function drawQuestPanel()
   graphics.fillRect(BPX, BPY, BPW, BPH, 14, 16, 32, 245); graphics.drawRect(BPX, BPY, BPW, BPH, 255, 220, 80, 255)
   graphics.fillRect(BPX, BPY, BPW, 18, 40, 44, 80, 255)
   graphics.drawText(BPX + 8, BPY + 5, "QUEST LOG", 255, 220, 80, 255)
-  graphics.drawText(BPX + BPW - 96, BPY + 5, "J / Esc closes", 190, 190, 200, 255)
+  drawPanelClose(BPX, BPY, BPW, "J/Esc")
   local y = BPY + 26
   for i, q in ipairs(R.QUESTS) do
     if y > BPY + BPH - 14 then graphics.drawText(BPX + 8, y, "...", 150, 150, 160, 255); break end
@@ -1257,7 +1306,7 @@ local function drawControlsCard()
   graphics.fillRect(CX, CY, CW, CH, 14, 16, 32, 248); graphics.drawRect(CX, CY, CW, CH, 120, 200, 255, 255)
   graphics.fillRect(CX, CY, CW, 18, 40, 60, 90, 255)
   graphics.drawText(CX + 8, CY + 5, "CONTROLS", 140, 220, 255, 255)
-  graphics.drawText(CX + CW - 96, CY + 5, "C / Esc closes", 190, 190, 200, 255)
+  drawPanelClose(CX, CY, CW, "C/Esc")
   for i, line in ipairs(CONTROLS) do graphics.drawText(CX + 10, CY + 28 + (i - 1) * 16, line, 210, 220, 230, 255) end
 end
 
@@ -1434,6 +1483,7 @@ local function submitSend()
     '"bbox":{"w":' .. tostring(w) .. ',"h":' .. tostring(h) .. "}," ..
     '"elements":[' .. table.concat(elStr, ",") .. "]," ..
     '"status":"pending"' ..
+    (R.loadedSave and (',"source_save":{"id":' .. tostring(tonumber(R.loadedSave.id) or 0) .. ',"name":' .. jsonStr(tostring(R.loadedSave.name or "")) .. ',"author":' .. jsonStr(tostring(R.loadedSave.author or "")) .. "}") or "") ..
   "}"
   if R.tlog then R.tlog("info", "submit", "opening manifest", { path = "stamp_submissions/manifest.jsonl", frame = R.frame }) end
   local f, err = io.open("stamp_submissions/manifest.jsonl", "a")
@@ -1592,6 +1642,102 @@ local function handleSubmitPanelClick(x, y)
   end
 end
 
+-- ================================================================ accessibility action bar
+-- Same hard requirement as the panel CLOSE buttons above, applied to OPENING every panel/dialog
+-- this file is responsible for. PhoenixFire808, verbatim: "We don't want to have to push
+-- function hotkeys at the top of our shit. We want button options for stuff. I hate having to
+-- push buttons on my keyboard. My hand is broken." Bag (E), quests (J), controls (C) and the
+-- guide (L) were open-by-key-ONLY before this pass; submit (Y) and the F8 report box had some
+-- form of mouse path already (the hotbar flag icon just below, and rpg.lua's own F8 handler)
+-- but neither sat next to a single, obvious, always-in-the-same-place button alongside the
+-- others. One consolidated bar instead of six scattered fixes, mirroring rpg.lua's own
+-- sandbox-mode bar as closely as this file's ownership allows (R.SB_BTNS/R.sbDrawButtons/
+-- R.sbButtonClick, rpg.lua, "Buttons get the click before anything else") -- not a duplicate of
+-- it, a second one for the non-sandbox HUD this file owns:
+--  - big, spaced targets (90x22 each), not a row of 8px hitboxes
+--  - hidden whenever a full panel already covers this part of the screen (bag/quest/controls/
+--    guide/Esc menu/title screen/a machine or crate panel), so it can never draw over, or steal
+--    a click from, something already open there
+--  - hit-tested at the very top of this file's own mousedown hook (below), before every other
+--    check in this file
+--  - drawn through R.drawHotbarOverlay, the latest-firing hook this lane has without touching
+--    rpg.lua (see the comment on drawSubmitButton just below), so nothing another plugin's own
+--    drawHUD hook draws can cover it either
+local ACTIONBAR_X = 6
+local ACTIONBAR_BTN_W, ACTIONBAR_BTN_H, ACTIONBAR_GAP = 90, 22, 4
+local function actionBarY() return (R._hudLeftEndY or 80) + 90 end
+R.ACTION_BTNS = R.ACTION_BTNS or {
+  { id = "bag",      label = "BAG" },
+  { id = "quests",   label = "QUESTS" },
+  { id = "controls", label = "CONTROLS" },
+  { id = "guide",    label = "GUIDE" },
+  { id = "submit",   label = "SUBMIT" },
+  { id = "report",   label = "REPORT" },
+}
+-- ACTION BAR OFF BY DEFAULT (2026-09-02). I asked for this bar after he said his hand was broken
+-- and he wanted buttons instead of function keys. I read that too broadly and it became six large
+-- buttons permanently occupying the left of his screen: "I really hate the buttons -- bag, quest,
+-- control, guide, submit, report. Let's put that back to the E button or Escape. I liked having
+-- those. I just don't want to have to push excessive buttons all the time."
+-- The real distinction is narrow: FUNCTION keys at the top of the keyboard are the problem;
+-- ordinary letter keys he already has muscle memory for (E, J, C, L, Y) are what he prefers.
+-- So the bar is retained but OFF unless R.actionBar is explicitly set -- one flag to bring it
+-- back for anyone who does want mouse-only access, and nothing on screen for him.
+local function actionBarVisible()
+  if not R.actionBar then return false end
+  return not (U.submitMode or U.bagOpen or U.questOpen or U.controlsOpen or U.submitHistoryOpen
+    or R.guideOpen or R.menuOpen or R.titleScreen or R.machinePanel or R.cratePanel)
+end
+local function layoutActionBar()
+  local x0, y0 = ACTIONBAR_X, actionBarY()
+  for i, b in ipairs(R.ACTION_BTNS) do
+    local col, row = (i - 1) % 3, floor((i - 1) / 3)
+    b.x = x0 + col * (ACTIONBAR_BTN_W + ACTIONBAR_GAP)
+    b.y = y0 + row * (ACTIONBAR_BTN_H + ACTIONBAR_GAP)
+    b.w, b.h = ACTIONBAR_BTN_W, ACTIONBAR_BTN_H
+  end
+end
+local function actionBarRun(id)
+  if id == "bag" then
+    if U.bagOpen then closeAllPanels() else openPanel("bagOpen"); U.everOpenedBag = true end
+  elseif id == "quests" then
+    if U.questOpen then closeAllPanels() else openPanel("questOpen"); U.everOpenedQuest = true end
+  elseif id == "controls" then
+    if U.controlsOpen then closeAllPanels() else openPanel("controlsOpen"); U.everOpenedControls = true end
+  elseif id == "guide" then
+    if R.guideOpen then if R.closeGuide then R.closeGuide() else R.guideOpen = false end
+    elseif R.openGuide then R.openGuide() end
+  elseif id == "submit" then
+    submitBeginSelect("hud-action-bar")
+  elseif id == "report" then
+    R.feedbackOpen = true; R.feedbackText = ""; pcall(interface.grabTextInput)
+  end
+end
+local function drawActionBar()
+  if not actionBarVisible() then return end
+  layoutActionBar()
+  for _, b in ipairs(R.ACTION_BTNS) do
+    local hov = R.mouse.x >= b.x and R.mouse.x < b.x + b.w and R.mouse.y >= b.y and R.mouse.y < b.y + b.h
+    graphics.fillRect(b.x, b.y, b.w, b.h, hov and 44 or 22, hov and 48 or 24, hov and 70 or 40, 235)
+    graphics.drawRect(b.x, b.y, b.w, b.h, hov and 255 or 150, hov and 230 or 160, hov and 140 or 110, 255)
+    local tw = textW(b.label)
+    graphics.drawText(b.x + floor((b.w - tw) / 2), b.y + floor((b.h - 7) / 2), b.label,
+      hov and 255 or 210, hov and 235 or 220, hov and 190 or 230, 255)
+  end
+end
+local function actionBarClick(x, y)
+  if not actionBarVisible() then return false end
+  layoutActionBar()
+  for _, b in ipairs(R.ACTION_BTNS) do
+    if x >= b.x and x < b.x + b.w and y >= b.y and y < b.y + b.h then
+      actionBarRun(b.id)
+      if R.releaseMouse then R.releaseMouse() end
+      return true
+    end
+  end
+  return false
+end
+
 -- ================================================================ persistent submit affordance (HUD)
 -- PhoenixFire808 escalated this three times ("super, super important" -> "easily submit" ->
 -- "EXTREMELY PROMINENT") because Y-only + one guide line meant a player who never opens the
@@ -1645,7 +1791,7 @@ local function drawHotbarIcons()
     end
   end
 end
-R.drawHotbarOverlay = function() drawHotbarIcons(); drawSubmitButton() end
+R.drawHotbarOverlay = function() drawHotbarIcons(); drawSubmitButton(); drawActionBar() end
 
 -- Confirmation feedback: R.say() alone lands in the 5-entry chat log that fades in ~14s and can
 -- get pushed out by the next unrelated message, so a successful submission looked identical to
@@ -1803,6 +1949,11 @@ hook(R.hooks.keyup, function(k)
 end)
 
 hook(R.hooks.mousedown, function(x, y, button)
+  -- Mouse-only action bar takes the click before anything else in this file, same priority
+  -- rule rpg.lua's own sandbox bar documents at R.sbButtonClick ("Buttons get the click
+  -- before anything else") -- so a button can never be made unclickable by something else
+  -- (a tooltip, a hover state) claiming the click first.
+  if button == 1 and actionBarClick(x, y) then return true end
   if U.submitMode == "selecting" then
     U.submitDragging = true
     U.submitDragStart = { x = x, y = y }
@@ -1833,7 +1984,17 @@ hook(R.hooks.mousedown, function(x, y, button)
     end
     handleBagClick(x, y, button); return true
   end
-  if U.questOpen or U.controlsOpen then return true end
+  -- Quest/Controls used to swallow EVERY click here unconditionally with no action at all --
+  -- the only way out was the J/C key again or Esc. Real CLOSE buttons now live in each panel's
+  -- own header (drawPanelClose/hitPanelClose above); this is the click side of that button.
+  if U.questOpen then
+    if hitPanelClose(BPX, BPY, BPW, x, y) then closeAllPanels() end
+    return true
+  end
+  if U.controlsOpen then
+    if hitPanelClose(CX, CY, CW, x, y) then closeAllPanels() end
+    return true
+  end
   -- Mouse hotbar select: clicking a slot during normal play (no panel open)
   -- selects it, same effect as pressing its number key or scrolling the
   -- wheel to it. Returning true here stops core's onMouseDown from ever
@@ -1919,6 +2080,44 @@ for _, hn in ipairs({ "sandboxKey", "sandboxTextInput", "sandboxMouseDown", "san
 end
 local function sandboxSubmitBtnRect() return R.W - 74, 4, 68, 14 end
 local function sandboxSubmitHistBtnRect() return R.W - 74, 20, 68, 11 end
+-- Bag/inventory in sandbox. He was explicit: "being able to push E, that was all working well
+-- for us" -- losing it in sandbox was a regression. The panel is drawn on sandboxDrawHUD because
+-- the normal HUD hook does not run there.
+hook(R.hooks.sandboxDrawHUD, function()
+  if U.bagOpen then drawBagPanel() end
+end)
+-- Full RPG testing in sandbox, on the keys he already knows. He asked to "test all the crafting
+-- stuff and everything I'd find in the RPG, but in sandbox -- an easier spot to test things."
+hook(R.hooks.sandboxKey, function(key, k, shift, ctrl, alt)
+  if k == "j" then
+    if U.questOpen then closeAllPanels() else openPanel("questOpen"); U.everOpenedQuest = true end
+    return true
+  end
+  if k == "c" then
+    if U.controlsOpen then closeAllPanels() else openPanel("controlsOpen"); U.everOpenedControls = true end
+    return true
+  end
+  if k == "l" then
+    if R.toggleGuide then R.toggleGuide() elseif R.openGuide then R.openGuide() end
+    return true
+  end
+  return false
+end)
+hook(R.hooks.sandboxDrawHUD, function()
+  -- These panel drawers are file-locals declared further down, so they are referenced through the
+  -- closure at call time rather than at registration time. Guarded with real `if ... then` --
+  -- `fn and fn()` is an expression, not a statement, and does not compile in Lua (I made exactly
+  -- that mistake twice today).
+  if U.questOpen and type(drawQuestPanel) == "function" then drawQuestPanel() end
+  if U.controlsOpen and type(drawControlsPanel) == "function" then drawControlsPanel() end
+end)
+hook(R.hooks.sandboxKey, function(key, k, shift, ctrl, alt)
+  if k == "e" then
+    if U.bagOpen then closeAllPanels() else openPanel("bagOpen"); U.everOpenedBag = true end
+    return true
+  end
+  return false
+end)
 hook(R.hooks.sandboxKey, function(key, k, shift, ctrl, alt)
   if U.submitMode == "form" and U.submitContextFocused then
     if k == "escape" or k == "13" or k == "10" then U.submitContextFocused = false; return true end
@@ -2064,12 +2263,12 @@ hook(R.hooks.drawHUD, function()
   drawSubmitDragBox()
   drawSubmitHint()
   drawSubmitConfirmBanner()
-  -- R.drawQuickBar (SANDBOX / TPT / GUIDE quick toggles) was fully written in rpg.lua --
-  -- layout, draw, hover, and a wired click handler at rpg.lua:2801 -- but NOTHING ever
-  -- called the draw half, so the buttons were clickable and completely invisible. Same
-  -- defined-but-never-wired class as drawMenu/wrap. the owner asked for a one-click sandbox
-  -- toggle on the main HUD; it already existed, it just never rendered.
-  if R.drawQuickBar then local qok, qerr = pcall(R.drawQuickBar); if not qok then R._qbErr = tostring(qerr) end end
+  -- R.drawQuickBar (SANDBOX / TPT / GUIDE quick toggles) used to be called ONLY from here --
+  -- rpg.lua's own onDraw now also calls it directly, unconditionally, right before running this
+  -- exact hook (see the comment above that call site), so this second call drew the identical
+  -- bar a second time every single frame for no visual difference. Removed rather than kept as
+  -- a defensive duplicate: two draws of the same buttons at the same coordinates is pure waste,
+  -- not redundancy that protects against anything.
   if U.bagOpen then drawBagPanel(); drawHandCursor()
   elseif U.questOpen then drawQuestPanel()
   elseif U.controlsOpen then drawControlsCard()

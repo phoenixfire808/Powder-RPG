@@ -16,8 +16,22 @@
 
 local R = PBX.state.rpg
 local TAG = "machines"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -107,7 +121,7 @@ local UNLOCK10, UNLOCK100 = 10, 100
 -- through a switch had its wattage bookkeeping silently wrong. Verified against the engine
 -- source before adding; this is the one-line fix @automation specified rather than applied,
 -- since machines.lua was not its file.
--- EXPANDED 2026-09-02: SWCH was one instance of a whole class -- checked every real
+-- EXPANDED 2026-09-02 (@machines): SWCH was one instance of a whole class -- checked every real
 -- engine element's PROP_CONDUCTS flag against POWDER_TOY_MATERIAL_INDEX.json and found this
 -- allowlist was missing 13 more real, static (TYPE_SOLID/static TYPE_PART) conductors a normal
 -- build routinely touches: GOLD/IRON ore veins under a base, BMTL (the conveyor/airline/wind-kit
@@ -191,9 +205,43 @@ genWatts = function(m)
       end
     end
     if not open then return 0 end
+    -- Real day/night sync fix, 2026-09-02 (@power): this used to run its own independent 50/50
+    -- sine (day=1 only briefly at phase 0.25, back to 0 by phase 0.5) that never read rpg.lua's
+    -- own live day/night state -- so solar output silently diverged from the sky the player is
+    -- actually looking at, and completely ignored the player's own "Day length" settings-menu
+    -- control (R.dayFrac, live/player-adjustable, rpg.lua:4249-4254). Verified by direct read of
+    -- rpg.lua's own sky-render day/night calc (rpg.lua:4506: R.dayFrac default 0.65, i.e. 65% of
+    -- the cycle is full daylight, not 50%) -- now computed the IDENTICAL way (same R.dayFrac
+    -- reference, not a second hardcoded copy), so a panel is lit exactly when the player's own
+    -- sky is bright, at whatever dayFrac the player has chosen.
     local phase = ((R.frame or 0) % 14000) / 14000
-    local day = math.max(0, -math.sin((phase - 0.5) * math.pi * 2))
+    local df = R.dayFrac or 0.65
+    local night = phase < df and 0 or math.max(0, math.sin(((phase - df) / (1 - df)) * math.pi))
+    local day = 1 - night
     local fouling = 1 - math.min(0.8, (m.dust or 0) / 100)   -- panel fouling: real dust buildup cuts output
+    -- REAL PHOTOVOLTAIC CELLS (2026-09-02). SIPV exists as a registered element -- "Monocrystalline
+    -- silicon PV cell: ~22% sunlight-to-electricity efficiency" with a `photovoltaic` behaviour --
+    -- but the solar machine never looked at it, so building a panel out of actual PV cells did
+    -- nothing and the output came from a flat constant regardless of what the panel was made of.
+    -- Now the cells are counted and drive the output, using the cited 22% efficiency against a
+    -- silicon reference; a panel with no PV cells falls back to the old constant so existing
+    -- builds keep working rather than silently dropping to zero.
+    local pv = 0
+    local sipv = R.eid and R.eid("SIPV")
+    if sipv and m.panel then
+      for px = m.panel.x1, m.panel.x2 or m.panel.x1 do
+        local cx2, cy2 = px - R.cam.x, m.panel.y1 - R.cam.y
+        if cx2 >= 0 and cx2 < W and cy2 >= 0 and cy2 < H then
+          local pid = sim.partID(cx2, cy2)
+          if pid and sim.partProperty(pid, "type") == sipv then pv = pv + 1 end
+        end
+      end
+    end
+    if pv > 0 then
+      -- 0.22 is the real monocrystalline-silicon efficiency cited in SIPV's own spec, not a
+      -- balance number; WATT_SOLAR_BASE stays the per-panel reference so scale is unchanged.
+      return day * WATT_SOLAR_BASE * fouling * (pv * 0.22)
+    end
     return day * WATT_SOLAR_BASE * fouling
   elseif m.kind == "teg" then
     local w = 0
@@ -1273,7 +1321,7 @@ local function machineAt(wx, wy)
   return best
 end
 local IDLE_HINT = {
-  crank = "Hold F beside it to turn the crank", wheel = "Place it in real flowing water",
+  crank = "Right-click it and press Engage (or hold F) to turn the crank", wheel = "Place it in real flowing water",
   solar = "Needs open sky and daylight", teg = "Needs its exposed face touching something hot (lava/fire)",
   reactor = "Needs the internal lattice hot enough to boil its water", rtg = "Should read >0 once built and intact",
   lightning = "Only generates during a real storm with open sky",
@@ -1397,8 +1445,8 @@ local function inspect(m)
   elseif m.kind == "bellows" then
     inputs[1] = "Air bladders owned: " .. (R.inventory.FLASK or 0)
     outputs[1] = "Refills your bladder ~6/frame while pumped, pushes air down the duct"
-    if m.pumping then state = "PUMPING"; nextline = "Working - keep holding F"
-    else state = "IDLE"; nextline = (R.inventory.FLASK or 0) > 0 and "Stand next to it and hold F to pump" or "Craft an air bladder (FLASK) first" end
+    if m.pumping then state = "PUMPING"; nextline = m.engaged and "Working - Engaged, press Disengage below to stop" or "Working - keep holding F"
+    else state = "IDLE"; nextline = (R.inventory.FLASK or 0) > 0 and "Stand next to it and press Engage below (or hold F) to pump" or "Craft an air bladder (FLASK) first" end
   elseif m.kind == "airline" then
     inputs[1] = string.format("Duct: %d/%d segments intact", m.intact or 0, #m.segs)
     outputs[1] = string.format("Feeds real air roughly every %dpx along the intact run", AIRLINE_SEG_STEP)
@@ -1423,6 +1471,11 @@ local function inspect(m)
 end
 local PANEL_BUTTONS = {
   boiler = { "light", "fillwater" }, breaker = { "reset" }, solar = { "clean" },
+  -- crank/bellows: mouse-clickable alternative to holding F, accessibility fix 2026-09-0X (PhoenixFire808's
+  -- own hand injury -- "we don't want to have to push function hotkeys... I hate having to push buttons on
+  -- my keyboard"). heldF is left in place as a still-working alternative, not removed, for anyone who prefers
+  -- it -- this only adds a mouse-only path that needs no sustained key hold at all.
+  crank = { "engage" }, bellows = { "engage" },
 }
 local function panelButtonLabel(m, id)
   if id == "light" then return m.lit and "Refuel" or "Light firebox" end
@@ -1430,6 +1483,7 @@ local function panelButtonLabel(m, id)
   if id == "reset" then return "Reset" end
   if id == "clean" then return "Clean panel" end
   if id == "toggle" then return m.disabled and "Start" or "Stop" end
+  if id == "engage" then return m.engaged and "Disengage" or "Engage" end
 end
 local function panelButtonEnabled(m, id)
   if id == "light" then local n = realCoalCount(m); return n > 0, "No real coal left in the bed - rebuild or restock it" end
@@ -1440,6 +1494,10 @@ local function panelButtonEnabled(m, id)
 end
 local function pressPanelButton(m, id)
   if id == "toggle" then m.disabled = not m.disabled; R.say(m.disabled and "Stopped" or "Started")
+  elseif id == "engage" then
+    m.engaged = not m.engaged
+    local verb = m.kind == "bellows" and "pumping" or "cranking"
+    R.say(m.engaged and ("Engaged - it keeps " .. verb .. " while you stand nearby, no key needed") or "Disengaged")
   elseif id == "light" then
     -- real, sustained ignition: counts the actual COAL particles present and burns for TICKS_PER_COAL of
     -- real time per cell (see updateBoiler) - not a one-off temperature bump, which cools straight back down
@@ -1626,7 +1684,7 @@ end
 local function updateCranks()
   for _, m in ipairs(R.machines) do if m.kind == "crank" then
     local near = math.abs(m.x - R.P.x) < 24 and math.abs(m.y - R.P.y) < 30
-    m.turning = near and heldF
+    m.turning = near and (heldF or m.engaged)
     m.angle = (m.angle or 0) + (m.turning and 0.35 or 0)
     if m.turning and (R.frame % 6 == 0) then
       local op = sim.partID(m.output.x - R.cam.x, m.output.y - R.cam.y)
@@ -1773,7 +1831,7 @@ end
 local function updateBellows()
   for _, m in ipairs(R.machines) do if m.kind == "bellows" then
     local near = math.abs(m.x - R.P.x) < 24 and math.abs(m.y - R.P.y) < 30
-    m.pumping = near and heldF
+    m.pumping = near and (heldF or m.engaged)
     if m.pumping then
       m.angle = (m.angle or 0) + 0.3
       if (R.inventory.FLASK or 0) > 0 then
@@ -1911,8 +1969,13 @@ end
 local function updateSolarFurnace()
   for _, m in ipairs(R.machines) do if m.kind == "solarfurnace" then
     m.cool = (m.cool or 0) - 1
+    -- Same real day/night sync fix as genWatts' "solar" branch above (2026-09-02, @power) -- this
+    -- used to run the identical unsynced 50/50 sine, so the lens would go dark mid-afternoon by
+    -- the game's own real clock and never track the player's "Day length" setting either.
     local phase = ((R.frame or 0) % 14000) / 14000
-    local day = math.max(0, -math.sin((phase - 0.5) * math.pi * 2))
+    local df = R.dayFrac or 0.65
+    local night = phase < df and 0 or math.max(0, math.sin(((phase - df) / (1 - df)) * math.pi))
+    local day = 1 - night
     if day > 0.4 and m.cool <= 0 then
       for ore, bar in pairs(SMELT_MAP) do
         if R.inv(ore) > 0 then R.inventory[ore] = R.inv(ore) - 1; R.give(bar, 1); m.cool = 70; break end

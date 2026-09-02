@@ -580,7 +580,7 @@ local function resolveElemName(raw)
     local name = string.upper(tostring(raw))
     local id = elements[name] or elements["DEFAULT_PT_" .. name] or elements["PBX_PT_" .. name]
     if id ~= nil then return id end
-    for j = 0, 511 do
+    for j = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do
         local ok, n = pcall(elements.property, j, "Name")
         if ok and n == name then return j end
     end

@@ -61,7 +61,14 @@ struct Particle;
 constexpr int OLD_PT_WIND = 147;
 
 // Change this to change the amount of bits used to store type in pmap (and a few elements such as PIPE and CRAY)
-constexpr int PMAPBITS = 9;
+// RAISED 9 -> 12 on 2026-09-02 to fit the whole periodic table as real elements.
+// pmap packs (particleIndex << PMAPBITS) | type into a 32-bit int, so these bits are taken
+// from the particle index. Checked before changing, not after:
+//   CELLS 153x96 * CELL 4 -> RES 612x384 -> NPART = 235,008, which needs 18 index bits.
+//   At PMAPBITS=12 the index keeps 20 bits = 1,048,576 -- 4x the ceiling it can ever need.
+// PT_NUM therefore goes 512 -> 4096, leaving room for 118 elements plus the existing 64
+// customs plus anything later, instead of the 193 free slots we had left.
+constexpr int PMAPBITS = 12;
 constexpr int PMAPMASK = ((1 << PMAPBITS) - 1);
 constexpr int ID(int r)
 {

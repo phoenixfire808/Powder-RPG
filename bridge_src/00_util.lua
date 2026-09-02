@@ -26,19 +26,21 @@ PBX.MAX_WORKERS_PER_COLONY = 400
 PBX.MAX_COLONIES           = 8
 PBX.MAX_TASKS_PER_COLONY   = 16
 PBX.MAX_BLUEPRINT_CELLS    = 4096
-PBX.MAX_CUSTOM_ELEMENTS    = 160 -- raised 2026-09-01. The old value of 40 came from
--- "TPT has 256 ids, ~213 stock; 40 leaves margin" -- correct arithmetic, wrong premise: it
--- counted only the ONE-BYTE id range. elem.allocate (src/lua/LuaElements.cpp) prefers ids
--- <=255 for save portability but ALREADY falls back to 256..PT_NUM-1, and PT_NUM is 512
--- (PMAPBITS = 9). GameSave round-trips two-byte types too: it writes the high byte when
--- `part.type & 0xFF00` and reads it back with `type |= partsData[i] << 8`. So ~299 ids were
--- sitting unused behind a self-imposed cap.
--- Why it mattered: the material catalogue wants 71 elements and machines/creatures compete
--- for the same registry, so materials silently lost their slots -- the underground collapsed
--- to a single rock type because BSLT and CNCR could not register. Measured effect of this
--- change: live custom elements 40 -> 64, priority-1 materials 4/29 -> 28/29.
--- Trade-off, deliberate: a save using a two-byte element id is not portable to stock TPT.
--- This fork never shares saves upstream (ADR-002), so that cost is accepted.
+-- NO ARTIFICIAL LIMIT. "I want unlimited custom elements. Why would we even limit ourselves?"
+-- He is right, and every hardcoded value here has cost us: 40 truncated the element replay and
+-- shipped a public build with no Steel; 160 and 300 were just the next arbitrary guesses.
+-- This now derives the real ceiling from the ENGINE at load time. sim.PMAPBITS is exported by
+-- LuaSimulation.cpp (LCONST(PMAPBITS)), and the engine's own id space is 2^PMAPBITS -- raised
+-- from 9 to 12 on 2026-09-02, so 512 -> 4096. Reserve a margin for stock elements (~195 today)
+-- and take everything else. Raise PMAPBITS again and this follows automatically, with no edit.
+PBX.MAX_CUSTOM_ELEMENTS = (function()
+    local bits = (sim and sim.PMAPBITS) or 9
+    local ceiling = 2 ^ bits
+    local reserved = 256          -- stock elements plus headroom
+    local n = math.floor(ceiling - reserved)
+    if n < 40 then n = 40 end     -- never regress below the historical floor
+    return n
+end)()
 
 PBX.SIM_W, PBX.SIM_H   = 612, 384
 PBX.CELL_W, PBX.CELL_H = 153, 96
@@ -254,11 +256,32 @@ function PBX.vCell(x, y)
 end
 
 --- Resolve an element name, identifier or numeric id to a numeric id.
+---
+--- FOUND LIVE (@isotopes, building 09_isotopes_seed.lua's decay chains -- "decayer: invalid
+--- becomes 'HE3', falling back to kill" reproduced on every boot regardless of registration
+--- order, proving this was never an ordering bug): this only ever checked THREE fixed prefixes
+--- (bare name, DEFAULT_PT_, PBX_PT_) -- every custom element registered under any OTHER group
+--- (MATL_PT_/POWER_PT_/PTBL_PT_/NUCL_PT_, and whatever new group prefixes later lanes add) could
+--- never resolve by name here, full stop, no matter when it was created. @ptable's own 2026-09-0x
+--- entry in knowledge/rpg-hub.md already flagged exactly this for MATL_PT_LHE ("PBX.vElem cannot
+--- resolve a bare name registered under the MATL_PT_/POWER_PT_ group prefixes") and recommended
+--- "walk 10_registry.lua's own R.byName instead of guessing prefixes" -- done here: after the
+--- three fixed prefixes miss, fall back to PBX.state.registry.byName[name].id (populated by
+--- 10_registry.lua's applySpec the moment elements.allocate() actually runs for ANY group, so
+--- this works for every custom group without hardcoding a prefix list that will always be one
+--- group behind whatever the next lane invents). Guarded with a plain table lookup, not a
+--- require/import, since 00_util.lua loads before 10_registry.lua -- PBX.state.registry may not
+--- exist yet at DEFINE time, but always does by the time this FUNCTION actually runs.
 function PBX.vElem(v)
     if v == nil then return nil, "element is required" end
     if tonumber(v) then return math.floor(tonumber(v)), nil end
     local name = string.upper(tostring(v))
     local id = elements[name] or elements["DEFAULT_PT_" .. name] or elements["PBX_PT_" .. name]
+    if id == nil then
+        local reg = PBX.state and PBX.state.registry
+        local ent = reg and reg.byName and reg.byName[name]
+        if ent and type(ent.id) == "number" then id = ent.id end
+    end
     if id == nil then return nil, "unknown element: " .. tostring(v) end
     return id, nil
 end

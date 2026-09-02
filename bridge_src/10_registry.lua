@@ -603,6 +603,24 @@ local function buildElementTable(spec)
     end
     t.Properties = bits
 
+    -- FOUND WHILE BUILDING 09_isotopes_seed.lua (@isotopes): a `decayer` particle's initial
+    -- "life" was never seeded from its own spec.behavior.params.startLife anywhere in this
+    -- pipeline -- confirmed by reading every FIELDS/buildElementTable line, not assumed. TPT
+    -- creates a new particle with property "life" defaulting to 0 unless the element's own
+    -- DefaultProperties.life says otherwise (elements.element(id,{DefaultProperties={life=N}})
+    -- is a real, native key -- see src/lua/LuaElements.cpp:513-514/685-687, setDefaultProperties
+    -- -- NOT one of this file's own declarative FIELDS, so it silently never got set). Without
+    -- this, every decayer particle's very first Update call sees life-rate<=0 and instantly
+    -- kills/transmutes itself on the tick after creation -- 20_behaviors.lua's own decayer
+    -- comment claims "startLife is metadata only... seeding is 10_registry.lua/defineElement's
+    -- job", but that job was never actually implemented. This silently affected the existing
+    -- CRPS corpse element (startLife=150, documented as "fades away in a few seconds") the same
+    -- way -- it would have vanished on the tick after death instead.
+    if spec.behavior and spec.behavior.kind == "decayer" and spec.behavior.params
+        and type(spec.behavior.params.startLife) == "number" then
+        t.DefaultProperties = { life = spec.behavior.params.startLife }
+    end
+
     for i = 1, #FIELDS do
         local f = FIELDS[i]
         local v = spec[f.key]
@@ -1010,6 +1028,80 @@ local function scheduleTransitionFixup(specLists)
     end)
 end
 
+-- Post-batch BEHAVIOUR fixup (@isotopes, found live while boot-testing 09_isotopes_seed.lua's
+-- own decay chains): the exact same problem scheduleTransitionFixup above already fixed for
+-- HighTemperatureTransition/LowTemperatureTransition ALSO applies to any behavior-kind param
+-- that names another element -- decayer's `becomes`, emitter's `emits`, grower's `needs` -- but
+-- nothing fixed it there. applySpec's def.make(params) resolves that name via PBX.vElem() and
+-- BAKES the resolved id into the returned Update closure as an upvalue at the moment the job
+-- runs, which (same root cause as the transition case, cited above) can be before the named
+-- sibling element's own job has run in the same boot batch. Live-reproduced building this
+-- generator's own seed: 22 of 25 decayer chains hit "decayer: invalid becomes 'X', falling back
+-- to kill" on a fresh boot, discovered by reading autorun-runtime.log, not assumed. Unlike the
+-- transition case, re-writing element PROPERTIES after the fact does not fix an already-wrong
+-- Update closure (the closure is immutable once created) -- so this fixup re-runs def.make(params)
+-- and RE-INSTALLS the Update function via elements.property(id,"Update",fn), which is safe and
+-- idempotent (make() has no side effects beyond returning a closure). Same FIFO-defer-after-both-
+-- queueSpecList-calls guarantee as scheduleTransitionFixup, for the identical reason.
+-- CHUNKED (not one giant loop like scheduleTransitionFixup above) -- live-observed on a
+-- heavily-loaded shared dev box (autorun-runtime.log: "[string \"10_registry.lua\"]:1017:
+-- Error: Script not responding", the PRE-EXISTING transition-fixup loop above hitting the
+-- same TPT Lua watchdog under that load) that even a ~227-spec single-call loop can trip the
+-- watchdog when the host is contended. Only ~25-30 specs ever actually need this fixup (the
+-- ones using a name-referencing behavior kind), so this filters ONCE up front, then processes
+-- BEHAVIOR_FIXUP_CHUNK of them per tick, re-deferring itself for the remainder -- bounding the
+-- wall-clock cost of any single call regardless of total batch size or host contention.
+local NAME_REF_BEHAVIOR_KINDS = { decayer = true, emitter = true, grower = true }
+local BEHAVIOR_FIXUP_CHUNK = 8
+local function scheduleBehaviorFixup(specLists)
+    local specs = {}
+    for j = 1, #specLists do
+        local list = specLists[j]
+        for i = 1, #list do
+            local s = list[i]
+            local b = s.behavior
+            if type(b) == "table" and NAME_REF_BEHAVIOR_KINDS[b.kind] then
+                specs[#specs + 1] = s
+            end
+        end
+    end
+    if #specs == 0 then return end
+
+    local nextIdx, fixed = 1, 0
+    local function runChunk()
+        PBX.guard(MODULE, function()
+            local stop = math.min(nextIdx + BEHAVIOR_FIXUP_CHUNK - 1, #specs)
+            for i = nextIdx, stop do
+                local s = specs[i]
+                local b = s.behavior
+                do
+                    local ent = R.byName[s.name]
+                    if ent and ent.id ~= nil and elements.exists(ent.id) then
+                        local def, params = resolveBehavior(b)
+                        if def then
+                            local fn = def.make(params)
+                            if type(fn) == "function" then
+                                elements.property(ent.id, "Update", fn)
+                                ent.hasUpdate = true
+                                fixed = fixed + 1
+                            end
+                        end
+                    end
+                end
+            end
+            nextIdx = stop + 1
+            if nextIdx > #specs then
+                PBX.log(MODULE, "boot behaviour fixup: re-resolved " .. fixed ..
+                                "/" .. #specs .. " name-referencing behaviour(s) " ..
+                                "(decayer/emitter/grower) after every batch element had its " ..
+                                "own create job attempt")
+            end
+        end)
+        if nextIdx <= #specs then PBX.defer(runChunk) end
+    end
+    PBX.defer(runChunk)
+end
+
 do
     local persistedList = PBX.load(PERSIST)
     local seedList = _G.PBX_MATERIALS_SEED
@@ -1038,6 +1130,7 @@ do
     restored, skipped = restored + seedQueued, skipped + seedSkipped
 
     scheduleTransitionFixup({ restoredSpecs, seedSpecs })
+    scheduleBehaviorFixup({ restoredSpecs, seedSpecs })
 
     PBX.log(MODULE, "registry " .. R.VERSION .. " loaded; queued " .. restored ..
                     " element(s) (persisted+seed), skipped " .. skipped)

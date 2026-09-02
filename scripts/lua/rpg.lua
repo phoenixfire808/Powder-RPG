@@ -15,7 +15,7 @@ R.version = 4
 local W, H = 612, 384
 local DEPTH = 1900                   -- world bottom (bedrock from DEPTH-40)
 -- sea level y=200 inlined at its single use (200-locals budget)
-local function id(name) local i = elem["DEFAULT_PT_"..name]; if i then return i end; for j = 0, 511 do local ok, n = pcall(elem.property, j, "Name"); if ok and n == name then return j end end; return nil end
+local function id(name) local i = elem["DEFAULT_PT_"..name]; if i then return i end; for j = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do local ok, n = pcall(elem.property, j, "Name"); if ok and n == name then return j end end; return nil end
 local idcache = {}
 -- NEGATIVE-CACHE SELF-HEAL (2026-09-02). This cache used to store `false` for a missing
 -- element FOREVER. Custom elements cannot be registered at load time -- elem.allocate/element/
@@ -34,6 +34,50 @@ local function eid(name) local v = idcache[name]; if v == nil then v = id(name) 
 local namecache = {}
 local function nameOf(t) local n = namecache[t]; if n then return n end; local ok, v = pcall(elem.property, t, "Name"); n = ok and v or tostring(t); namecache[t] = n; return n end
 local function has(name) return eid(name) ~= nil end
+
+-- MOLTEN NAMING (2026-09-02). "My molten materials still are not being labeled properly. This is
+-- a huge issue." The native Powder Toy HUD has actually been correct since 2019 -- @cpp proved
+-- that, and disproved my own C++ patch, which turned out to be unreachable dead code. The real
+-- cause is here, in the RPG's own Lua:
+--   nameOf(t) takes a TYPE, not a particle. A molten particle's type IS PT_LAVA, and the original
+--   material lives in its ctype -- which nameOf can never see. So every RPG-drawn surface that
+--   names a material (48 call sites in this file alone, plus the plugins) says "LAVA" for molten
+--   anything, and always has.
+-- R.partLabel takes a particle id instead, so it can consult ctype and say "Molten Steel".
+-- Falls back to the plain type name for everything else, so it is a safe drop-in wherever a
+-- particle id is in hand.
+function R.partLabel(p)
+  if not p then return "" end
+  local ok, t = pcall(sim.partProperty, p, "type")
+  if not ok or not t or t == 0 then return "" end
+  local okc, ct = pcall(sim.partProperty, p, "ctype")
+  return R.typeLabel(t, okc and ct or 0)
+end
+
+-- Same idea for a bare (type, ctype) pair, for callers that have properties but no particle id.
+-- Elements that are a STATE of some other material, carrying the real one in ctype. Naming any
+-- of these by their own type is useless to a player: "PWCR" and "LAVA" tell you nothing, while
+-- "Powdered Steel" and "Molten Steel" tell you everything. Reported directly: "when I'm spawning
+-- my powders I don't want it to say PWCR, I want it to say what the material is."
+R.CTYPE_FORMS = { LAVA = "Molten %s", PWCR = "Powdered %s", GLOW = "Glowing %s" }
+
+function R.typeLabel(t, ct)
+  if not t or t == 0 then return "" end
+  local base = nameOf(t)
+  local form = R.CTYPE_FORMS[base]
+  if form and ct and ct > 0 then
+    local okn, cn = pcall(elem.property, ct, "Name")
+    if okn and cn and cn ~= "" then
+      return string.format(form, (R.NAMES and R.NAMES[cn]) or cn)
+    end
+  end
+  if form then
+    -- No ctype: it is the generic form, not a specific material's state.
+    if base == "LAVA" then return "Lava" end
+    if base == "PWCR" then return "Powder" end
+  end
+  return (R.NAMES and R.NAMES[base]) or base
+end
 
 -- Real physics solidity (does this type actually block a gas particle?) -- deliberately
 -- separate from PASS/solidW, which govern the PLAYER's own walk-through collision and
@@ -107,6 +151,19 @@ R.W, R.H, R.M = 612, 384, 4
 R.SAFE = { x = 4, y = 16, w = 604, h = 344 }   -- x..x+w, y..y+h
 pcall(tpt.hud, 0)
 -- Hide TPT's own element-selection menus while playing (Esc menu toggles them back for sandbox building)
+-- Re-applies a menu toggle the engine previously refused. MUST be called from a real interface
+-- event (key or mouse handler); that is the whole point of it existing.
+function R.applyPendingMenus()
+  if not R.tptMenusPending then return end
+  local n = 0
+  local ok = pcall(function() n = tpt.num_menus(false) end)
+  if not ok or not n or n <= 0 then return end   -- still not an interface event; try again later
+  for i = 0, n - 1 do pcall(tpt.menu_enabled, i, R.tptMenus and 1 or 0) end
+  pcall(tpt.hud, R.tptMenus and 1 or 0)
+  R.tptMenusPending = nil
+  if PBX and PBX.log then PBX.log("menus", "native TPT menus restored on a real input event") end
+end
+
 function R.setTptMenus(on)
   R.tptMenus = on and true or false
   -- tpt.hud(0) at boot above hides the WHOLE native HUD, toolbar included --
@@ -118,9 +175,23 @@ function R.setTptMenus(on)
   -- num_menus() defaults to onlyEnabled=true — when menus were off that
   -- returned 0 and the enable loop never ran, so toggling ON left side
   -- palettes/categories hidden. Iterate every section index.
+  -- ui.numMenus/ui.menuEnabled are "restricted to interface events" -- they only work inside a
+  -- real click or keypress handler. Called from anywhere else (a hot reload, R.stop() driven from
+  -- tooling, or enterSandbox triggered other than by the button) num_menus returns 0, the loop
+  -- `for i = 0, -1` never runs, and NO menu is ever enabled -- silently. That is why the native
+  -- element menu vanished in sandbox while R.tptMenus still reported true: the flag was set and
+  -- the engine call had quietly done nothing.
+  -- Verified live: ui.numMenus() -> "this functionality is restricted to interface events".
+  -- So: try now, and if the engine refuses, mark it pending and re-apply on the next real input
+  -- event (see applyPendingMenus, called from the key and mouse handlers).
   local n = 0
-  pcall(function() n = tpt.num_menus(false) end)
-  for i = 0, (n or 0) - 1 do pcall(tpt.menu_enabled, i, R.tptMenus and 1 or 0) end
+  local okN = pcall(function() n = tpt.num_menus(false) end)
+  if not okN or not n or n <= 0 then
+    R.tptMenusPending = true
+  else
+    R.tptMenusPending = nil
+    for i = 0, n - 1 do pcall(tpt.menu_enabled, i, R.tptMenus and 1 or 0) end
+  end
   -- Same click that toggles this used to leave R.mouse.l stuck. Clearing it
   -- here is why "TPT menus on then off" stopped the spam -- do it on purpose.
   if R.releaseMouse then R.releaseMouse() end
@@ -247,12 +318,28 @@ function R.setFX(on)
   else pcall(ren.renderModes, R.origRender[1]); pcall(ren.displayModes, R.origRender[2]) end
   return R.fxOn
 end
-pcall(R.setFX, R.fxOn)
-R.origColours = R.origColours or {}
-for name, col in pairs({ BMTL = 0xFFF060, BRMT = 0xFF9030 }) do
-  local id = elem["DEFAULT_PT_" .. name]
-  if id then if R.origColours[name] == nil then R.origColours[name] = elem.property(id, "Colour") end
-    pcall(elem.property, id, "Colour", col) end
+-- SANDBOX LOOKS LIKE STOCK POWDER TOY. Reported: spawning the character "makes all the
+-- materials and everything I'm using look shitty."
+-- Two RPG-only presentation changes were leaking into sandbox, and both re-applied on EVERY
+-- core reload (which happens constantly during development, so it kept coming back):
+--   1. R.setFX swaps the renderer to FIRE/GLOW/BLUR/EFFE + DISPLAY_EFFE. That is the RPG's
+--      look; on a build canvas it just makes every material smeary and wrong.
+--   2. BMTL and BRMT get recoloured for RPG legibility.
+-- Sandbox is meant to BE Powder Toy, so it keeps the stock renderer and the stock colours.
+if R.sandboxMode then
+  pcall(R.setFX, false)
+  for name, col in pairs(R.origColours or {}) do
+    local id = elem["DEFAULT_PT_" .. name]
+    if id then pcall(elem.property, id, "Colour", col) end
+  end
+else
+  pcall(R.setFX, R.fxOn)
+  R.origColours = R.origColours or {}
+  for name, col in pairs({ BMTL = 0xFFF060, BRMT = 0xFF9030 }) do
+    local id = elem["DEFAULT_PT_" .. name]
+    if id then if R.origColours[name] == nil then R.origColours[name] = elem.property(id, "Colour") end
+      pcall(elem.property, id, "Colour", col) end
+  end
 end
 -- plugin hook API: plugins append callables to these lists (see scripts/lua/rpg_plugins/README.md)
 -- IN-GAME CHAT: press Enter to talk to your colonists. Plugins/drivers read R.chatPending() and reply
@@ -451,7 +538,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.17.6"
+R.VERSION = "1.18.0"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -1786,6 +1873,24 @@ local function setMoltenTemp(p, el)
   if t and p and p >= 0 then pcall(sim.partProperty, p, "temp", t) end
 end
 local function solidW(wx, wy)
+  -- SANDBOX COLLISION. Reported: "he keeps vibrating around like a crazy motherfucker."
+  -- Two causes, both from reusing world-space collision in a place that has no world:
+  --  (a) this subtracts R.cam to convert world->screen, but a sandbox has no camera and the
+  --      character is positioned directly in screen space, so every test was offset by whatever
+  --      the camera happened to be;
+  --  (b) worse, near the screen edge it falls back to gen(wx, wy) -- the WORLD GENERATOR -- and
+  --      happily reports solid rock that does not exist on the canvas. He was colliding with a
+  --      phantom world, being pushed out, falling back in, and oscillating.
+  -- In sandbox there is exactly one source of truth: the particles actually on screen.
+  if R.sandboxMode then
+    if wx < 4 or wx > 607 or wy > 379 then return true end   -- canvas edges are walls and floor
+    if wy < 4 then return false end
+    local sp = sim.partID(wx, wy)
+    if not sp then return false end
+    local st = sim.partProperty(sp, "type")
+    if not st or st == 0 then return false end
+    return not PASS[nameOf(st)]
+  end
   if wy >= DEPTH then return true end
   local x, y = wx - R.cam.x, wy - R.cam.y
   if x < M or x >= W - M or y < M or y >= H - M then local g = gen(wx, wy); return g ~= nil and not PASS[g] end
@@ -1796,7 +1901,14 @@ local function solidW(wx, wy)
 end
 R.solidW = solidW
 local function boxBlocked(x, y) for yy = y + BOXT, y - 1 do for xx = x + BOXL, x + BOXR do if solidW(xx, yy) then return true end end end; return false end
-local function platformAt(wx, wy) local x, y = wx - R.cam.x, wy - R.cam.y
+-- Same camera correction as solidW: in sandbox screen space IS world space.
+local function platformAt(wx, wy)
+  if R.sandboxMode then
+    local sp = sim.partID(wx, wy)
+    if not sp then return false end
+    return PLATFORM[nameOf(sim.partProperty(sp, "type"))] == 1
+  end
+  local x, y = wx - R.cam.x, wy - R.cam.y
   if x < M or x >= W - M or y < M or y >= H - M then return false end
   local p = sim.partID(x, y); if not p then return false end
   return PLATFORM[nameOf(sim.partProperty(p, "type"))] == 1 end
@@ -2418,7 +2530,12 @@ local function drawO2BreathField()
     end
   end end
 end
-local function drawPlayer()
+-- Exposed so Sandbox can run the REAL character rather than a lookalike. He asked for
+-- "the same guy that we use from our RPG" -- so sandbox calls these two functions
+-- directly instead of reimplementing movement and rendering, which guarantees it stays
+-- the same character with the same physics, sprite and feel, forever, by construction.
+local drawPlayer
+function drawPlayer()
   local P = R.P; local x, y = floor(P.x) - R.cam.x, floor(P.y) - R.cam.y; local f = P.face
   if R.shake and R.frame - R.shake.t < 14 then local m = R.shake.mag * (1 - (R.frame - R.shake.t) / 14); x = x + floor((math.random() - 0.5) * 2 * m); y = y + floor((math.random() - 0.5) * 2 * m)
     graphics.fillRect(0, 0, W, H, 255, 40, 40, floor(40 * (1 - (R.frame - R.shake.t) / 14))) end
@@ -2754,6 +2871,7 @@ local function inv(el) return (R.inventory or {})[el] or 0 end
 R.stats = R.stats or { mined = {}, crafted = {}, chests = 0, maxDepth = 0 }
 local function give(el, n) R.inventory[el] = inv(el) + n; if n > 0 then R.stats.mined[el] = (R.stats.mined[el] or 0) + n; runHooks(R.hooks.mine, el, n) end end
 R.inv, R.give = inv, give
+R.movePlayer, R.drawPlayer = movePlayer, drawPlayer
 local TOOLSLOTS = { "tool:pick", "tool:axe", "tool:sword", "tool:torch", "tool:bucket" }
 function R.rebuildHotbarNow()
   R.hotbar = R.hotbar or {}
@@ -3418,6 +3536,7 @@ local function hitRect(x, y, r) return r and x >= r.x and x <= r.x + r.w and y >
 local drawTitleScreen, titleMouseDown
 local titleMouseX, titleMouseY = -1, -1   -- for real button hover highlighting on the title screen
 local function onMouseDown(x, y, button)
+  if R.tptMenusPending then R.applyPendingMenus() end
   -- TPT native brush only skips placement when Lua returns false; nil/true lets the click
   -- through to Window::DoMouseDown (GameView.cpp). Title/inactive used to return nil, so
   -- Create/Play held the native brush down through world start -- sand spray every new seed.
@@ -3448,6 +3567,17 @@ local function onMouseDown(x, y, button)
         baseY = (oky and type(by) == "number") and by or 4,
       }
       return false   -- consume the middle click so it does not also act as a paste/sample
+    end
+    -- Buttons get the click before anything else, including the plugin hooks, so a panel
+    -- opening underneath can never make the toolbar unclickable.
+    if button == 1 and R.sbButtonClick(x, y) then return false end
+    -- GRAB: pick the character up and place him. Requested directly -- "some sort of grabbing
+    -- tool to move him around, put him where I want." Only active while the Grab button is lit,
+    -- so it can never interfere with ordinary drawing.
+    if button == 1 and R.sbGrab and R.SB and R.SB.on and R.P then
+      R.sbGrabbing = true
+      R.P.x, R.P.y, R.P.vx, R.P.vy = x, y, 0, 0
+      return false
     end
     if runHooks(R.hooks.sandboxMouseDown, x, y, button) then return false end
     return
@@ -3481,6 +3611,7 @@ local function onMouseUp(x, y, button)
   -- the whole handler when not R.active, so a Create-click release never cleared state).
   if button == 1 then R.mouse.l = false; R._clickArmed = false end; if button == 3 then R.mouse.r = false end
   if R.sandboxMode then
+    if R.sbGrabbing and button == 1 then R.sbGrabbing = false; return false end
     if R.sbBrush and R.sbBrush.active and button == 2 then R.sbBrush.active = false; return false end
     R.sbCheckShape()   -- also catches clicking the shape button in TPT's own toolbar
     if runHooks(R.hooks.sandboxMouseUp, x, y, button) then return false end
@@ -3551,6 +3682,11 @@ local function onMouseMove(x, y, dx, dy)
       return false
     end
     R.mouse = R.mouse or {}; R.mouse.x, R.mouse.y = x, y
+    if R.sbGrabbing and R.P then
+      -- carried, not thrown: velocity is zeroed every frame so releasing him drops him gently
+      R.P.x, R.P.y, R.P.vx, R.P.vy = x, y, 0, 0
+      return false
+    end
     runHooks(R.hooks.sandboxMouseMove, x, y, dx, dy)
     return
   end
@@ -3629,6 +3765,7 @@ local function onTextInput(text)
   elseif R.chatOpen then if #R.chatText < 120 then R.chatText = R.chatText .. text end end
 end
 local function onKeyDown(key, scan, rep, shift, ctrl, alt)
+  if R.tptMenusPending then R.applyPendingMenus() end
   -- Sandbox mode: the RPG is stopped, so every handler below is inert. Esc is the one
   -- key we still claim, as the way back to the menu -- checked BEFORE the title-screen
   -- and R.active guards, both of which would otherwise swallow it and leave the player
@@ -3643,8 +3780,25 @@ local function onKeyDown(key, scan, rep, shift, ctrl, alt)
     -- you to the main menu -- and from there the only way back into sandbox cleared the
     -- simulation, destroying whatever you were building. Panels must be allowed to consume
     -- Esc first; only an Esc that nothing else wants leaves sandbox.
+    if R.SB and R.SB.on then
+      local kn = keyName(key)
+      if ARROWK[key] then R.keys[ARROWK[key]] = true; return false end
+      if kn == "a" or kn == "d" or kn == "w" or kn == "s" then R.keys[kn] = true; return false end
+    end
+    -- Letter-key shortcuts he already has muscle memory for. E is the inventory and he said
+    -- plainly it was working well before; losing it to sandbox was a regression, not a cleanup.
+    if not rep then
+      local kn2 = keyName(key)
+      if kn2 == "e" or kn2 == "i" then
+        -- Route through the hook chain so ui.lua's real bag panel opens and DRAWS, rather than
+        -- flipping a flag whose renderer never runs in sandbox. (I did exactly that a moment ago
+        -- by calling a function that does not exist -- the same silent no-op I keep warning about.)
+        runHooks(R.hooks.sandboxKey, 101, "e", false, false, false)
+        return false
+      end
+    end
     if not rep and runHooks(R.hooks.sandboxKey, key, keyName(key), shift, ctrl, alt) then return false end
-    if key == 1073741888 then R.sandboxWalk(true); return false end   -- F7: spawn and walk
+    if key == 1073741888 then R.sandboxWalk(); return false end   -- F7 still works, but the Character button is the real control
     if key == 27 then
       if R.sbBrush and R.sbBrush.active then R.sbBrush.active = false; return false end
       R.exitSandbox(); return false
@@ -3772,6 +3926,11 @@ end
 local function onKeyUp(key, scan, rep, shift, ctrl, alt)
   if R.sandboxMode then
     R.sbMod = R.sbMod or {}; R.sbMod.shift, R.sbMod.ctrl = shift, ctrl
+    if R.SB and R.SB.on then
+      local kn = keyName(key)
+      if ARROWK[key] then R.keys[ARROWK[key]] = false end
+      if kn == "a" or kn == "d" or kn == "w" or kn == "s" then R.keys[kn] = false end
+    end
     return
   end
   if not R.active then return end
@@ -4355,9 +4514,20 @@ local function onDraw()
         graphics.drawCircle(ax, ay, w, h, 255, 220, 120, 190)
       end
       graphics.drawText(ax + 8, ay - 16, w * 2 .. " x " .. h * 2, 255, 235, 170, 230)
+      -- name whatever is under the anchor, using the ctype-aware label so molten material
+      -- reads as "Molten Steel" rather than "LAVA"
+      local okp, pid = pcall(sim.pmap, math.floor(ax), math.floor(ay))
+      if okp and pid then
+        local lbl = R.partLabel(pid)
+        if lbl ~= "" then graphics.drawText(ax + 8, ay - 6, lbl, 210, 225, 245, 220) end
+      end
+    end
+    if R.SB and R.SB.on then
+      if R.drawPlayer then pcall(R.drawPlayer) end
     end
     runHooks(R.hooks.sandboxDraw)
     runHooks(R.hooks.sandboxDrawHUD)
+    R.sbDrawButtons()   -- drawn last so nothing else can cover the only mouse-reachable controls
     return
   end
   if not R.active then return end
@@ -5679,7 +5849,38 @@ local function onTick()
   -- worldgen has already baked the wrong ROCK constant into the terrain it just generated.
   -- This counter advances on every tick from the moment the game boots, so the reload lands
   -- while the player is still looking at the menu.
+  -- Fill the inventory once the RPG test world actually exists. Deferred to a tick because the
+  -- world is generated asynchronously via R.pendingGen -- granting before that would push items
+  -- into an inventory that the world start then resets.
+  if R.sbGrantAll and R.active and not R.pendingGen then
+    R.sbGrantAll = nil
+    local n = 0
+    for code in pairs(R.NAMES or {}) do pcall(R.give, code, 200); n = n + 1 end
+    for _, t in ipairs({ R.PICKS, R.SWORDS }) do
+      for _, it in ipairs(t or {}) do if it.name then pcall(R.give, it.name, 1) end end
+    end
+    say("Granted " .. n .. " materials x200 for testing.")
+  end
   R.bootTicks = (R.bootTicks or 0) + 1
+  -- Keep R.frame advancing even when no world is running. It is incremented further down, but
+  -- only AFTER `if not R.active then return end`, so at the title screen it stays nil forever.
+  -- Plugins that schedule work on a frame count therefore never run: reactions.lua reported
+  -- "install pass has NOT yet run (frame nil), 10 symbol(s) still pending" -- its cited alkali,
+  -- alkaline-earth and halogen reactions were loaded but never installed onto any element, which
+  -- is exactly the "I put powders down and added water and nothing reacted" report.
+  -- Only advances it when the normal path will not, so in-world timing is untouched.
+  if not R.active and not R.sandboxMode then
+    R.frame = (R.frame or 0) + 1
+    -- Plugin tick hooks are dispatched at the BOTTOM of this function, long after
+    -- `if not R.active then return end` -- so with no world running, all 35 of them are dead.
+    -- That is why reactions.lua kept reporting "install pass has NOT yet run": its cited alkali,
+    -- alkaline-earth and halogen reactions were loaded but never installed onto any element,
+    -- which is exactly the "I put powders down, added water, and nothing reacted" report.
+    -- Plugins legitimately need a heartbeat for install/setup work that does not depend on a
+    -- world existing, so give them one here. In-world dispatch below is untouched.
+    local okh = pcall(runHooks, R.hooks.tick)
+    if not okh and PBX and PBX.log then PBX.log("tick", "idle tick hook pass raised an error") end
+  end
   if not R.bootHealDone and R.bootTicks > 120 then
     R.bootHealDone = true
     local before = { BSLT = has("BSLT"), GRSS = has("GRSS"), DU = has("DU"), CU = has("CU"), STEL = has("STEL") }
@@ -5700,7 +5901,30 @@ local function onTick()
   -- but onTick has never had that guard -- without this, choosing "Sandbox" would still
   -- tick enemies, weather, hunger and world logic underneath a player who asked for plain
   -- Powder Toy. Placed after the hot-reload check so reloading still works from sandbox.
-  if R.sandboxMode then runHooks(R.hooks.sandboxTick); return end
+  if R.sandboxMode then
+    -- PHYSICS RUNS HERE, NOT IN onDraw. He reported the character "wiggling around everywhere"
+    -- through several attempted fixes. Root cause: movePlayer was being called from the DRAW
+    -- path, while R.frame never advanced -- onTick returns before the frame counter increments.
+    -- movePlayer keys coyote time, jump buffering, drop-through and animation off R.frame, so
+    -- with a frozen clock every one of those timers misfired and fought the position each frame.
+    -- Advancing the clock and stepping physics on the tick (draw only draws) is the actual fix.
+    R.frame = (R.frame or 0) + 1
+    if R.SB and R.SB.on and not R.sbGrabbing and R.movePlayer then
+      pcall(R.movePlayer)
+      R.hp = 100        -- a debugging sandbox must never kill him
+      R.o2 = R.o2Max or R.o2 or 100
+    end
+    runHooks(R.hooks.sandboxTick)
+    -- Plugins also need their ORDINARY tick in sandbox. The normal dispatch of R.hooks.tick sits
+    -- at the bottom of this function, far below the early return above, so in sandbox it never
+    -- ran -- which is why reactions.lua reported "install pass has NOT yet run" forever and
+    -- elementsWithUpdate stayed 0: his powders genuinely could not react because the install
+    -- hook was never once invoked. The idle branch further down is gated on `not sandboxMode`,
+    -- so it did not cover this case either.
+    local okt = pcall(runHooks, R.hooks.tick)
+    if not okt and PBX and PBX.log then PBX.log("tick", "sandbox tick hook pass raised an error") end
+    return
+  end
   -- GAS THROUGH LIQUIDS (2026-08-31): "all the oxygen and gases are getting caught on the trees
   -- and the liquids". Root cause is an engine rule, not our Lua: SimulationData.cpp's
   -- init_can_move sets can_move[moving][dest] = 0 (bounce) whenever the mover's Weight is <= the
@@ -6162,30 +6386,227 @@ end -- title screen
 -- R.active drives the whole RPG tick/draw path, so enabling it is what actually gives you a
 -- controllable character with real physics; R.sandboxMode goes false while walking so onTick
 -- stops early-returning, and comes back on when you toggle out.
-function R.sandboxWalk(on)
-  if on == nil then on = not R.sandboxWalking end
-  if on then
-    if not R.P then return end
-    -- Spawn at the cursor when we know it, else mid-canvas. Never at surfaceAt(0): in a sandbox
-    -- there is no generated terrain, so that would drop him through an empty world forever.
-    local mx = (R.mouse and R.mouse.x) or 300
-    local my = (R.mouse and R.mouse.y) or 100
-    R.P.x, R.P.y = mx, my
-    R.P.vx, R.P.vy = 0, 0
-    R.sandboxWalking = true
-    R.sandboxMode = false      -- let the normal tick/draw path run so the player updates
-    R.active = true
-    R.enemies = false
-    pcall(R.setTptMenus, true) -- keep building available while walking
-    pcall(tpt.hud, 1)
-    say("Walk mode -- WASD/arrows to move, F7 to go back to building. Enemies off.")
-  else
-    R.sandboxWalking = false
-    R.active = false
-    R.sandboxMode = true
-    say("Build mode -- F7 to walk around again.")
+-- SANDBOX CHARACTER, rewritten 2026-09-02. The first version set R.active = true to reuse the
+-- RPG's own player, and he reported it "fucked my game all up" -- correctly, because R.active
+-- starts EVERYTHING: weather, hunger, day/night, the camera follow, chunk reveal and worldgen
+-- expectations, none of which make sense on a blank 612x384 canvas with no generated terrain.
+-- This is a completely self-contained character instead. It runs only on the sandbox hooks, it
+-- never sets R.active, and it touches no RPG system at all -- so the element menus, the brush,
+-- stamps, submission and settings all keep working exactly as they do in plain Powder Toy.
+-- There is deliberately no camera: a sandbox is one fixed screen, so he simply walks around in it.
+R.SB = R.SB or { x = 300, y = 60, vx = 0, vy = 0, on = false, face = 1, keys = {} }
+
+-- Solid enough to stand on? Anything with a particle that is not a gas/liquid reads as ground.
+-- Uses the same TYPE_SOLID/Falldown discipline ADR-003 requires rather than guessing by name.
+function R.sbSolidAt(x, y)
+  x, y = math.floor(x), math.floor(y)
+  if x < 4 or x > 607 or y > 379 then return true end   -- canvas edges are walls/floor
+  if y < 4 then return false end
+  local ok, p = pcall(sim.pmap, x, y)
+  if not ok or not p then return false end
+  local t = sim.partProperty(p, "type")
+  if not t or t == 0 then return false end
+  local okp, props = pcall(elem.property, t, "Properties")
+  if not okp or not props then return false end
+  return (props % 8) >= 4        -- TYPE_SOLID bit
+end
+
+function R.sbStep()
+  local P = R.SB
+  if not P.on then return end
+  local k = P.keys
+  local ax = (k.right and 1 or 0) - (k.left and 1 or 0)
+  if ax ~= 0 then P.face = ax end
+  P.vx = ax * 1.6
+  -- ground check first so jumping is reliable rather than depending on vy sign
+  local grounded = R.sbSolidAt(P.x, P.y + 1) or R.sbSolidAt(P.x - 1, P.y + 1) or R.sbSolidAt(P.x + 1, P.y + 1)
+  if k.up and grounded then P.vy = -3.2 end
+  P.vy = math.min(6, P.vy + 0.32)                      -- gravity, terminal velocity clamped
+  -- Axis-separated movement, one pixel at a time. Stepping pixel-by-pixel means he can never
+  -- tunnel through a one-pixel wall at speed, which matters here because the player builds the
+  -- walls themselves and they are frequently exactly one particle thick.
+  local steps = math.ceil(math.max(math.abs(P.vx), math.abs(P.vy)))
+  local sx, sy = P.vx / steps, P.vy / steps
+  for _ = 1, steps do
+    if not R.sbSolidAt(P.x + sx, P.y) then P.x = P.x + sx
+    else
+      -- one-pixel step-up, so walking over rubble does not need a jump
+      if not R.sbSolidAt(P.x + sx, P.y - 1) and not R.sbSolidAt(P.x, P.y - 1) then P.x, P.y = P.x + sx, P.y - 1
+      else P.vx = 0 end
+    end
+    if not R.sbSolidAt(P.x, P.y + sy) then P.y = P.y + sy else P.vy = 0 end
   end
-  return R.sandboxWalking and "walking" or "building"
+  P.x = math.max(5, math.min(606, P.x))
+  P.y = math.max(5, math.min(378, P.y))
+end
+
+function R.sbDraw()
+  local P = R.SB
+  if not P.on then return end
+  local x, y = math.floor(P.x), math.floor(P.y)
+  graphics.fillRect(x - 1, y - 6, 3, 3, 240, 200, 160, 255)   -- head
+  graphics.fillRect(x - 1, y - 3, 3, 4, 90, 130, 200, 255)    -- body
+  graphics.fillRect(x - 1, y + 1, 1, 2, 70, 70, 90, 255)      -- legs
+  graphics.fillRect(x + 1, y + 1, 1, 2, 70, 70, 90, 255)
+  graphics.drawPixel(x + P.face, y - 5, 20, 20, 30, 255)      -- facing dot
+end
+
+-- CLICKABLE SANDBOX BAR. He is explicit and it is an accessibility requirement, not a
+-- preference: "we don't want to have to push function hotkeys at the top of our shit. We want
+-- button options for stuff. I hate having to push buttons on my keyboard. My hand is broken."
+-- So every sandbox action has a real on-screen button. The keyboard shortcuts still exist for
+-- anyone who wants them, but nothing is reachable ONLY by key.
+-- Placed top-left, one row, clear of TPT's own element menus (right edge and bottom strip).
+-- TRIMMED 2026-09-02. I over-built this. He asked for buttons because his hand is broken, and
+-- I turned that into a seven-button strip across the top of his canvas -- "it looks dumb and
+-- there's buttons all over everywhere." The real distinction he drew is narrower than I read it:
+-- FUNCTION keys at the top of the keyboard are the problem; ordinary letter keys like E are fine
+-- and he explicitly likes them ("being able to push E, that was all working well for us").
+-- So: three buttons for the things that have no comfortable key, letter keys for the rest.
+R.SB_BTNS = {
+  { id = "guy",  w = 62 },
+  { id = "grab", w = 44 },
+  { id = "menu", w = 46 },
+}
+
+-- FULL RPG TEST WORLD. He asked to be able to "test all the features from the RPG -- testing
+-- machines and vehicles and everything else" from sandbox. The lightweight sandbox character
+-- deliberately runs none of the RPG, which is right for building but useless for testing a
+-- conveyor or a vehicle. This is the other half: a real RPG session on a FLAT world, with a full
+-- inventory, so every machine, vehicle and tool can actually be exercised.
+-- Flat is the important part. `world.lua`'s flatWorldGen fills solid rock from FLAT_SURFACE_Y
+-- down and R.P.y is placed against that, so the player lands on real ground instead of falling --
+-- which is exactly what went wrong when the first version of the Character button simply set
+-- R.active on an empty canvas.
+function R.sbRpgTest()
+  R.SB.on = false                     -- the toy character and the real one must never coexist
+  R.sandboxMode = false
+  R.sandboxSuspended = false
+  R.mapType = "flat"
+  R.flatTestWorld = true
+  R.enemies = false                   -- testing, not fighting
+  R.pendingGen = math.random(1, 9999)
+  R.titleScreen = false
+  R.active = true
+  if R.releaseMouse then R.releaseMouse() end
+  R._placeGraceUntil = (R.frame or 0) + 48
+  R.sbGrantAll = true                 -- picked up once the world exists (see onTick)
+  say("RPG test world -- flat ground, full inventory, enemies off. Esc for the menu.")
+  return "rpgtest"
+end
+function R.sbLayoutButtons()
+  local x, y = 6, 6
+  for _, b in ipairs(R.SB_BTNS) do
+    b.x, b.y, b.h = x, y, 14
+    x = x + b.w + 3
+  end
+end
+function R.sbButtonLabel(b)
+  if b.id == "guy"    then return R.SB.on and "Character*" or "Character" end
+  if b.id == "grab"   then return R.sbGrab and "Grab*" or "Grab" end
+  if b.id == "rpgtest" then return "RPG Test" end
+  if b.id == "tools"  then return "Tools" end
+  if b.id == "submit" then return "Submit" end
+  if b.id == "report" then return "Report" end
+  if b.id == "menu"   then return "Menu" end
+  return b.id
+end
+function R.sbDrawButtons()
+  R.sbLayoutButtons()
+  for _, b in ipairs(R.SB_BTNS) do
+    local active = (b.id == "guy" and R.SB.on)
+    graphics.fillRect(b.x, b.y, b.w, b.h, 18, 20, 28, 225)
+    graphics.drawRect(b.x, b.y, b.w, b.h, active and 235 or 120, active and 190 or 130, active and 90 or 150, 255)
+    local label = R.sbButtonLabel(b)
+    graphics.drawText(b.x + 5, b.y + 4, label, active and 255 or 210, active and 225 or 220, active and 170 or 235, 255)
+  end
+end
+function R.sbButtonClick(mx, my)
+  R.sbLayoutButtons()
+  for _, b in ipairs(R.SB_BTNS) do
+    if mx >= b.x and mx < b.x + b.w and my >= b.y and my < b.y + b.h then
+      if b.id == "guy" then R.sandboxWalk()
+      elseif b.id == "grab" then
+        R.sbGrab = not R.sbGrab
+        say(R.sbGrab and "Grab on -- drag him where you want. Click Grab again to stop." or "Grab off.")
+      elseif b.id == "rpgtest" then R.sbRpgTest()
+      -- Tools / Submit / Report dispatch the SAME key the plugins already listen for, rather
+      -- than setting a private flag. My first version set R.sbToolsRequested and
+      -- R.sbSubmitRequested, which nothing anywhere read -- two dead buttons, the exact silent
+      -- no-op this project keeps shipping and that I keep telling other lanes to avoid.
+      -- Going through the real hook chain means the button and the key can never diverge.
+      elseif b.id == "tools"  then runHooks(R.hooks.sandboxKey, 1073741887, "f6", false, false, false)
+      elseif b.id == "submit" then runHooks(R.hooks.sandboxKey, 121, "y", false, false, false)
+      elseif b.id == "report" then runHooks(R.hooks.sandboxKey, 1073741889, "f8", false, false, false)
+      elseif b.id == "menu" then R.exitSandbox() end
+      return true
+    end
+  end
+  return false
+end
+
+function R.sandboxWalk(on)
+  if on == nil then on = not R.SB.on end
+  if on then
+    local mx = (R.mouse and R.mouse.x) or 300
+    local my = (R.mouse and R.mouse.y) or 60
+    -- SPAWN ON GROUND, NOT IN MID-AIR. Reported immediately: "when I hit character he just falls
+    -- out of the world to his death." A fresh sandbox is an EMPTY canvas, so spawning at the
+    -- cursor meant spawning in vacuum and falling until he hit the bottom edge -- which reads as
+    -- dying even though nothing can actually kill him here.
+    -- Search downward from the cursor for real ground and stand him on it.
+    -- ALWAYS give him a proper platform. Reported: "he's spazzing out everywhere." Two causes,
+    -- both mine: (a) I built the ledge out of STNE, which check_terrain_solid.py reports as
+    -- UNSAFE falldown=1 solid=false -- a POWDER. It collapsed under him every time, which is
+    -- exactly the jitter. ADR-003 exists precisely to stop this and I ignored it. (b) landing him
+    -- on whatever loose particles happened to be below was never going to be stable anyway.
+    -- Now: a real BRCK slab (verified SAFE), placed every time, so he always has firm ground.
+    local groundY
+    if true then
+      -- Genuinely nothing below him. Rather than drop him into the void, give him something to
+      -- stand on: a small stone ledge under the cursor. This is a sandbox -- making a floor is a
+      -- reasonable thing for the game to do for you, and it is trivially erasable if unwanted.
+      local floorY = math.min(345, math.max(60, math.floor(my) + 20))
+      local sid = elem["DEFAULT_PT_BRCK"] or elem["DEFAULT_PT_BRMT"]
+      if sid then
+        for dx = -30, 30 do
+          for dy = 0, 3 do pcall(sim.partCreate, -1, math.floor(mx) + dx, floorY + dy, sid) end
+        end
+      end
+      groundY = floorY - 1
+      say("Placed a solid platform to stand on.")
+    end
+    -- Position the REAL RPG player, not a stand-in. R.P is the same table the RPG itself uses,
+    -- so he keeps his sprite, physics, facing and animation exactly as in a normal game.
+    R.P = R.P or { x = 0, y = 100, vx = 0, vy = 0, onGround = false, coyote = 0, face = 1, anim = 0 }
+    -- Sandbox is a single fixed screen with no scrolling, so pin the camera at the origin:
+    -- that makes world coordinates and screen coordinates identical, which is what every other
+    -- part of the sandbox (mouse, buttons, brush) already assumes.
+    R.cam = R.cam or {}
+    R.cam.x, R.cam.y = 0, 0
+    R.P.x, R.P.y, R.P.vx, R.P.vy = mx, groundY, 0, 0
+    R.hp = 100
+    R.keys = R.keys or {}
+    for k in pairs(R.keys) do R.keys[k] = false end
+    R.SB.on = true
+    -- Give him something to actually test WITH. He asked for the character plus items; an empty
+    -- inventory in a debugging sandbox is useless.
+    if not R.sbKitGiven then
+      R.sbKitGiven = true
+      local n = 0
+      for code in pairs(R.NAMES or {}) do pcall(R.give, code, 100); n = n + 1 end
+      for _, t in ipairs({ R.PICKS, R.SWORDS }) do
+        for _, it in ipairs(t or {}) do if it.name then pcall(R.give, it.name, 1) end end
+      end
+      if PBX and PBX.log then PBX.log("sandbox", "granted " .. n .. " materials + all picks/swords for testing") end
+    end
+    say("Character on -- A/D or arrows to walk, W/Space to jump. Click Character again to remove him.")
+  else
+    R.SB.on = false
+    R.SB.keys = {}
+    say("Character off.")
+  end
+  return R.SB.on and "walking" or "off"
 end
 _G.sandboxWalk = R.sandboxWalk
 
@@ -6584,7 +7005,7 @@ R.hooks.mount = R.hooks.mount or {}
 -- elements a real acquisition pathway, per design-material-progression{,-part2}.md. Ordered
 -- fluids -> solids -> energy -> special -> forage -> machines so that the machines lane,
 -- which consumes tokens the others define, loads last.
-R.PLUGINS = { "telemetry", "icons", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special", "acq_forage", "acq_machines", "nat_process", "sandbox" }
+R.PLUGINS = { "telemetry", "icons", "world", "enemies", "machines", "machines2", "items", "terraweapons", "vehicles", "survival", "companion", "save", "ui", "guide", "netlink", "automation", "fieldtools", "acq_fluids", "acq_solids", "acq_energy", "acq_special", "acq_forage", "acq_machines", "nat_process", "sandbox", "sbmaterials", "sbtools", "periodic", "thermo", "chemistry", "drawperf", "isotopes", "reactions", "instruments" }
 R.pluginStatus = {}
 -- Critical distribution bug: this only ever checked the original dev
 -- machine's absolute path. On any other machine (a packaged copy, a

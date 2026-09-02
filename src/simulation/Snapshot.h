@@ -41,6 +41,7 @@ public:
 	RNG::State RngState;
 
 	uint32_t Hash() const;
+	std::vector<std::pair<const char *, uint32_t>> HashParts() const; // per-member FNV-1a, same members/order as Hash(); RngState as raw bytes, FrameCount excluded
 
 	Json::Value Authors;
 

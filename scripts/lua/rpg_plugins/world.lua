@@ -11,8 +11,22 @@
 -- is cached per column/chunk index in plain Lua tables (mirrors surfCache/treeCache in rpg.lua).
 local R = PBX.state.rpg
 local TAG = "world"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -1213,7 +1227,12 @@ end
 -- uses it for the desert's sedimentary/fossil bands, matching its brick ruins), so it is reused
 -- rather than allocating a new element. QRTZ would read better as sandstone but is a mineable
 -- ore -- paving the whole desert subsoil with it would wreck the material economy.
-local SANDROCK = has("BRCK") and "BRCK" or ROCK
+-- THIRD brick path, found by @audit sampling the real published build: this made 83.6% of
+-- DESERT SUBSOIL brick. I announced "brick only comes from ruins" twice while this was still
+-- generating it. Fired brick is a kiln product; it is not subsoil, in a desert or anywhere.
+-- GRNT for the same reason as the other two paths: a real natural rock, desert ranges are
+-- genuinely granitic, already minable at tier 2, and check_terrain_solid.py reports SAFE.
+local SANDROCK = has("GRNT") and "GRNT" or ROCK
 local function soilMaterial(wx, wy, d, biome)
   if biome == "desert" then
     -- Real deserts are a shallow skin of loose sand over sandstone. Keeping the top layer
@@ -1244,7 +1263,9 @@ local function soilMaterial(wx, wy, d, biome)
     -- real, already-verified-safe solid instead of inventing a new element. d>2 so the grass-
     -- adjacent skin (what the eye reads first) stays clean GOO, not speckled right at the surface.
     if d > 2 and vnoise(wx / 7, wy / 7, 1290) > 0.91 then
-      return (hash3(wx, wy, 1291) < 0.6) and ROCK or (has("BRCK") and "BRCK" or ROCK)
+      -- FOURTH natural brick path (2026-09-02). Topsoil flecks: brick has no business in soil
+      -- either. GRNT is a real rock and gives the same visual break-up honestly.
+      return (hash3(wx, wy, 1291) < 0.6) and ROCK or (has("GRNT") and "GRNT" or ROCK)
     end
     return "GOO"
   end
@@ -1998,6 +2019,32 @@ end
 -- change) and whenever a tree is felled, alongside this file's other generator caches.
 local trunkEdgeCache = {}
 function R.clearTrunkEdgeCache() trunkEdgeCache = {} end
+-- Draws ONE trunk-edge column (x0 or x0+tw-1), the whole cached vertical WOOD range in a
+-- single fillRect, instead of the per-row/per-width scan this replaced (see the history comment
+-- inside drawTreeAccents below for why the scan itself -- not just the vegShapeAt() query the
+-- 2026-09-02 cache already removed -- turned out to still dominate the measured cost). Top-level
+-- so it is not re-created as a closure per tree per frame.
+local function drawTrunkEdge(wx, top, s, camx, camy, W, night)
+  local tr = trunkEdgeCache[wx]
+  if tr == nil then
+    local lo, hi
+    for probe = top, s + 2 do
+      if vegShapeAt(wx, probe) == "WOOD" then
+        if not lo then lo = probe end
+        hi = probe
+      end
+    end
+    tr = lo and { lo, hi } or false
+    trunkEdgeCache[wx] = tr
+  end
+  if not tr then return end
+  local ylo, yhi = max(tr[1], camy), min(tr[2], camy + H - 1)
+  if yhi < ylo then return end
+  local sx = wx - camx
+  if sx < 0 or sx >= W then return end
+  local shade = night > 0.3 and 50 or 68
+  graphics.fillRect(floor(sx), floor(ylo - camy), 1, floor(yhi - ylo + 1), shade, shade - 18, 28, 210)
+end
 local function drawTreeAccents(camx, camy, W, H, frame, night)
   local moist = R.treeMoisture or {}
   local raining = R.weather and R.weather.rain
@@ -2010,47 +2057,22 @@ local function drawTreeAccents(camx, camy, W, H, frame, night)
     local hollowCol = (tw >= 3) and (x0 + floor(tw / 2)) or nil
     local m = hollowCol and (moist[hollowCol .. "," .. s] or 0) or 0
     local showVeins = hollowCol and m > 0.5   -- blue hint only when real water in the vein (not rain alone)
-    local wy0, wy1 = max(top, camy), min(s + 2, camy + H - 1)
-    for wy = wy0, wy1 do
-      local sy = wy - camy
-      if sy < 0 or sy >= H then goto wy_acc_next end
-      -- trunk edge saturation: darker WOOD rim so trunks don't read washed-out under parallax
-      for edge = 0, tw - 1 do
-        local wx = x0 + edge
-        if wx == x0 or wx == x0 + tw - 1 then
-          -- TRUNK-EDGE CACHE (2026-09-02). This called vegShapeAt() once per pixel per frame
-          -- for every visible trunk edge, and @draw measured the whole world draw hook at
-          -- 11.8ms EMA / 17.0ms max in a forest -- dropping ~9x to 1.3ms in a treeless desert,
-          -- which located essentially the entire cost here rather than in the strata tint or
-          -- structure deco (both already cached and budget-capped).
-          -- A trunk edge is a CONTIGUOUS vertical run of WOOD, so the whole per-pixel query
-          -- collapses to one lo/hi range computed once per column. Same idiom as this file's
-          -- own blendCache/strataTintCache, and cleared by the same newworld hook, so a seed
-          -- change or a felled tree cannot leave a stale range behind.
-          local tr = trunkEdgeCache[wx]
-          if tr == nil then
-            local lo, hi
-            for probe = top, s + 2 do
-              if vegShapeAt(wx, probe) == "WOOD" then
-                if not lo then lo = probe end
-                hi = probe
-              end
-            end
-            tr = lo and { lo, hi } or false
-            trunkEdgeCache[wx] = tr
-          end
-          if tr and wy >= tr[1] and wy <= tr[2] then
-            local sx = wx - camx
-            if sx >= 0 and sx < W then
-              local shade = night > 0.3 and 50 or 68
-              graphics.fillRect(floor(sx), floor(sy), 1, 1, shade, shade - 18, 28, 210)
-            end
-          end
-        end
-      end
-      -- No canopy tint — green overlay read as "tree rotting"; water is real WATR particles only.
-      ::wy_acc_next::
-    end
+    -- TRUNK-EDGE CACHE (2026-09-02) + LOOP-STRUCTURE FIX (2026-09-0X, @backdrop). The cache alone
+    -- (a per-column lo/hi WOOD range instead of calling vegShapeAt() once per pixel per frame for
+    -- every visible trunk edge -- @draw measured the whole world draw hook at 11.8ms EMA/17.0ms
+    -- max in a forest, ~9x cheaper in a treeless desert, locating essentially the entire cost
+    -- here) did NOT move the measured EMA much on its own: the surrounding `for wy=.. do for
+    -- edge=0,tw-1 do if wx==x0 or wx==x0+tw-1` scan -- up to ~90 rows x ~7-12 width per tree,
+    -- just to LOCATE the 2 edge columns every row every frame -- was still there, plus up to 90
+    -- individual 1px graphics.fillRect calls per edge column per tree (a real C++ binding call
+    -- each time). Both are gone now: drawTrunkEdge is called exactly twice per tree (the two
+    -- edge x-coordinates are already known, x0 and x0+tw-1 -- no scan needed to find them) and
+    -- each call issues ONE fillRect spanning its whole cached vertical range, not one per row.
+    -- Byte-identical rendered output to the old per-row loop (the shade depended only on `night`,
+    -- never on wy, in that code too) -- pure perf change, verified against real measurements in
+    -- knowledge/rpg-hub.md, not a visual change.
+    drawTrunkEdge(x0, top, s, camx, camy, W, night)
+    drawTrunkEdge(x0 + tw - 1, top, s, camx, camy, W, night)
     if showVeins and m > 0.5 then
       -- Thin blue hint in hollow trunk air (actual water is spawned in rpg.lua treeHollowDripTick).
       local pulse = 0.5 + 0.5 * abs(math.sin(frame / 9 + cc))
@@ -2102,6 +2124,12 @@ local function drawTreeAccents(camx, camy, W, H, frame, night)
   end
 end
 local function worldDraw()
+  -- Gate on R.worldAmbience, NOT R.caveBackdrop (rpg.lua:6740-6741's kill switch, which strips
+  -- any R.hooks.draw entry tagged "world" -- see the hookAmbience note near this hook's own
+  -- registration below for why this function is no longer tagged "world" at all). Defaults to
+  -- nil/falsy so today's rendered behaviour (nothing) is unchanged until whoever owns rpg.lua
+  -- flips it / wires a real settings toggle -- not decided or flipped here.
+  if not R.worldAmbience then return end
   local camx, camy, W, H = R.cam.x, R.cam.y, R.W, R.H
   local frame = R.frame or 0
   local night = max(0, math.sin((((frame % 14000) / 14000) - 0.5) * math.pi * 2))
@@ -2351,7 +2379,24 @@ local function worldGen(wx, wy)
   return rockAt(wx, wy, surf, d, biome)
 end
 hook(R.hooks.gen, worldGen)
-hook(R.hooks.draw, worldDraw)
+-- Separate tag for this ONE hook, not "world" (this file's own hook() helper above, used for
+-- every other list -- tick/mine/gen/newworld). rpg.lua's R.caveBackdrop kill switch
+-- (rpg.lua:6740-6741) strips only R.hooks.draw entries whose .tag=="world" -- and that switch
+-- predates the fact that actual cave-backdrop rendering was ALREADY deleted from worldDraw's own
+-- body (see the "Surface-only by design" note above drawTreeAccents). Everything left in
+-- worldDraw (parallax sky/hills, strata depth-tint, tree trunk/vein accents, structure deco,
+-- night fireflies) is surface ambience that has nothing to do with caves, but the shared tag
+-- meant disabling one silently took down all four. Registering under its own tag here means
+-- R.caveBackdrop can never touch this hook again either way; worldDraw's own internal
+-- `if not R.worldAmbience then return end` guard (above) is what actually gates it, defaulting
+-- to the same off-by-default behaviour as today. Bonus: this also un-conflates R.perf["world"]
+-- (tick) from what used to be the same slot's draw-hook cost, the exact ambiguity @draw's
+-- drawperf.lua was built to work around for every OTHER plugin.
+local function hookAmbience(list, fn)
+  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == "world_ambience" then table.remove(list, i) end end
+  list[#list + 1] = setmetatable({ tag = "world_ambience" }, { __call = function(_, ...) return fn(...) end })
+end
+hookAmbience(R.hooks.draw, worldDraw)
 
 -- Clear every per-column cache when a new world is generated.
 --

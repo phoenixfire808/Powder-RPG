@@ -249,6 +249,14 @@ void Process(lua_State *L)
 			continue; // nothing pending this tick -- the common case
 		}
 
+		// On Windows the accepted socket inherits the listener's FIONBIO, so recv()
+		// returned WSAEWOULDBLOCK before the body arrived and the request was dropped
+		// (clients saw WinError 10053 on 30-50% of calls). Make it blocking; the
+		// SO_RCVTIMEO below still bounds the wait.
+#ifdef _WIN32
+		u_long blocking = 0;
+		ioctlsocket(client, FIONBIO, &blocking);
+#endif
 		SetRecvTimeout(client, 2);
 
 		std::string body;

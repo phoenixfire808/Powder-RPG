@@ -10,21 +10,38 @@
 -- companion.lua v1.15.34 — digArea/buildRoom start+halfway chat milestones live on R.COMP (not C.action)
 -- fields) so re-issued digArea cmds / action-table replacement cannot spam "Starting to dig that out."
 --
--- BRAIN ARCHITECTURE (the player 20:26-20:34, via lead): the SCRIPTED brain below is the executor and the
--- reflexes - pathing, following, step-up, hazard avoidance, self-defense, continuing the current task -
--- and it runs every tick regardless of whether any model is involved, so the colonist is fully playable
--- and fully conversational (via text templates) with NO model running. scripts/companion_driver.py is an
--- OPTIONAL local-model layer (Qwen2.5 3B via LM Studio/Ollama) that only ever proposes a high-level
--- command + a line of dialogue every couple of seconds via R.companionCmd/R.chatSay; a stale-heartbeat
--- watchdog here automatically hands control back to the scripted brain if the driver stalls or dies, and
--- the same self-defense/hazard/teleport-home overrides can interrupt ANY command regardless of source.
+-- BRAIN ARCHITECTURE (2026-09-02, PhoenixFire808's own call: "he doesn't have to be like AI, we can
+-- create his intelligence ourselves, because the whole AI thing didn't work out"): the SCRIPTED brain
+-- below is the ONLY thing that drives the shipped companion. It is hand-authored against real simulation
+-- state (pathing, following, step-up, hazard avoidance, self-defense, task execution, and proactive
+-- narration - see "PROACTIVE NARRATION" further down), runs every tick, and has no runtime dependence on
+-- any external process, model, or network call. scripts/companion_driver.py is a leftover OPTIONAL external
+-- hook (not shipped in any release build - confirmed absent from the extracted _release zips - not
+-- required, and mode only ever becomes "model" via an explicit external call nothing in the shipped game
+-- can make) kept only so C.mode/C.chatQueue/R.companionCmd stay available if anyone wants to script against
+-- her later; a stale-heartbeat watchdog reverts to the scripted brain automatically if that path is ever
+-- used and stalls. Every real, downloaded copy of this game has only ever run the scripted brain below.
 -- See knowledge/design-companion-protocol.md for the exact JSON schema and
 -- knowledge/design-multiplayer.md for how a second human could drive this same action layer later.
 local R = PBX.state.rpg
 local TAG = "companion"
 local floor, abs, min, max, sqrt, random = math.floor, math.abs, math.min, math.max, math.sqrt, math.random
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -67,6 +84,7 @@ function R._applyCompanionDefaults()
   c.lastMineHelpAt = c.lastMineHelpAt or 0
   c.lastAutoGiveAt = c.lastAutoGiveAt or 0
   if c.needsPlace == nil then c.needsPlace = false end
+  c._told = c._told or {}
 end
 R.PLUGIN_SAVE_KEYS = R.PLUGIN_SAVE_KEYS or {}
 do
@@ -499,7 +517,7 @@ STEP.light = function(a)
 end
 
 -- ================================================================ AREA / BUILD TASKS (design-companion-core.md
--- §4): parametric, not prefab - the caller (or a chat handler) supplies a rect/spec, this code generates the
+-- §4): parametric, not prefab - the caller (a chat handler, or companion_driver.py if ever attached) supplies a rect/spec, this code generates the
 -- actual cell-by-cell work. This is what makes "cut all these trees" / "dig me a big hole" / "build me a
 -- house" possible instead of a single-point primitive.
 STEP.clearTrees = function(a)
@@ -786,7 +804,7 @@ C.cmd = C_cmd
 R.companionCmd = C_cmd
 -- enqueueChain: run a list of {name,args} in order, one at a time, only advancing when the previous step
 -- reports "success" (a "fail" anywhere drops the rest of the chain and reports why). This is how multi-step
--- asks ("gather -> return -> craft") get chained from either the chat templates or the caller driver.
+-- asks ("gather -> return -> craft") get chained from either the chat templates or companion_driver.py.
 function C.enqueueChain(steps, from)
   if not steps or #steps == 0 then return false end
   C.queue = {}
@@ -831,7 +849,7 @@ end
 function R.companionHeartbeat() C.lastHeartbeat = R.frame; return true end
 -- companion_driver.py's fast chat-polling entry point: separate from core's R.chatPending so a slow model
 -- never races core's own ~0.5s fallback (see the drain-on-send in the R.hooks.chat handler below, and the
--- local timeout watchdog in the tick handler that answers from templates if the caller takes too long).
+-- local timeout watchdog in the tick handler that answers from templates if companion_driver.py takes too long).
 function R.companionChatPending(consume)
   local out = {}
   for i, m in ipairs(C.chatQueue) do out[i] = { text = m.text, at = m.at } end
@@ -1103,13 +1121,125 @@ local function scriptedBrainTick()
   if not a or a.name ~= "follow" then C_cmd("follow", {}, "scripted") end
 end
 
--- ================================================================ no scripted flavor-narration by design
--- (the player 21:06, design-companion-core.md §5): "no templated chatter - the caller speaks, and when it is
--- unavailable he stays useful and QUIET." An earlier version of this file had the scripted brain narrate
--- biome/depth/night/quest/ore-sighting flavor lines on its own; that is now deliberately removed. All of
--- that context still lives in C.index/R.companionState() for the caller to comment on if and when it wants
--- to - the scripted layer itself only ever speaks for a concrete reflex (self-defense, teleport-home) or a
--- concrete task outcome (a plan step's own progress/success/failure report), never as ambient color.
+-- ================================================================ PROACTIVE NARRATION (2026-09-02)
+-- Replaces the old "stays quiet by design, only the model narrates" behaviour (see the BRAIN ARCHITECTURE
+-- note at the top of this file for why: no shipped copy of this game has ever had a model attached, so
+-- "quiet until the model speaks" meant "quiet, permanently", for every real player). He also told us today
+-- his hand is broken and he does not want to be pushing function hotkeys - that makes her the one teaching
+-- channel that costs the player zero input, so this is intentionally the most useful, not the quietest,
+-- version of this feature.
+--
+-- Every line below is read from REAL, freshly-sampled simulation state - C.index (refreshIndex()'s own
+-- on-screen particle scan, same data the removed model layer would have used), R.QUESTS (quoted verbatim,
+-- so she can never claim a goal the quest log itself doesn't have), R.need/R.survivalNeeds (only mentions
+-- hunger/thirst if that need is actually turned on), and isNightC() (the same day/night phase the rest of
+-- this file already uses). Never a bare timer wearing narrative flavour - this project has already shipped
+-- one release note that claimed a fix that wasn't fully there (audit-v1175.md's brick finding) and one
+-- design doc with a reaction chain backwards; a companion that states things not actually true of the
+-- session would be the same mistake in dialogue form.
+--
+-- Rate limiting: routes through the same narrate() used by teleport-home/watchdog above (~25s normal /
+-- ~5s urgent gap, never repeats its literal last line). On top of that, most facts here are gated by
+-- C._told[key] so a SPECIFIC fact (this quest, this exact ore+direction, this exact hazard+direction,
+-- "it's night") is only ever said once per world - a genuinely new fact (a different ore, a hazard in a
+-- new direction) is a new key and can fire again, matching "once per world unless the situation genuinely
+-- recurs." Hunger/thirst are the one deliberately recurring case (reset when the need recovers above
+-- threshold, so a second real dip gets a second real reminder, not just once ever).
+C._told = C._told or {}
+
+-- whichever sighted resource matters most right now: something the active quest still needs, else just
+-- the nearest thing C.index actually saw this scan (both real reads, never invented).
+local function firstMineableNearby()
+  local idx = C.index
+  if not idx or not idx.resources then return nil end
+  if idx.questMissing then
+    for _, r in ipairs(idx.resources) do
+      for _, m in ipairs(idx.questMissing) do if m.item == r.el then return r end end
+    end
+  end
+  return idx.resources[1]
+end
+
+local function proactiveNarrate()
+  if not C.active or C.dead or R.sandbox then return end
+  if R.frame % 30 ~= 0 then return end -- cheap table reads off already-computed C.index; still no need every frame
+
+  -- 1) world-start greeting - fires once. Everything claimed (follows you, calls out finds) is exactly
+  -- what this file already does elsewhere, not a promise made only here.
+  if not C._told.greet then
+    if narrate("Hi, I'm " .. (C.name or "Aster") .. " - I'll stick with you and call out anything worth knowing.", true) then
+      C._told.greet = true
+    end
+    return
+  end
+
+  local idx = C.index
+
+  -- 2) the active quest, quoted verbatim from R.QUESTS - fires once per quest index (a new quest is a new
+  -- fact, not a repeat of the last one).
+  local q = R.QUESTS and R.quest and R.QUESTS[R.quest]
+  if q and q.txt and C._told.quest ~= R.quest then
+    if narrate(q.txt) then C._told.quest = R.quest end
+    return
+  end
+
+  -- 3) a real hazard actually sighted this scan - once per distinct element+direction (a lava pocket she's
+  -- already warned about doesn't repeat; lava spotted somewhere new does).
+  if idx and idx.hazards and idx.hazards[1] then
+    local h = idx.hazards[1]
+    local key = "haz_" .. h.el .. "_" .. h.dir
+    if not C._told[key] then
+      if narrate((R.nice and R.nice(h.el) or h.el) .. " " .. h.dir .. " - mind your step.", true) then
+        C._told[key] = true
+      end
+      return
+    end
+  end
+
+  -- 4) the first ore/material actually sighted matching what she'd otherwise have to guess at - once per
+  -- distinct element for the whole world.
+  local r = firstMineableNearby()
+  if r and not C._told["res_" .. r.el] then
+    if narrate("There's " .. (R.nice and R.nice(r.el) or r.el) .. " " .. r.dir .. ".") then
+      C._told["res_" .. r.el] = true
+    end
+    return
+  end
+
+  -- 5) hunger/thirst - only if that specific need is actually enabled (R.survivalNeeds; thirst defaults
+  -- OFF per PhoenixFire808's own 2026-09-01 ask, hunger defaults ON), and only re-announced after a real
+  -- recovery above threshold, so a second genuine dip gets a second real reminder rather than one ever.
+  local needs = R.survivalNeeds
+  if R.need and (needs == nil or needs.hunger ~= false) then
+    if R.need.food and R.need.food < 30 then
+      if not C._told.hungryNow then
+        if narrate("Getting hungry - find something to eat before you run out completely.") then C._told.hungryNow = true end
+        return
+      end
+    else
+      C._told.hungryNow = false
+    end
+  end
+  if R.need and needs and needs.thirst == true then
+    if R.need.water and R.need.water < 30 then
+      if not C._told.thirstyNow then
+        if narrate("Getting thirsty - find real water before you run out completely.") then C._told.thirstyNow = true end
+        return
+      end
+    else
+      C._told.thirstyNow = false
+    end
+  end
+
+  -- 6) first real nightfall - once only. Only claims danger if enemies are actually toggled on (R.enemies
+  -- defaults off), so this can't warn about a threat that isn't active in this session.
+  if not C._told.night and isNightC() then
+    if narrate(R.enemies and "It's dark now - stay near light or shelter, night is more dangerous."
+                        or "It's dark now.") then
+      C._told.night = true
+    end
+  end
+end
 
 -- ================================================================ safety overrides (can interrupt ANY action,
 -- model-issued or not)
@@ -1365,6 +1495,10 @@ hook(R.hooks.tick, function()
   checkSelfDefense()
   checkModelWatchdog()
   refreshIndex()
+  do
+    local okNar, errNar = pcall(proactiveNarrate)
+    if not okNar then R.lastErr = "companion.lua narrate: " .. tostring(errNar) end
+  end
 
   if C.override then
     local st = STEP[C.override.name](C.override)
@@ -1406,6 +1540,7 @@ hook(R.hooks.newworld, function()
   -- chatQueue leak across worlds: chat messages queued in the prior world
   -- drain into the new one if not cleared. sayMsg/sayAt: stale chat bubble.
   C.x = 0; C.y = 0; C.vx = 0; C.vy = 0; C.chatQueue = {}; C.sayMsg = nil; C.sayAt = nil
+  C._told = {} -- fresh world: greeting/quest/hazard/resource/night one-shots all start over, matches new quest 1 etc.
 end)
 hook(R.hooks.sandbox, function() cGiveSelf("WOOD", 20) end)
 

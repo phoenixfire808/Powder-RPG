@@ -38,19 +38,21 @@ PBX.MAX_WORKERS_PER_COLONY = 400
 PBX.MAX_COLONIES           = 8
 PBX.MAX_TASKS_PER_COLONY   = 16
 PBX.MAX_BLUEPRINT_CELLS    = 4096
-PBX.MAX_CUSTOM_ELEMENTS    = 160 -- raised 2026-09-01. The old value of 40 came from
--- "TPT has 256 ids, ~213 stock; 40 leaves margin" -- correct arithmetic, wrong premise: it
--- counted only the ONE-BYTE id range. elem.allocate (src/lua/LuaElements.cpp) prefers ids
--- <=255 for save portability but ALREADY falls back to 256..PT_NUM-1, and PT_NUM is 512
--- (PMAPBITS = 9). GameSave round-trips two-byte types too: it writes the high byte when
--- `part.type & 0xFF00` and reads it back with `type |= partsData[i] << 8`. So ~299 ids were
--- sitting unused behind a self-imposed cap.
--- Why it mattered: the material catalogue wants 71 elements and machines/creatures compete
--- for the same registry, so materials silently lost their slots -- the underground collapsed
--- to a single rock type because BSLT and CNCR could not register. Measured effect of this
--- change: live custom elements 40 -> 64, priority-1 materials 4/29 -> 28/29.
--- Trade-off, deliberate: a save using a two-byte element id is not portable to stock TPT.
--- This fork never shares saves upstream (ADR-002), so that cost is accepted.
+-- NO ARTIFICIAL LIMIT. "I want unlimited custom elements. Why would we even limit ourselves?"
+-- He is right, and every hardcoded value here has cost us: 40 truncated the element replay and
+-- shipped a public build with no Steel; 160 and 300 were just the next arbitrary guesses.
+-- This now derives the real ceiling from the ENGINE at load time. sim.PMAPBITS is exported by
+-- LuaSimulation.cpp (LCONST(PMAPBITS)), and the engine's own id space is 2^PMAPBITS -- raised
+-- from 9 to 12 on 2026-09-02, so 512 -> 4096. Reserve a margin for stock elements (~195 today)
+-- and take everything else. Raise PMAPBITS again and this follows automatically, with no edit.
+PBX.MAX_CUSTOM_ELEMENTS = (function()
+    local bits = (sim and sim.PMAPBITS) or 9
+    local ceiling = 2 ^ bits
+    local reserved = 256          -- stock elements plus headroom
+    local n = math.floor(ceiling - reserved)
+    if n < 40 then n = 40 end     -- never regress below the historical floor
+    return n
+end)()
 
 PBX.SIM_W, PBX.SIM_H   = 612, 384
 PBX.CELL_W, PBX.CELL_H = 153, 96
@@ -266,11 +268,32 @@ function PBX.vCell(x, y)
 end
 
 --- Resolve an element name, identifier or numeric id to a numeric id.
+---
+--- FOUND LIVE (@isotopes, building 09_isotopes_seed.lua's decay chains -- "decayer: invalid
+--- becomes 'HE3', falling back to kill" reproduced on every boot regardless of registration
+--- order, proving this was never an ordering bug): this only ever checked THREE fixed prefixes
+--- (bare name, DEFAULT_PT_, PBX_PT_) -- every custom element registered under any OTHER group
+--- (MATL_PT_/POWER_PT_/PTBL_PT_/NUCL_PT_, and whatever new group prefixes later lanes add) could
+--- never resolve by name here, full stop, no matter when it was created. @ptable's own 2026-09-0x
+--- entry in knowledge/rpg-hub.md already flagged exactly this for MATL_PT_LHE ("PBX.vElem cannot
+--- resolve a bare name registered under the MATL_PT_/POWER_PT_ group prefixes") and recommended
+--- "walk 10_registry.lua's own R.byName instead of guessing prefixes" -- done here: after the
+--- three fixed prefixes miss, fall back to PBX.state.registry.byName[name].id (populated by
+--- 10_registry.lua's applySpec the moment elements.allocate() actually runs for ANY group, so
+--- this works for every custom group without hardcoding a prefix list that will always be one
+--- group behind whatever the next lane invents). Guarded with a plain table lookup, not a
+--- require/import, since 00_util.lua loads before 10_registry.lua -- PBX.state.registry may not
+--- exist yet at DEFINE time, but always does by the time this FUNCTION actually runs.
 function PBX.vElem(v)
     if v == nil then return nil, "element is required" end
     if tonumber(v) then return math.floor(tonumber(v)), nil end
     local name = string.upper(tostring(v))
     local id = elements[name] or elements["DEFAULT_PT_" .. name] or elements["PBX_PT_" .. name]
+    if id == nil then
+        local reg = PBX.state and PBX.state.registry
+        local ent = reg and reg.byName and reg.byName[name]
+        if ent and type(ent.id) == "number" then id = ent.id end
+    end
     if id == nil then return nil, "unknown element: " .. tostring(v) end
     return id, nil
 end
@@ -618,6 +641,370 @@ _G.PBX_MATERIALS_SEED = {
     else
         local f = io.open('autorun-runtime.log', 'a')
         if f then f:write('[loader] SYNTAX ERROR in 07_materials_seed.lua: ' .. tostring(__err) .. '\n'); f:close() end
+    end
+end
+
+-- ==== bridge_src/08_periodic_seed.lua ====
+do
+    local __src = [[
+-- 08_periodic_seed.lua -- the periodic table as real, spawnable elements.
+-- GENERATED. Do not hand-edit.
+-- Source: PubChem Periodic Table of Elements (NIH/NCBI)
+--   https://pubchem.ncbi.nlm.nih.gov/rest/pug/periodictable/JSON
+--   fetched 2026-09-01
+-- Melting/boiling in kelvin, density g/cm3, standard state at STP, exactly as published.
+-- Synthetic superheavies (Z>=104) are labelled predicted by the SOURCE itself, not by us.
+--
+-- DEDUPED 2026-09-02: 23 elements already exist in this game under their own names and are
+-- REUSED, never shadowed -- the existing element keeps its recipes, ore veins, behaviour and
+-- any player saves referencing it. A first pass missed most of these and created real
+-- duplicates (two irons, two golds, two uraniums); caught by @ptable_all's collision audit.
+-- Reused: LI->LITH, BE->BE, NA->NA, MG->MG, AL->ALUM, P->PHOS, TI->TTAN, CR->CHRM, FE->IRON, CO->COBT, CU->CU, RB->RBDM, CD->CD, PM->PRMT, GD->GADO, LU->LUTE, PT->PTNM, AU->GOLD, HG->MERC, PO->POLO, RN->RADN, U->URAN, PU->PLUT
+-- FAMILIES: elements are grouped by their real chemical family (alkali metals, halogens,
+-- noble gases, transition metals, lanthanides, actinides and so on) rather than dumped in
+-- one bucket, so they can actually be sorted and reasoned about -- "everything sorted into
+-- categories, that way we can do science experiments". Family comes from the source
+-- dataset's own GroupBlock field, not from our judgement.
+-- REAL PROPERTIES WIRED TO THE ENGINE (2026-09-02): heatConduct from real thermal
+-- conductivity (W/m/K at 300K, CRC values) where established, otherwise derived from the
+-- element's family and labelled as derived -- never presented as measured. hardness from
+-- real electronegativity. flammable for the families that genuinely ignite (alkali metals
+-- burn in air and water; alkaline earths, lanthanides and actinides to a lesser degree).
+-- diffusion for gases. Silver conducts heat ~24,000x better than xenon and now does in game.
+-- SECOND DEDUPE PASS 2026-09-02: seven more real duplicates, found live by auditing the
+-- running element table rather than the source tree. Native Powder Toy does not name its
+-- elements after their symbols -- hydrogen is HYGN, nitrogen NTRG, oxygen OXYG, silicon
+-- SLCN, tungsten TUNG, lead LEAD -- so a symbol-match dedupe could never have caught them.
+-- Chlorine was the worst: its Name is mixed-case "Cl", which is a DIFFERENT Lua string key
+-- from "CL", so two live chlorines coexisted. Removed: H->HYGN, N->NTRG, O->OXYG, SI->SLCN, W->TUNG, CL->Cl, PB->LEAD
+_G.PBX_MATERIALS_SEED = _G.PBX_MATERIALS_SEED or {}
+local S = _G.PBX_MATERIALS_SEED
+local function add(t) S[#S+1] = t end
+
+add({ name = "HE", group = "NOBLE", description = "Helium (He), Z=2. Melts 0.95K. Boils 4.22K. 0.0001785 g/cm3.", colour = "0xD9FFFF", type = "GAS", menuSection = "SC_GAS", weight = 1 , heatConduct = 5, diffusion = 2 })
+add({ name = "B", group = "METALLOID", description = "Boron (B), Z=5. Melts 2348K. Boils 4273K. 2.37 g/cm3.", colour = "0xFFB5B5", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2348, highTemperatureTransition = "LAVA", weight = 7.11 , heatConduct = 54, hardness = 51 })
+add({ name = "C", group = "NONMETAL", description = "Carbon (C), Z=6. Melts 3823K. Boils 4098K. 2.267 g/cm3.", colour = "0x909090", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 3823, highTemperatureTransition = "LAVA", weight = 6.801 , heatConduct = 142, hardness = 64 })
+add({ name = "F", group = "HALOGEN", description = "Fluorine (F), Z=9. Melts 53.53K. Boils 85.03K. 0.001696 g/cm3.", colour = "0x90E050", type = "GAS", menuSection = "SC_GAS", weight = 1 , heatConduct = 2, hardness = 100, diffusion = 2 })
+add({ name = "NE", group = "NOBLE", description = "Neon (Ne), Z=10. Melts 24.56K. Boils 27.07K. 0.0008999 g/cm3.", colour = "0xB3E3F5", type = "GAS", menuSection = "SC_GAS", weight = 1 , heatConduct = 3, diffusion = 2 })
+add({ name = "S", group = "NONMETAL", description = "Sulfur (S), Z=16. Melts 388.36K. Boils 717.75K. 2.067 g/cm3.", colour = "0xFFFF30", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 388.36, highTemperatureTransition = "LAVA", weight = 6.201 , heatConduct = 5, hardness = 64 })
+add({ name = "AR", group = "NOBLE", description = "Argon (Ar), Z=18. Melts 83.8K. Boils 87.3K. 0.0017837 g/cm3.", colour = "0x80D1E3", type = "GAS", menuSection = "SC_GAS", weight = 1 , heatConduct = 2, diffusion = 2 })
+add({ name = "K", group = "ALKALI", description = "Potassium (K), Z=19. Melts 336.53K. Boils 1032K. 0.89 g/cm3.", colour = "0x8F40D4", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 336.53, highTemperatureTransition = "LAVA", weight = 2.67 , heatConduct = 120, hardness = 20, flammable = 40 })
+add({ name = "CA", group = "ALKEARTH", description = "Calcium (Ca), Z=20. Melts 1115K. Boils 1757K. 1.54 g/cm3.", colour = "0x3DFF00", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1115, highTemperatureTransition = "LAVA", weight = 4.62 , heatConduct = 170, hardness = 25, flammable = 15 })
+add({ name = "SC", group = "TRANSIT", description = "Scandium (Sc), Z=21. Melts 1814K. Boils 3109K. 2.99 g/cm3.", colour = "0xE6E6E6", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1814, highTemperatureTransition = "LAVA", weight = 8.97 , heatConduct = 93, hardness = 34 })
+add({ name = "V", group = "TRANSIT", description = "Vanadium (V), Z=23. Melts 2183K. Boils 3680K. 6 g/cm3.", colour = "0xA6A6AB", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2183, highTemperatureTransition = "LAVA", weight = 18 , heatConduct = 67, hardness = 41 })
+add({ name = "MN", group = "TRANSIT", description = "Manganese (Mn), Z=25. Melts 1519K. Boils 2334K. 7.3 g/cm3.", colour = "0x9C7AC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1519, highTemperatureTransition = "LAVA", weight = 21.9 , heatConduct = 34, hardness = 39 })
+add({ name = "NI", group = "TRANSIT", description = "Nickel (Ni), Z=28. Melts 1728K. Boils 3186K. 8.912 g/cm3.", colour = "0x50D050", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1728, highTemperatureTransition = "LAVA", weight = 26.736 , heatConduct = 114, hardness = 48 })
+add({ name = "ZN", group = "TRANSIT", description = "Zinc (Zn), Z=30. Melts 692.68K. Boils 1180K. 7.134 g/cm3.", colour = "0x7D80B0", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 692.68, highTemperatureTransition = "LAVA", weight = 21.402 , heatConduct = 129, hardness = 41 })
+add({ name = "GA", group = "POSTTRAN", description = "Gallium (Ga), Z=31. Melts 302.91K. Boils 2477K. 5.91 g/cm3.", colour = "0xC28F8F", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 302.91, highTemperatureTransition = "LAVA", weight = 17.73 , heatConduct = 77, hardness = 45 })
+add({ name = "GE", group = "METALLOID", description = "Germanium (Ge), Z=32. Melts 1211.4K. Boils 3106K. 5.323 g/cm3.", colour = "0x668F8F", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1211.4, highTemperatureTransition = "LAVA", weight = 15.969 , heatConduct = 93, hardness = 50 })
+add({ name = "AS", group = "METALLOID", description = "Arsenic (As), Z=33. Melts 1090K. Boils 887K. 5.776 g/cm3.", colour = "0xBD80E3", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1090, highTemperatureTransition = "LAVA", weight = 17.328 , heatConduct = 85, hardness = 55 })
+add({ name = "SE", group = "NONMETAL", description = "Selenium (Se), Z=34. Melts 493.65K. Boils 958K. 4.809 g/cm3.", colour = "0xFFA100", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 493.65, highTemperatureTransition = "LAVA", weight = 14.427 , heatConduct = 8, hardness = 64 })
+add({ name = "BR", group = "HALOGEN", description = "Bromine (Br), Z=35. Melts 265.95K. Boils 331.95K. 3.11 g/cm3.", colour = "0xA62929", type = "LIQUID", menuSection = "SC_LIQUID", weight = 9.33 , heatConduct = 4, hardness = 74 })
+add({ name = "KR", group = "NOBLE", description = "Krypton (Kr), Z=36. Melts 115.79K. Boils 119.93K. 0.003733 g/cm3.", colour = "0x5CB8D1", type = "GAS", menuSection = "SC_GAS", weight = 1 , heatConduct = 1, hardness = 75, diffusion = 2 })
+add({ name = "SR", group = "ALKEARTH", description = "Strontium (Sr), Z=38. Melts 1050K. Boils 1655K. 2.64 g/cm3.", colour = "0x00FF00", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1050, highTemperatureTransition = "LAVA", weight = 7.92 , heatConduct = 71, hardness = 24, flammable = 15 })
+add({ name = "Y", group = "TRANSIT", description = "Yttrium (Y), Z=39. Melts 1795K. Boils 3618K. 4.47 g/cm3.", colour = "0x94FFFF", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1795, highTemperatureTransition = "LAVA", weight = 13.41 , heatConduct = 93, hardness = 30 })
+add({ name = "ZR", group = "TRANSIT", description = "Zirconium (Zr), Z=40. Melts 2128K. Boils 4682K. 6.52 g/cm3.", colour = "0x94E0E0", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2128, highTemperatureTransition = "LAVA", weight = 19.56 , heatConduct = 58, hardness = 33 })
+add({ name = "NB", group = "TRANSIT", description = "Niobium (Nb), Z=41. Melts 2750K. Boils 5017K. 8.57 g/cm3.", colour = "0x73C2C9", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2750, highTemperatureTransition = "LAVA", weight = 25.71 , heatConduct = 88, hardness = 40 })
+add({ name = "MO", group = "TRANSIT", description = "Molybdenum (Mo), Z=42. Melts 2896K. Boils 4912K. 10.2 g/cm3.", colour = "0x54B5B5", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2896, highTemperatureTransition = "LAVA", weight = 30.6 , heatConduct = 141, hardness = 54 })
+add({ name = "TC", group = "TRANSIT", description = "Technetium (Tc), Z=43. Melts 2430K. Boils 4538K. 11 g/cm3.", colour = "0x3B9E9E", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2430, highTemperatureTransition = "LAVA", weight = 33 , heatConduct = 93, hardness = 48 })
+add({ name = "RU", group = "TRANSIT", description = "Ruthenium (Ru), Z=44. Melts 2607K. Boils 4423K. 12.1 g/cm3.", colour = "0x248F8F", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2607, highTemperatureTransition = "LAVA", weight = 36.3 , heatConduct = 130, hardness = 55 })
+add({ name = "RH", group = "TRANSIT", description = "Rhodium (Rh), Z=45. Melts 2237K. Boils 3968K. 12.4 g/cm3.", colour = "0x0A7D8C", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2237, highTemperatureTransition = "LAVA", weight = 37.2 , heatConduct = 147, hardness = 57 })
+add({ name = "PD", group = "TRANSIT", description = "Palladium (Pd), Z=46. Melts 1828.05K. Boils 3236K. 12 g/cm3.", colour = "0x6985", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1828.05, highTemperatureTransition = "LAVA", weight = 36 , heatConduct = 102, hardness = 55 })
+add({ name = "AG", group = "TRANSIT", description = "Silver (Ag), Z=47. Melts 1234.93K. Boils 2435K. 10.501 g/cm3.", colour = "0xC0C0C0", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1234.93, highTemperatureTransition = "LAVA", weight = 31.503 , heatConduct = 249, hardness = 48 })
+add({ name = "IN", group = "POSTTRAN", description = "Indium (In), Z=49. Melts 429.75K. Boils 2345K. 7.31 g/cm3.", colour = "0xA67573", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 429.75, highTemperatureTransition = "LAVA", weight = 21.93 , heatConduct = 109, hardness = 44 })
+add({ name = "SN", group = "POSTTRAN", description = "Tin (Sn), Z=50. Melts 505.08K. Boils 2875K. 7.287 g/cm3.", colour = "0x668080", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 505.08, highTemperatureTransition = "LAVA", weight = 21.861 , heatConduct = 98, hardness = 49 })
+add({ name = "SB", group = "METALLOID", description = "Antimony (Sb), Z=51. Melts 903.78K. Boils 1860K. 6.685 g/cm3.", colour = "0x9E63B5", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 903.78, highTemperatureTransition = "LAVA", weight = 20.055 , heatConduct = 59, hardness = 51 })
+add({ name = "TE", group = "METALLOID", description = "Tellurium (Te), Z=52. Melts 722.66K. Boils 1261K. 6.232 g/cm3.", colour = "0xD47A00", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 722.66, highTemperatureTransition = "LAVA", weight = 18.696 , heatConduct = 54, hardness = 52 })
+add({ name = "I", group = "HALOGEN", description = "Iodine (I), Z=53. Melts 386.85K. Boils 457.55K. 4.93 g/cm3.", colour = "0x940094", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 386.85, highTemperatureTransition = "LAVA", weight = 14.79 , heatConduct = 8, hardness = 66 })
+add({ name = "XE", group = "NOBLE", description = "Xenon (Xe), Z=54. Melts 161.36K. Boils 165.03K. 0.005887 g/cm3.", colour = "0x429EB0", type = "GAS", menuSection = "SC_GAS", weight = 1 , heatConduct = 1, hardness = 65, diffusion = 2 })
+add({ name = "CS", group = "ALKALI", description = "Cesium (Cs), Z=55. Melts 301.59K. Boils 944K. 1.93 g/cm3.", colour = "0x57178F", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 301.59, highTemperatureTransition = "LAVA", weight = 5.79 , heatConduct = 72, hardness = 20, flammable = 40 })
+add({ name = "BA", group = "ALKEARTH", description = "Barium (Ba), Z=56. Melts 1000K. Boils 2170K. 3.62 g/cm3.", colour = "0x00C900", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1000, highTemperatureTransition = "LAVA", weight = 10.86 , heatConduct = 51, hardness = 22, flammable = 15 })
+add({ name = "LA", group = "LANTH", description = "Lanthanum (La), Z=57. Melts 1191K. Boils 3737K. 6.15 g/cm3.", colour = "0x70D4FF", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1191, highTemperatureTransition = "LAVA", weight = 18.45 , heatConduct = 43, hardness = 28, flammable = 10 })
+add({ name = "CE", group = "LANTH", description = "Cerium (Ce), Z=58. Melts 1071K. Boils 3697K. 6.77 g/cm3.", colour = "0xFFFFC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1071, highTemperatureTransition = "LAVA", weight = 20.31 , heatConduct = 43, hardness = 28, flammable = 10 })
+add({ name = "PR", group = "LANTH", description = "Praseodymium (Pr), Z=59. Melts 1204K. Boils 3793K. 6.77 g/cm3.", colour = "0xD9FFC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1204, highTemperatureTransition = "LAVA", weight = 20.31 , heatConduct = 43, hardness = 28, flammable = 10 })
+add({ name = "ND", group = "LANTH", description = "Neodymium (Nd), Z=60. Melts 1294K. Boils 3347K. 7.01 g/cm3.", colour = "0xC7FFC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1294, highTemperatureTransition = "LAVA", weight = 21.03 , heatConduct = 43, hardness = 28, flammable = 10 })
+add({ name = "SM", group = "LANTH", description = "Samarium (Sm), Z=62. Melts 1347K. Boils 2067K. 7.52 g/cm3.", colour = "0x8FFFC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1347, highTemperatureTransition = "LAVA", weight = 22.56 , heatConduct = 43, hardness = 29, flammable = 10 })
+add({ name = "EU", group = "LANTH", description = "Europium (Eu), Z=63. Melts 1095K. Boils 1802K. 5.24 g/cm3.", colour = "0x61FFC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1095, highTemperatureTransition = "LAVA", weight = 15.72 , heatConduct = 43, flammable = 10 })
+add({ name = "TB", group = "LANTH", description = "Terbium (Tb), Z=65. Melts 1629K. Boils 3503K. 8.23 g/cm3.", colour = "0x30FFC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1629, highTemperatureTransition = "LAVA", weight = 24.69 , heatConduct = 43, flammable = 10 })
+add({ name = "DY", group = "LANTH", description = "Dysprosium (Dy), Z=66. Melts 1685K. Boils 2840K. 8.55 g/cm3.", colour = "0x1FFFC7", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1685, highTemperatureTransition = "LAVA", weight = 25.65 , heatConduct = 43, hardness = 30, flammable = 10 })
+add({ name = "HO", group = "LANTH", description = "Holmium (Ho), Z=67. Melts 1747K. Boils 2973K. 8.8 g/cm3.", colour = "0x00FF9C", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1747, highTemperatureTransition = "LAVA", weight = 26.4 , heatConduct = 43, hardness = 31, flammable = 10 })
+add({ name = "ER", group = "LANTH", description = "Erbium (Er), Z=68. Melts 1802K. Boils 3141K. 9.07 g/cm3.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1802, highTemperatureTransition = "LAVA", weight = 27.21 , heatConduct = 43, hardness = 31, flammable = 10 })
+add({ name = "TM", group = "LANTH", description = "Thulium (Tm), Z=69. Melts 1818K. Boils 2223K. 9.32 g/cm3.", colour = "0x00D452", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1818, highTemperatureTransition = "LAVA", weight = 27.96 , heatConduct = 43, hardness = 31, flammable = 10 })
+add({ name = "YB", group = "LANTH", description = "Ytterbium (Yb), Z=70. Melts 1092K. Boils 1469K. 6.9 g/cm3.", colour = "0x00BF38", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1092, highTemperatureTransition = "LAVA", weight = 20.7 , heatConduct = 43, flammable = 10 })
+add({ name = "HF", group = "TRANSIT", description = "Hafnium (Hf), Z=72. Melts 2506K. Boils 4876K. 13.3 g/cm3.", colour = "0x4DC2FF", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2506, highTemperatureTransition = "LAVA", weight = 39.9 , heatConduct = 93, hardness = 32 })
+add({ name = "TA", group = "TRANSIT", description = "Tantalum (Ta), Z=73. Melts 3290K. Boils 5731K. 16.4 g/cm3.", colour = "0x4DA6FF", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 3290, highTemperatureTransition = "LAVA", weight = 49.2 , heatConduct = 91, hardness = 38 })
+add({ name = "RE", group = "TRANSIT", description = "Rhenium (Re), Z=75. Melts 3459K. Boils 5869K. 20.8 g/cm3.", colour = "0x267DAB", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 3459, highTemperatureTransition = "LAVA", weight = 62.4 , heatConduct = 83, hardness = 48 })
+add({ name = "OS", group = "TRANSIT", description = "Osmium (Os), Z=76. Melts 3306K. Boils 5285K. 22.57 g/cm3.", colour = "0x266696", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 3306, highTemperatureTransition = "LAVA", weight = 67.71 , heatConduct = 113, hardness = 55 })
+add({ name = "IR", group = "TRANSIT", description = "Iridium (Ir), Z=77. Melts 2719K. Boils 4701K. 22.42 g/cm3.", colour = "0x175487", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2719, highTemperatureTransition = "LAVA", weight = 67.26 , heatConduct = 145, hardness = 55 })
+add({ name = "TL", group = "POSTTRAN", description = "Thallium (Tl), Z=81. Melts 577K. Boils 1746K. 11.8 g/cm3.", colour = "0xA6544D", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 577, highTemperatureTransition = "LAVA", weight = 35.4 , heatConduct = 81, hardness = 40 })
+add({ name = "BI", group = "POSTTRAN", description = "Bismuth (Bi), Z=83. Melts 544.55K. Boils 1837K. 9.807 g/cm3.", colour = "0x9E4FB5", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 544.55, highTemperatureTransition = "LAVA", weight = 29.421 , heatConduct = 34, hardness = 50 })
+add({ name = "AT", group = "HALOGEN", description = "Astatine (At), Z=85. Melts 575K. 7 g/cm3.", colour = "0x754F45", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 575, highTemperatureTransition = "LAVA", weight = 21 , heatConduct = 12, hardness = 55 })
+add({ name = "FR", group = "ALKALI", description = "Francium (Fr), Z=87. Melts 300K.", colour = "0x420066", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 300, highTemperatureTransition = "LAVA" , heatConduct = 107, hardness = 18, flammable = 40 })
+add({ name = "RA", group = "ALKEARTH", description = "Radium (Ra), Z=88. Melts 973K. Boils 1413K. 5 g/cm3.", colour = "0x007D00", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 973, highTemperatureTransition = "LAVA", weight = 15 , heatConduct = 120, hardness = 22, flammable = 15 })
+add({ name = "AC", group = "ACTINIDE", description = "Actinium (Ac), Z=89. Melts 1324K. Boils 3471K. 10.07 g/cm3.", colour = "0x70ABFA", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1324, highTemperatureTransition = "LAVA", weight = 30.21 , heatConduct = 46, hardness = 28, flammable = 8 })
+add({ name = "TH", group = "ACTINIDE", description = "Thorium (Th), Z=90. Melts 2023K. Boils 5061K. 11.72 g/cm3.", colour = "0x00BAFF", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 2023, highTemperatureTransition = "LAVA", weight = 35.16 , heatConduct = 88, hardness = 32, flammable = 8 })
+add({ name = "PA", group = "ACTINIDE", description = "Protactinium (Pa), Z=91. Melts 1845K. 15.37 g/cm3.", colour = "0x00A1FF", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1845, highTemperatureTransition = "LAVA", weight = 46.11 , heatConduct = 46, hardness = 38, flammable = 8 })
+add({ name = "NP", group = "ACTINIDE", description = "Neptunium (Np), Z=93. Melts 917K. Boils 4175K. 20.25 g/cm3.", colour = "0x0080FF", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 917, highTemperatureTransition = "LAVA", weight = 60.75 , heatConduct = 46, hardness = 34, flammable = 8 })
+add({ name = "AM", group = "ACTINIDE", description = "Americium (Am), Z=95. Melts 1449K. Boils 2284K. 13.69 g/cm3.", colour = "0x545CF2", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1449, highTemperatureTransition = "LAVA", weight = 41.07 , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "CM", group = "ACTINIDE", description = "Curium (Cm), Z=96. Melts 1618K. Boils 3400K. 13.51 g/cm3.", colour = "0x785CE3", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1618, highTemperatureTransition = "LAVA", weight = 40.53 , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "BK", group = "ACTINIDE", description = "Berkelium (Bk), Z=97. Melts 1323K. 14 g/cm3.", colour = "0x8A4FE3", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1323, highTemperatureTransition = "LAVA", weight = 42 , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "CF", group = "ACTINIDE", description = "Californium (Cf), Z=98. Melts 1173K.", colour = "0xA136D4", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1173, highTemperatureTransition = "LAVA" , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "ES", group = "ACTINIDE", description = "Einsteinium (Es), Z=99. Melts 1133K.", colour = "0xB31FD4", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1133, highTemperatureTransition = "LAVA" , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "FM", group = "ACTINIDE", description = "Fermium (Fm), Z=100. Melts 1800K.", colour = "0xB31FBA", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1800, highTemperatureTransition = "LAVA" , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "MD", group = "ACTINIDE", description = "Mendelevium (Md), Z=101. Melts 1100K.", colour = "0xB30DA6", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1100, highTemperatureTransition = "LAVA" , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "NO", group = "ACTINIDE", description = "Nobelium (No), Z=102. Melts 1100K.", colour = "0xBD0D87", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1100, highTemperatureTransition = "LAVA" , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "LR", group = "ACTINIDE", description = "Lawrencium (Lr), Z=103. Melts 1900K.", colour = "0xC70066", type = "SOLID", menuSection = "SC_SOLIDS", highTemperature = 1900, highTemperatureTransition = "LAVA" , heatConduct = 46, hardness = 32, flammable = 8 })
+add({ name = "RF", group = "TRANSIT", description = "Rutherfordium (Rf), Z=104. Predicted, not measured.", colour = "0xCC0059", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "DB", group = "TRANSIT", description = "Dubnium (Db), Z=105. Predicted, not measured.", colour = "0xD1004F", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "SG", group = "TRANSIT", description = "Seaborgium (Sg), Z=106. Predicted, not measured.", colour = "0xD90045", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "BH", group = "TRANSIT", description = "Bohrium (Bh), Z=107. Predicted, not measured.", colour = "0xE00038", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "HS", group = "TRANSIT", description = "Hassium (Hs), Z=108. Predicted, not measured.", colour = "0xE6002E", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "MT", group = "TRANSIT", description = "Meitnerium (Mt), Z=109. Predicted, not measured.", colour = "0xEB0026", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "DS", group = "TRANSIT", description = "Darmstadtium (Ds), Z=110. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "RG", group = "TRANSIT", description = "Roentgenium (Rg), Z=111. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "CN", group = "TRANSIT", description = "Copernicium (Cn), Z=112. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 93 })
+add({ name = "NH", group = "POSTTRAN", description = "Nihonium (Nh), Z=113. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 76 })
+add({ name = "FL", group = "POSTTRAN", description = "Flerovium (Fl), Z=114. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 76 })
+add({ name = "MC", group = "POSTTRAN", description = "Moscovium (Mc), Z=115. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 76 })
+add({ name = "LV", group = "POSTTRAN", description = "Livermorium (Lv), Z=116. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 76 })
+add({ name = "TS", group = "HALOGEN", description = "Tennessine (Ts), Z=117. Predicted, not measured.", colour = "0xCCCCCC", type = "SOLID", menuSection = "SC_SOLIDS" , heatConduct = 12 })
+add({ name = "OG", group = "NOBLE", description = "Oganesson (Og), Z=118. Predicted, not measured.", colour = "0xCCCCCC", type = "GAS", menuSection = "SC_GAS" , heatConduct = 12 })
+
+if PBX and PBX.log then PBX.log("periodic", "seeded 95 periodic elements; 23 reused from existing game materials") end
+
+-- Family map published for the UI so the materials panel can file every element under its
+-- real chemical family instead of a catch-all. The element registry does not carry the group
+-- field (verified live: 202 specs, 0 with .group), so it is published here at seed time.
+_G.PBX_ELEM_FAMILY = _G.PBX_ELEM_FAMILY or {}
+_G.PBX_ELEM_FAMILY["AC"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["AG"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["ALUM"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["AM"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["AR"] = "NOBLE"
+_G.PBX_ELEM_FAMILY["AS"] = "METALLOID"
+_G.PBX_ELEM_FAMILY["AT"] = "HALOGEN"
+_G.PBX_ELEM_FAMILY["B"] = "METALLOID"
+_G.PBX_ELEM_FAMILY["BA"] = "ALKEARTH"
+_G.PBX_ELEM_FAMILY["BE"] = "ALKEARTH"
+_G.PBX_ELEM_FAMILY["BH"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["BI"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["BK"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["BR"] = "HALOGEN"
+_G.PBX_ELEM_FAMILY["C"] = "NONMETAL"
+_G.PBX_ELEM_FAMILY["CA"] = "ALKEARTH"
+_G.PBX_ELEM_FAMILY["CD"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["CE"] = "LANTH"
+_G.PBX_ELEM_FAMILY["CF"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["CHRM"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["CM"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["CN"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["COBT"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["CS"] = "ALKALI"
+_G.PBX_ELEM_FAMILY["CU"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["Cl"] = "HALOGEN"
+_G.PBX_ELEM_FAMILY["DB"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["DS"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["DY"] = "LANTH"
+_G.PBX_ELEM_FAMILY["ER"] = "LANTH"
+_G.PBX_ELEM_FAMILY["ES"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["EU"] = "LANTH"
+_G.PBX_ELEM_FAMILY["F"] = "HALOGEN"
+_G.PBX_ELEM_FAMILY["FL"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["FM"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["FR"] = "ALKALI"
+_G.PBX_ELEM_FAMILY["GA"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["GADO"] = "LANTH"
+_G.PBX_ELEM_FAMILY["GE"] = "METALLOID"
+_G.PBX_ELEM_FAMILY["GOLD"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["HE"] = "NOBLE"
+_G.PBX_ELEM_FAMILY["HF"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["HO"] = "LANTH"
+_G.PBX_ELEM_FAMILY["HS"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["HYGN"] = "NONMETAL"
+_G.PBX_ELEM_FAMILY["I"] = "HALOGEN"
+_G.PBX_ELEM_FAMILY["IN"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["IR"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["IRON"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["K"] = "ALKALI"
+_G.PBX_ELEM_FAMILY["KR"] = "NOBLE"
+_G.PBX_ELEM_FAMILY["LA"] = "LANTH"
+_G.PBX_ELEM_FAMILY["LEAD"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["LITH"] = "ALKALI"
+_G.PBX_ELEM_FAMILY["LR"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["LUTE"] = "LANTH"
+_G.PBX_ELEM_FAMILY["LV"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["MC"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["MD"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["MERC"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["MG"] = "ALKEARTH"
+_G.PBX_ELEM_FAMILY["MN"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["MO"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["MT"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["NA"] = "ALKALI"
+_G.PBX_ELEM_FAMILY["NB"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["ND"] = "LANTH"
+_G.PBX_ELEM_FAMILY["NE"] = "NOBLE"
+_G.PBX_ELEM_FAMILY["NH"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["NI"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["NO"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["NP"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["NTRG"] = "NONMETAL"
+_G.PBX_ELEM_FAMILY["OG"] = "NOBLE"
+_G.PBX_ELEM_FAMILY["OS"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["OXYG"] = "NONMETAL"
+_G.PBX_ELEM_FAMILY["PA"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["PD"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["PHOS"] = "NONMETAL"
+_G.PBX_ELEM_FAMILY["PLUT"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["POLO"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["PR"] = "LANTH"
+_G.PBX_ELEM_FAMILY["PRMT"] = "LANTH"
+_G.PBX_ELEM_FAMILY["PTNM"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["RA"] = "ALKEARTH"
+_G.PBX_ELEM_FAMILY["RADN"] = "NOBLE"
+_G.PBX_ELEM_FAMILY["RBDM"] = "ALKALI"
+_G.PBX_ELEM_FAMILY["RE"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["RF"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["RG"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["RH"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["RU"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["S"] = "NONMETAL"
+_G.PBX_ELEM_FAMILY["SB"] = "METALLOID"
+_G.PBX_ELEM_FAMILY["SC"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["SE"] = "NONMETAL"
+_G.PBX_ELEM_FAMILY["SG"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["SLCN"] = "METALLOID"
+_G.PBX_ELEM_FAMILY["SM"] = "LANTH"
+_G.PBX_ELEM_FAMILY["SN"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["SR"] = "ALKEARTH"
+_G.PBX_ELEM_FAMILY["TA"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["TB"] = "LANTH"
+_G.PBX_ELEM_FAMILY["TC"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["TE"] = "METALLOID"
+_G.PBX_ELEM_FAMILY["TH"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["TL"] = "POSTTRAN"
+_G.PBX_ELEM_FAMILY["TM"] = "LANTH"
+_G.PBX_ELEM_FAMILY["TS"] = "HALOGEN"
+_G.PBX_ELEM_FAMILY["TTAN"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["TUNG"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["URAN"] = "ACTINIDE"
+_G.PBX_ELEM_FAMILY["V"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["XE"] = "NOBLE"
+_G.PBX_ELEM_FAMILY["Y"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["YB"] = "LANTH"
+_G.PBX_ELEM_FAMILY["ZN"] = "TRANSIT"
+_G.PBX_ELEM_FAMILY["ZR"] = "TRANSIT"
+
+]]
+    local __chunk, __err = loadstring(__src, '08_periodic_seed.lua')
+    if __chunk then
+        local __ok, __e = pcall(__chunk)
+        if not __ok then
+            local f = io.open('autorun-runtime.log', 'a')
+            if f then f:write('[loader] RUNTIME ERROR in 08_periodic_seed.lua: ' .. tostring(__e) .. '\n'); f:close() end
+        end
+    else
+        local f = io.open('autorun-runtime.log', 'a')
+        if f then f:write('[loader] SYNTAX ERROR in 08_periodic_seed.lua: ' .. tostring(__err) .. '\n'); f:close() end
+    end
+end
+
+-- ==== bridge_src/09_isotopes_seed.lua ====
+do
+    local __src = [[
+-- ===========================================================================
+-- 09_isotopes_seed.lua -- GENERATED by scripts/gen_isotope_elements.py. Do not
+-- hand-edit; edit that script instead and regenerate. Loads immediately after
+-- bridge_src/08_periodic_seed.lua (alphabetical module order, build_autorun.py),
+-- appending onto the same _G.PBX_MATERIALS_SEED table 07/08 already built.
+--
+-- 50 real, spawnable nuclide elements. Group 'NUCL'. Source: IAEA Live Chart of Nuclides, ground_states table (NUBASE2020 / AME2020 evaluation) (https://nds.iaea.org/relnsd/v1/data?fields=ground_states&nuclides=all), fetched 2026-09-01
+-- Every isotope here carries a data-driven `gameplay_role` tag from the source
+-- itself (fissile/fertile/fusion_fuel/neutron_source/neutron_absorber/
+-- radiological_hazard/medical_tracer) OR is a real, physics-computed one-hop
+-- decay daughter of one of those (see generator header for the exact rule and
+-- the disclosed one-hop boundary). 10 more real-world identities were
+-- matched to elements THIS GAME ALREADY HAS and were not duplicated -- see
+-- REUSE in the generator script for the citation on each.
+--
+-- Radioactive ones use the engine's own pre-existing `decayer` behavior kind
+-- (bridge_src/20_behaviors.lua) unmodified -- countdown ticks, converts to the
+-- real daughter element on expiry. Real half-lives span 13 orders of magnitude;
+-- the engine's own decayer caps startLife at 10000 ticks, so in-game countdown
+-- is LOG-scale compressed (order preserved, not linear) -- the true half-life
+-- value is always in the element's own Description, unscaled. Full detail:
+-- generator header, knowledge/isotopes-notable-catalog.json.
+-- ===========================================================================
+
+_G.PBX_MATERIALS_SEED = _G.PBX_MATERIALS_SEED or {}
+_G.PBX_ISOTOPES_SEED = {
+    { name = "HE3", group = "NUCL", description = "Helium-3 (Z=2, N=1). natural abundance 0.0002%. Gameplay role: fusion_fuel, neutron_absorber. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16750300, menuSection = "NUCLEAR", type = "GAS", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "TRIT", group = "NUCL", description = "Hydrogen-3 (Z=1, N=2). Gameplay role: fusion_fuel. Decays (beta_minus:100%) with real half-life 12.32 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown here is the...", colour = 9223935, menuSection = "NUCLEAR", type = "GAS", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "HE3", ["startLife"] = 3948 } } },
+    { name = "LI6", group = "NUCL", description = "Lithium-6 (Z=3, N=3). natural abundance 4.85%. Gameplay role: fusion_fuel. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16747660, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "LI7", group = "NUCL", description = "Lithium-7 (Z=3, N=4). natural abundance 95.15%. Gameplay role: fusion_fuel. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16747660, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "B10", group = "NUCL", description = "Boron-10 (Z=5, N=5). natural abundance 19.65%. Gameplay role: neutron_absorber. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 9227725, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "B11", group = "NUCL", description = "Boron-11 (Z=5, N=6). natural abundance 80.35%. Gameplay role: fusion_fuel. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 9227725, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "C14", group = "NUCL", description = "Carbon-14 (Z=6, N=8). Gameplay role: medical_tracer. Decays (beta_minus:100%) with real half-life 5700 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown here is th...", colour = 9223935, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "NTRG", ["startLife"] = 5821 } } },
+    { name = "F18", group = "NUCL", description = "Fluorine-18 (Z=9, N=9). Gameplay role: medical_tracer. Decays (beta_plus_ec:100%) with real half-life 109.77 m -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown here...", colour = 13476095, menuSection = "NUCLEAR", type = "GAS", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "OXYG", ["startLife"] = 595 } } },
+    { name = "K40", group = "NUCL", description = "Potassium-40 (Z=19, N=21). natural abundance 0.0117%. Gameplay role: radiological_hazard. Decays (beta_minus:89.28%, beta_plus_ec:10.72%) with real half-life 1.248E+9 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_i...", colour = 16747660, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "CA", ["startLife"] = 9574 } } },
+    { name = "NI60", group = "NUCL", description = "Nickel-60 (Z=28, N=32). natural abundance 26.2231%. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "CO6N", group = "NUCL", description = "Cobalt-60 (Z=27, N=33). Gameplay role: medical_tracer, radiological_hazard. Decays (beta_minus:100%) with real half-life 1925.28 d -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-l...", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "NI60", ["startLife"] = 3689 } } },
+    { name = "GA67", group = "NUCL", description = "Gallium-67 (Z=31, N=36). Gameplay role: medical_tracer. Decays (beta_plus_ec:100%) with real half-life 3.2617 d -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown her...", colour = 9883030, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "ZN", ["startLife"] = 1742 } } },
+    { name = "Y89", group = "NUCL", description = "Yttrium-89 (Z=39, N=50). natural abundance 100%. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "SR89", group = "NUCL", description = "Strontium-89 (Z=38, N=51). Gameplay role: medical_tracer. Decays (beta_minus:100%) with real half-life 50.563 d -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown her...", colour = 16760440, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "Y89", ["startLife"] = 2578 } } },
+    { name = "Y90", group = "NUCL", description = "Yttrium-90 (Z=39, N=51). Real half-life 64.05 h (beta_minus:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: trace_synthetic. Source: IAEA Live Chart of Nuclides (NU...", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "SR90", group = "NUCL", description = "Strontium-90 (Z=38, N=52). Gameplay role: radiological_hazard. Decays (beta_minus:100%) with real half-life 28.91 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown...", colour = 16760440, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "Y90", ["startLife"] = 4208 } } },
+    { name = "RU99", group = "NUCL", description = "Ruthenium-99 (Z=44, N=55). natural abundance 12.76%. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "TC99", group = "NUCL", description = "Technetium-99 (Z=43, N=56). Gameplay role: medical_tracer, radiological_hazard. Decays (beta_minus:100%) with real half-life 2.111E+5 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real h...", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "RU99", ["startLife"] = 6923 } } },
+    { name = "MO99", group = "NUCL", description = "Molybdenum-99 (Z=42, N=57). Gameplay role: medical_tracer. Decays (beta_minus:100%) with real half-life 65.924 h -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown he...", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "TC99", ["startLife"] = 1689 } } },
+    { name = "IN13", group = "NUCL", description = "Indium-113 (Z=49, N=64). natural abundance 4.281%. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 9883030, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "CD13", group = "NUCL", description = "Cadmium-113 (Z=48, N=65). natural abundance 12.227%. Gameplay role: neutron_absorber. Decays (beta_minus:100%) with real half-life 8.04E15 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. R...", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "IN13", ["startLife"] = 9999 } } },
+    { name = "TE23", group = "NUCL", description = "Tellurium-123 (Z=52, N=71). natural abundance 0.89%. Real half-life 9.2E+16 Y (beta_plus_ec:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: primordial. Source: IAEA...", colour = 9227725, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "I123", group = "NUCL", description = "Iodine-123 (Z=53, N=70). Gameplay role: medical_tracer. Decays (beta_plus_ec:100%) with real half-life 13.2230 h -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown he...", colour = 13476095, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "TE23", ["startLife"] = 1199 } } },
+    { name = "XE31", group = "NUCL", description = "Xenon-131 (Z=54, N=77). natural abundance 21.232%. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16750300, menuSection = "NUCLEAR", type = "GAS", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "I131", group = "NUCL", description = "Iodine-131 (Z=53, N=78). Gameplay role: medical_tracer, radiological_hazard. Decays (beta_minus:100%) with real half-life 8.0252 d -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-l...", colour = 13476095, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "XE31", ["startLife"] = 2016 } } },
+    { name = "CS35", group = "NUCL", description = "Caesium-135 (Z=55, N=80). Real half-life 2.3E+6 Y (beta_minus:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: long_lived. Source: IAEA Live Chart of Nuclides (NUBAS...", colour = 16747660, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "XE35", group = "NUCL", description = "Xenon-135 (Z=54, N=81). Gameplay role: neutron_absorber. Decays (beta_minus:100%) with real half-life 9.14 h -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown here i...", colour = 16750300, menuSection = "NUCLEAR", type = "GAS", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "CS35", ["startLife"] = 1086 } } },
+    { name = "BA37", group = "NUCL", description = "Barium-137 (Z=56, N=81). natural abundance 11.23%. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16760440, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "CS37", group = "NUCL", description = "Caesium-137 (Z=55, N=82). Gameplay role: radiological_hazard. Decays (beta_minus:100%) with real half-life 30.08 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-life value shown ...", colour = 16747660, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "BA37", ["startLife"] = 4221 } } },
+    { name = "SM49", group = "NUCL", description = "Samarium-149 (Z=62, N=87). natural abundance 13.82%. Gameplay role: neutron_absorber. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16756710, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "GD55", group = "NUCL", description = "Gadolinium-155 (Z=64, N=91). natural abundance 14.8%. Gameplay role: neutron_absorber. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16756710, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "GD57", group = "NUCL", description = "Gadolinium-157 (Z=64, N=93). natural abundance 15.65%. Gameplay role: neutron_absorber. Stable, no decay. Stability: stable. Source: IAEA Live Chart of Nuclides (NUBASE2020/AME2020), fetched 2026-09-01.", colour = 16756710, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "IR92", group = "NUCL", description = "Iridium-192 (Z=77, N=115). Gameplay role: medical_tracer. Decays (beta_minus:95.24%, beta_plus_ec:4.76%) with real half-life 73.829 d -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real hal...", colour = 15127180, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "PTNM", ["startLife"] = 2694 } } },
+    { name = "PO10", group = "NUCL", description = "Polonium-210 (Z=84, N=126). Gameplay role: neutron_source, radiological_hazard. Decays (alpha:100%) with real half-life 138.376 d -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-li...", colour = 9883030, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "LEAD", ["startLife"] = 2886 } } },
+    { name = "RN22", group = "NUCL", description = "Radon-222 (Z=86, N=136). Real half-life 3.8235 d (alpha:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: trace_synthetic. Source: IAEA Live Chart of Nuclides (NUBASE...", colour = 16750300, menuSection = "NUCLEAR", type = "GAS", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "RA26", group = "NUCL", description = "Radium-226 (Z=88, N=138). Gameplay role: neutron_source, radiological_hazard. Decays (alpha:100%, cluster_decay:3.2e-09%) with real half-life 1600 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py h...", colour = 16760440, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "RN22", ["startLife"] = 5433 } } },
+    { name = "RA28", group = "NUCL", description = "Radium-228 (Z=88, N=140). Real half-life 5.75 Y (beta_minus:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: trace_synthetic. Source: IAEA Live Chart of Nuclides (NU...", colour = 16760440, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "THOR", group = "NUCL", description = "Thorium-232 (Z=90, N=142). natural abundance 99.98%. Gameplay role: fertile. Decays (alpha:100%, spontaneous_fission:1.1e-09%) with real half-life 1.40E10 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_eleme...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "RA28", ["startLife"] = 9999 } } },
+    { name = "TH29", group = "NUCL", description = "Thorium-229 (Z=90, N=139). Real half-life 7880 Y (alpha:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: trace_synthetic. Source: IAEA Live Chart of Nuclides (NUBASE...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "U233", group = "NUCL", description = "Uranium-233 (Z=92, N=141). Gameplay role: fissile. Decays (alpha:100%, cluster_decay:7.2e-11%, spontaneous_fission:6e-11%) with real half-life 1.5919E5 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "TH29", ["startLife"] = 6837 } } },
+    { name = "TH31", group = "NUCL", description = "Thorium-231 (Z=90, N=141). Real half-life 25.57 h (beta_minus:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: trace_synthetic. Source: IAEA Live Chart of Nuclides (...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "U235", group = "NUCL", description = "Uranium-235 (Z=92, N=143). natural abundance 0.7204%. Gameplay role: fissile. Decays (alpha:100%, spontaneous_fission:7e-09%, cluster_decay:8e-10%) with real half-life 7.04E+8 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, ...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "TH31", ["startLife"] = 9399 } } },
+    { name = "TH34", group = "NUCL", description = "Thorium-234 (Z=90, N=144). Real half-life 24.10 d (beta_minus:100%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: trace_synthetic. Source: IAEA Live Chart of Nuclides (...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "U238", group = "NUCL", description = "Uranium-238 (Z=92, N=146). natural abundance 99.2742%. Gameplay role: fertile. Decays (alpha:100%, spontaneous_fission:5.45e-05%) with real half-life 4.468E9 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_el...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "TH34", ["startLife"] = 9963 } } },
+    { name = "U234", group = "NUCL", description = "Uranium-234 (Z=92, N=142). natural abundance 0.0054%. Real half-life 2.455E+5 Y (alpha:100%, spontaneous_fission:1.64e-09%, cluster_decay:1.4e-11%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is ...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "PU38", group = "NUCL", description = "Plutonium-238 (Z=94, N=144). Gameplay role: radiological_hazard. Decays (alpha:100%, spontaneous_fission:1.9e-07%) with real half-life 87.7 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. ...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "U234", ["startLife"] = 4547 } } },
+    { name = "PU39", group = "NUCL", description = "Plutonium-239 (Z=94, N=145). Gameplay role: fissile. Decays (alpha:100%, spontaneous_fission:3.1e-10%) with real half-life 24110 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elements.py header. Real half-l...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "U235", ["startLife"] = 6261 } } },
+    { name = "PU41", group = "NUCL", description = "Plutonium-241 (Z=94, N=147). Gameplay role: fissile. Decays (beta_minus:99.998%, alpha:0.00247%, spontaneous_fission:2.4e-14%) with real half-life 14.329 Y -- in-game countdown log-scale-compressed to fit the engine's decayer cap, see gen_isotope_elemen...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "decayer", ["params"] = { ["rate"] = 1, ["becomes"] = "AM24", ["startLife"] = 3994 } } },
+    { name = "NP37", group = "NUCL", description = "Neptunium-237 (Z=93, N=144). Real half-life 2.144E+6 Y (alpha:100%, spontaneous_fission:2e-10%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: long_lived. Source: IAEA L...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+    { name = "CM48", group = "NUCL", description = "Curium-248 (Z=96, N=152). Real half-life 3.48E+5 Y (alpha:91.61%, spontaneous_fission:8.39%) -- decay chain not simulated further this pass (one-hop boundary, see generator header); this element is inert in-game. Stability: trace_synthetic. Source: IAEA...", colour = 12517310, menuSection = "NUCLEAR", type = "SOLID", properties = {  }, temperature = 293.15, hardness = 30, weight = 90, heatConduct = 60, behavior = { ["kind"] = "inert", ["params"] = {  } } },
+}
+
+for i = 1, #_G.PBX_ISOTOPES_SEED do
+    _G.PBX_MATERIALS_SEED[#_G.PBX_MATERIALS_SEED + 1] = _G.PBX_ISOTOPES_SEED[i]
+end
+
+]]
+    local __chunk, __err = loadstring(__src, '09_isotopes_seed.lua')
+    if __chunk then
+        local __ok, __e = pcall(__chunk)
+        if not __ok then
+            local f = io.open('autorun-runtime.log', 'a')
+            if f then f:write('[loader] RUNTIME ERROR in 09_isotopes_seed.lua: ' .. tostring(__e) .. '\n'); f:close() end
+        end
+    else
+        local f = io.open('autorun-runtime.log', 'a')
+        if f then f:write('[loader] SYNTAX ERROR in 09_isotopes_seed.lua: ' .. tostring(__err) .. '\n'); f:close() end
     end
 end
 
@@ -1229,6 +1616,24 @@ local function buildElementTable(spec)
     end
     t.Properties = bits
 
+    -- FOUND WHILE BUILDING 09_isotopes_seed.lua (@isotopes): a `decayer` particle's initial
+    -- "life" was never seeded from its own spec.behavior.params.startLife anywhere in this
+    -- pipeline -- confirmed by reading every FIELDS/buildElementTable line, not assumed. TPT
+    -- creates a new particle with property "life" defaulting to 0 unless the element's own
+    -- DefaultProperties.life says otherwise (elements.element(id,{DefaultProperties={life=N}})
+    -- is a real, native key -- see src/lua/LuaElements.cpp:513-514/685-687, setDefaultProperties
+    -- -- NOT one of this file's own declarative FIELDS, so it silently never got set). Without
+    -- this, every decayer particle's very first Update call sees life-rate<=0 and instantly
+    -- kills/transmutes itself on the tick after creation -- 20_behaviors.lua's own decayer
+    -- comment claims "startLife is metadata only... seeding is 10_registry.lua/defineElement's
+    -- job", but that job was never actually implemented. This silently affected the existing
+    -- CRPS corpse element (startLife=150, documented as "fades away in a few seconds") the same
+    -- way -- it would have vanished on the tick after death instead.
+    if spec.behavior and spec.behavior.kind == "decayer" and spec.behavior.params
+        and type(spec.behavior.params.startLife) == "number" then
+        t.DefaultProperties = { life = spec.behavior.params.startLife }
+    end
+
     for i = 1, #FIELDS do
         local f = FIELDS[i]
         local v = spec[f.key]
@@ -1636,6 +2041,80 @@ local function scheduleTransitionFixup(specLists)
     end)
 end
 
+-- Post-batch BEHAVIOUR fixup (@isotopes, found live while boot-testing 09_isotopes_seed.lua's
+-- own decay chains): the exact same problem scheduleTransitionFixup above already fixed for
+-- HighTemperatureTransition/LowTemperatureTransition ALSO applies to any behavior-kind param
+-- that names another element -- decayer's `becomes`, emitter's `emits`, grower's `needs` -- but
+-- nothing fixed it there. applySpec's def.make(params) resolves that name via PBX.vElem() and
+-- BAKES the resolved id into the returned Update closure as an upvalue at the moment the job
+-- runs, which (same root cause as the transition case, cited above) can be before the named
+-- sibling element's own job has run in the same boot batch. Live-reproduced building this
+-- generator's own seed: 22 of 25 decayer chains hit "decayer: invalid becomes 'X', falling back
+-- to kill" on a fresh boot, discovered by reading autorun-runtime.log, not assumed. Unlike the
+-- transition case, re-writing element PROPERTIES after the fact does not fix an already-wrong
+-- Update closure (the closure is immutable once created) -- so this fixup re-runs def.make(params)
+-- and RE-INSTALLS the Update function via elements.property(id,"Update",fn), which is safe and
+-- idempotent (make() has no side effects beyond returning a closure). Same FIFO-defer-after-both-
+-- queueSpecList-calls guarantee as scheduleTransitionFixup, for the identical reason.
+-- CHUNKED (not one giant loop like scheduleTransitionFixup above) -- live-observed on a
+-- heavily-loaded shared dev box (autorun-runtime.log: "[string \"10_registry.lua\"]:1017:
+-- Error: Script not responding", the PRE-EXISTING transition-fixup loop above hitting the
+-- same TPT Lua watchdog under that load) that even a ~227-spec single-call loop can trip the
+-- watchdog when the host is contended. Only ~25-30 specs ever actually need this fixup (the
+-- ones using a name-referencing behavior kind), so this filters ONCE up front, then processes
+-- BEHAVIOR_FIXUP_CHUNK of them per tick, re-deferring itself for the remainder -- bounding the
+-- wall-clock cost of any single call regardless of total batch size or host contention.
+local NAME_REF_BEHAVIOR_KINDS = { decayer = true, emitter = true, grower = true }
+local BEHAVIOR_FIXUP_CHUNK = 8
+local function scheduleBehaviorFixup(specLists)
+    local specs = {}
+    for j = 1, #specLists do
+        local list = specLists[j]
+        for i = 1, #list do
+            local s = list[i]
+            local b = s.behavior
+            if type(b) == "table" and NAME_REF_BEHAVIOR_KINDS[b.kind] then
+                specs[#specs + 1] = s
+            end
+        end
+    end
+    if #specs == 0 then return end
+
+    local nextIdx, fixed = 1, 0
+    local function runChunk()
+        PBX.guard(MODULE, function()
+            local stop = math.min(nextIdx + BEHAVIOR_FIXUP_CHUNK - 1, #specs)
+            for i = nextIdx, stop do
+                local s = specs[i]
+                local b = s.behavior
+                do
+                    local ent = R.byName[s.name]
+                    if ent and ent.id ~= nil and elements.exists(ent.id) then
+                        local def, params = resolveBehavior(b)
+                        if def then
+                            local fn = def.make(params)
+                            if type(fn) == "function" then
+                                elements.property(ent.id, "Update", fn)
+                                ent.hasUpdate = true
+                                fixed = fixed + 1
+                            end
+                        end
+                    end
+                end
+            end
+            nextIdx = stop + 1
+            if nextIdx > #specs then
+                PBX.log(MODULE, "boot behaviour fixup: re-resolved " .. fixed ..
+                                "/" .. #specs .. " name-referencing behaviour(s) " ..
+                                "(decayer/emitter/grower) after every batch element had its " ..
+                                "own create job attempt")
+            end
+        end)
+        if nextIdx <= #specs then PBX.defer(runChunk) end
+    end
+    PBX.defer(runChunk)
+end
+
 do
     local persistedList = PBX.load(PERSIST)
     local seedList = _G.PBX_MATERIALS_SEED
@@ -1664,6 +2143,7 @@ do
     restored, skipped = restored + seedQueued, skipped + seedSkipped
 
     scheduleTransitionFixup({ restoredSpecs, seedSpecs })
+    scheduleBehaviorFixup({ restoredSpecs, seedSpecs })
 
     PBX.log(MODULE, "registry " .. R.VERSION .. " loaded; queued " .. restored ..
                     " element(s) (persisted+seed), skipped " .. skipped)
@@ -2268,7 +2748,7 @@ local function resolveElemName(raw)
     local name = string.upper(tostring(raw))
     local id = elements[name] or elements["DEFAULT_PT_" .. name] or elements["PBX_PT_" .. name]
     if id ~= nil then return id end
-    for j = 0, 511 do
+    for j = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do
         local ok, n = pcall(elements.property, j, "Name")
         if ok and n == name then return j end
     end
@@ -7814,7 +8294,7 @@ do
 local function elemId(name)
 	local id = elem["DEFAULT_PT_" .. name]
 	if id then return id end
-	for j = 0, 511 do
+	for j = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do
 		local ok, n = pcall(elem.property, j, "Name")
 		if ok and n == name then return j end
 	end
@@ -7889,10 +8369,20 @@ local POWDERS = {
 -- SC_NUCLEAR -- also force-sets native MenuSection (see applyBand below),
 -- since AM24/CF25 in particular were created with no MenuSection at all and
 -- were previously unreachable from any menu chip.
+-- 09_isotopes_seed.lua (@isotopes, scripts/gen_isotope_elements.py) adds 50 more real nuclide
+-- elements on top of the codes this table already anticipated (U235/RA26/THOR/CO60/AM24/CF25
+-- were already here, unfilled, before that generator existed -- reused verbatim, not renamed).
+-- Each seed entry already sets menuSection="NUCLEAR" itself (so it is reachable even before this
+-- file runs), but this table is still the single source of truth for MenuSort chip ORDER, so the
+-- new codes are added here too, same convention as every other custom element.
 local NUCLEAR = {
-	[10] = { "U235", "UO2", "DU" },                                              -- Fuel
+	[10] = { "U235", "UO2", "DU", "U233", "U238", "PU38", "PU39", "PU41" },        -- Fuel
 	[50] = { "B4C", "CD", "HF", "BPE", "ZIRC", "BE", "LEAD", "STEL", "CNCR" }, -- Control & Shielding
-	[60] = { "CO60", "AM24", "CF25", "RA26", "THOR" },                           -- Sources
+	[60] = { "CO60", "AM24", "CF25", "RA26", "THOR", "TRIT", "HE3", "LI6", "LI7", "B10", "B11",
+	         "C14", "F18", "K40", "CO6N", "GA67", "SR89", "SR90", "MO99", "TC99", "CD13", "I123",
+	         "I131", "XE35", "CS37", "SM49", "GD55", "GD57", "IR92", "PO10" },      -- Sources
+	[70] = { "NI60", "Y89", "Y90", "RU99", "IN13", "TE23", "XE31", "CS35", "BA37", "RN22", "RA28",
+	         "TH29", "TH31", "TH34", "U234", "NP37", "CM48" },                        -- Decay Products (one-hop daughters, see 09_isotopes_seed.lua)
 }
 
 local POWERED = {

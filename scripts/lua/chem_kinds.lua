@@ -35,11 +35,24 @@
 --      Example: "WATR>CLST,NONE:+60:0.5::GAS::pgas=8" (CaC2 + water) genuinely pressurizes a sealed
 --      carbide-lamp/acetylene-generator vessel instead of relying only on spawned GAS particles.
 local kinds = PBX.state.behaviors.kinds
+-- FIXED 2026-09-0X (@ptable_react): scan bound was 0..511, matching the PMAPBITS=9/PT_NUM=512
+-- cap that held when this file was written (2026-08-26). ElementDefs.h:64-70 raised
+-- PMAPBITS 9->12 on 2026-09-02 ("to fit the whole periodic table as real elements", PT_NUM
+-- 512->4096) and the custom-element registry now allocates from the TOP of that range down
+-- (confirmed live: FSLG/AL61/NA/MG/etc land at ids 4033-4095, not <512). The old 0..511 bound
+-- silently made elemId() return nil for every custom element name above 511 -- reproduced live,
+-- own lab instance: elemId("FSLG") and elemId("AL61") both returned nil before this fix, which
+-- meant AL61's own shipped thermite rule ("BRMT>FSLG,IRON:450:.9:HEAT480:FIRE") could never
+-- resolve its own selfB target (FSLG) and so never actually turned into slag -- a real, live,
+-- previously-undetected regression, not a hypothetical. 4095 matches ElementDefs.h's current
+-- PT_NUM-1; there is no Lua-exposed PT_NUM constant to read this dynamically (checked: no
+-- elem.PT_NUM/sim.PT_NUM binding exists). If PMAPBITS changes again, this bound needs updating
+-- too -- grep this comment.
 local function elemId(name)
   if name == nil then return nil end
   name = string.upper(name)
   local id = elem["DEFAULT_PT_"..name]; if id then return id end
-  for j=0,511 do local ok,n=pcall(elem.property,j,"Name"); if ok and n==name then return j end end
+  for j=0,4095 do local ok,n=pcall(elem.property,j,"Name"); if ok and n==name then return j end end
   return nil
 end
 local function occupant(nx, ny) if nx<0 or ny<0 or nx>=612 or ny>=384 then return nil end; local ok,o=pcall(sim.pmap,nx,ny); if ok and o and o~=0 then return o end; local ok2,p=pcall(sim.photons,nx,ny); if ok2 and p and p~=0 then return p end; return nil end

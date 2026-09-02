@@ -7,8 +7,22 @@
 -- next to each one. Owns exactly this file; never touches rpg.lua or another plugin.
 local R = PBX.state.rpg
 local TAG = "guide"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -197,8 +211,11 @@ local BIOMES = {
              desc = "Same soil as forest but fewer, denser trees and shallow standing pools of water at the surface." },
   desert = { label = "Desert", grass = "SAND", soil = "SAND", trees = "none",
              desc = "Sand dunes capping solid rock all the way down, so the sand can't avalanche away. No trees grow here." },
-  snow   = { label = "Snow / Tundra", grass = "ICE", soil = "ICE", trees = "~25% of surface columns",
-             desc = "Ice and snow at the surface with an icy subsoil. Sparse, pine-like trees." },
+  -- surface cover corrected 2026-09-02 (@guide, verified against world.lua's own soilMaterial()):
+  -- the top pixel (d==0) is SNOW (has("SNOW") and "SNOW" or "ICE"), ICE is the SUBSOIL beneath it,
+  -- not the surface cover -- was previously listed as ICE/ICE, which named the wrong one as "grass".
+  snow   = { label = "Snow / Tundra", grass = "SNOW", soil = "ICE", trees = "~25% of surface columns",
+             desc = "Snow at the surface over an icy subsoil. Sparse, pine-like trees." },
 }
 local BIOME_ORDER = { "forest", "swamp", "desert", "snow" }
 
@@ -220,10 +237,33 @@ local CONTROLS = {
   other = { label = "Other keys", lines = { "K save   R respawn   N enemies on/off   M minimap   H HUD", "Esc - menu & controls card   F1 - debug overlay" } },
   uiext = { label = "UI panels (ui.lua)", lines = { "J - quest log", "C - controls card",
             "Y - submit something to PhoenixFire808: drag a region for a machine/plant/cave/etc, or press Enter with no region for a quick bug report or suggestion" } },
-  guide = { label = "This guide (L)", lines = { "L or Esc - open / close this database", "Click a category, then an entry, then any highlighted word to jump to it",
-            "'< back' undoes a jump; click the search box, then type to filter the list" } },
+  guide = { label = "This guide (L)", lines = { "L, the GUIDE quick-button (top-right, always on screen), or the E-bag's GUIDE tab all open this - Esc or the X in the corner closes it", "Click a category, then an entry, then any highlighted word to jump to it",
+            "'< back' and every list/page scroll (drag the bar, or the mouse wheel) are all click/wheel-only - nothing in here requires a key" } },
+  -- Two DIFFERENT things share the word "sandbox" in this game (verified live, rpg.lua, 2026-09-02)
+  -- and mixing them up is an easy mistake: R.sandbox is an Esc-menu toggle inside a normal run
+  -- (unlimited materials, no danger); R.sandboxMode is a completely separate plain-Powder-Toy build
+  -- mode reached from the title screen's own "Sandbox" button, with no RPG running at all. Every
+  -- action below has a real on-screen mouse control - PhoenixFire808 does not want function-key-only
+  -- controls ("my hand is broken"), and every one of these was checked against the live source, not
+  -- assumed - the one honest exception (F6) is named as a gap, not hidden.
+  sandbox = { label = "Sandbox mode (two different things)", lines = {
+            "SURVIVAL SANDBOX (inside a normal run): Esc menu, click 'Sandbox mode' to switch it on -",
+            "no damage, free crafting, and this guide's TAKE button gives unlimited stock. Click it",
+            "again to switch off (any leftover free stacks are cleared automatically).",
+            "",
+            "BUILD SANDBOX (title screen 'Sandbox' button): a blank, plain Powder Toy canvas, no RPG",
+            "running. Your real save is untouched - it autosaves before you enter, and leaving keeps",
+            "whatever you built to come back to. On-screen buttons, top-left: Character (spawns a",
+            "walkable test body so you can try what you just built - click again to remove it),",
+            "Report (bug/suggestion box), Menu (back to the title screen). Top-right: a small",
+            "button starts a stamp submission to PhoenixFire808, with a history button once you've",
+            "sent one - same feature as the Y key/flag icon outside sandbox.",
+            "Known gap, not hidden: the dev toolkit (pause/step/world-sampler) only opens with the",
+            "F6 key right now - its on-screen button is not wired up yet (reported, not this file's",
+            "fix - guide.lua only documents, it doesn't own rpg.lua/sandbox.lua).",
+  } },
 }
-local CONTROL_ORDER = { "move", "tools", "blocks", "select", "view", "world", "craft", "items", "other", "uiext", "guide" }
+local CONTROL_ORDER = { "move", "tools", "blocks", "select", "view", "world", "craft", "items", "other", "uiext", "guide", "sandbox" }
 
 -- Machines are five entries rather than one because a single "Machines" row was hiding ~90 kits behind it.
 -- They read in build order (workbench -> furnace -> anvil -> research -> advanced lab), so the column doubles
@@ -353,7 +393,7 @@ local ALL_ELEM_CACHE = nil
 local function allElementCodes()
   if ALL_ELEM_CACHE then return ALL_ELEM_CACHE end
   local set = {}
-  for tid = 0, 511 do
+  for tid = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do
     local ok, nm = pcall(elem.property, tid, "Name")
     if ok and type(nm) == "string" and nm ~= "" then set[nm] = true end
   end
@@ -616,13 +656,30 @@ local function elemFactsLines(id, lines)
   if temp then addLine(lines, T(string.format("Default temperature: %.0fK (%.0fC)", temp, temp - 273.15), VALCOL)) end
   if hiT and hiT < 9999 then
     local seg = { T(string.format("Melts / ignites at %.0fK (%.0fC)", hiT, hiT - 273.15), VALCOL) }
-    if hiTr and hiTr >= 0 then local nm = R.nameOf(hiTr); seg[#seg + 1] = T(" -> becomes ", VALCOL); seg[#seg + 1] = LK(R.nice(nm), classify(nm), nm) end
+    local meltsToLava = false
+    if hiTr and hiTr >= 0 then
+      local nm = R.nameOf(hiTr); meltsToLava = (nm == "LAVA")
+      seg[#seg + 1] = T(" -> becomes ", VALCOL); seg[#seg + 1] = LK(R.nice(nm), classify(nm), nm)
+    end
     addLine(lines, seg)
+    -- Melt/solidify (2026-09-02, verified against knowledge/audit-v1175.md's live TEG/STEL/NA
+    -- round-trip test): the engine remembers WHICH real material melted (ctype), so this is
+    -- genuine molten metal, not inert lava - it resolidifies back into the exact same material
+    -- when it cools, not generic rock. This is a real engine behaviour (Simulation.cpp captures
+    -- ctype=type on any HighTemperatureTransition==LAVA), not something this game scripts itself.
+    if meltsToLava then
+      addLine(lines, T("Real molten " .. R.nice(id) .. " - cools back into " .. R.nice(id) .. " itself, not stone.", { 255, 180, 120 }))
+    end
   end
   if loT and loT > -1 then
     local seg = { T(string.format("Changes below %.0fK (%.0fC)", loT, loT - 273.15), VALCOL) }
     if loTr and loTr >= 0 then local nm = R.nameOf(loTr); seg[#seg + 1] = T(" -> becomes ", VALCOL); seg[#seg + 1] = LK(R.nice(nm), classify(nm), nm) end
     addLine(lines, seg)
+  end
+  if id == "LAVA" then
+    addLine(lines, T("Real molten metal (heated past its own melting point) keeps its own identity", { 200, 200, 180 }))
+    addLine(lines, T("and resolidifies back into that exact metal, not the default cooling above -", { 200, 200, 180 }))
+    addLine(lines, T("that default only applies to lava with no captured source material.", { 200, 200, 180 }))
   end
   if flam and flam > 0 then addLine(lines, T("Flammable: yes (rating " .. flam .. ")", { 255, 160, 120 })) end
   if expl and expl > 0 then addLine(lines, T("Explosive: yes (rating " .. expl .. ")", { 255, 120, 120 })) end
@@ -1209,7 +1266,17 @@ end)
 hook(R.hooks.mousedown, function(x, y, button)
   if not R.guideOpen then return end
   local B = G.btn or {}
+  -- Accessibility (PhoenixFire808, direct: "I hate having to push buttons on my keyboard. My
+  -- hand is broken."): closing this panel used to be key-only (L or Esc, both checked in the
+  -- key hook above) with no mouse path at all - every other navigation action here already had
+  -- one (categories/entries/links are clickable rows, both scrollbars drag, wheel scrolls), this
+  -- was the one real gap. B.close is a plain on-screen X, drawn next to the ? help button.
+  if hitRect(B.close, x, y) then R.closeGuide(); return true end
   if hitRect(B.help, x, y) then G.help = not G.help; return true end
+  -- Search-clear (B.searchClear): a one-click way to empty the search box instead of holding
+  -- Backspace - checked before B.search itself so a click on the X inside the box clears rather
+  -- than just refocusing it.
+  if B.searchClear and hitRect(B.searchClear, x, y) then G.search = ""; G.searchFocused = true; return true end
   if hitRect(B.search, x, y) then G.searchFocused = true; return true end
   if hitRect(B.back, x, y) and #G.back > 0 then popBack(); return true end
   if hitRect(B.take, x, y) then takeItem(G.cat, G.id); return true end
@@ -1273,7 +1340,13 @@ hook(R.hooks.drawHUD, function()
   graphics.drawRect(GX, GY, GW, GH, 255, 220, 80, 255)
   graphics.fillRect(GX, GY, GW, 15, 40, 44, 80, 255)
   graphics.drawText(GX + 5, GY + 4, "GUIDE / DATABASE", 255, 220, 80, 255)
-  graphics.drawText(GX + 118, GY + 4, "materials, recipes & mechanics - L or Esc closes", 170, 170, 185, 255)
+  graphics.drawText(GX + 118, GY + 4, "materials, recipes & mechanics - click X, L or Esc closes", 170, 170, 185, 255)
+  -- Close (X), mouse-reachable equivalent of the L/Esc keys - see the accessibility comment on
+  -- B.close's click handler above. Drawn left of ? so the two read as one small button cluster.
+  B.close = { GX + GW - 30, GY + 2, GX + GW - 18, GY + 13 }
+  local closeHover = hitRect(B.close, mx, my)
+  graphics.fillRect(B.close[1], B.close[2], 12, 11, closeHover and 150 or 60, closeHover and 60 or 40, closeHover and 60 or 44, 255)
+  graphics.drawText(B.close[1] + 3, B.close[2] + 2, "X", 255, 210, 210, 255)
   B.help = { GX + GW - 15, GY + 2, GX + GW - 3, GY + 13 }
   local helpHover = hitRect(B.help, mx, my)
   local hc = (G.help or helpHover)
@@ -1317,6 +1390,16 @@ hook(R.hooks.drawHUD, function()
   local cursor = (G.searchFocused and (math.floor((R.frame or 0) / 20) % 2 == 0)) and "|" or ""
   local shown = (G.search ~= "" and G.search) or ((not G.searchFocused) and "search..." or "")
   graphics.drawText(COL2X + 3, BY + 2, shown .. cursor, G.search ~= "" and 230 or 140, G.search ~= "" and 230 or 140, 150, 255)
+  -- Search-clear X: filtering by category/list clicks never needs the keyboard at all, but typing
+  -- a search query does (there is no mouse-only text entry) - this at least makes UNDOING that
+  -- typing a single click instead of holding Backspace, same accessibility ask as B.close above.
+  if G.search ~= "" then
+    B.searchClear = { COL2X + COL2W - 10, BY, COL2X + COL2W, BY + 12 }
+    local clrHover = hitRect(B.searchClear, mx, my)
+    graphics.drawText(B.searchClear[1] + 2, BY + 2, "x", clrHover and 255 or 200, clrHover and 160 or 140, clrHover and 160 or 140, 255)
+  else
+    B.searchClear = nil
+  end
 
   local entries = getEntries()
   local listY0 = BY + 15

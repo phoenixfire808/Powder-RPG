@@ -32,8 +32,22 @@
 -- only ever READ that cache -- never call a gated API directly.
 local R = PBX.state.rpg
 local TAG = "sandbox"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 -- Lazily create the hook lists this file (and ui.lua's sandbox-submission block) dispatch into,
@@ -78,6 +92,32 @@ hook(R.hooks.sandboxTick, function()
   local oks, sel = pcall(function() return tpt.selectedl end)
   if oks and sel then S.selectedEl = tostring(sel):match("_PT_(.+)$") or tostring(sel) end
   if S.clearArm and S.tick - S.clearArmTick > 90 then S.clearArm = false end   -- 2-click confirm expires ~1.5s
+end)
+
+-- ================================================================ debug screenshot capture (mirrors rpg.lua's own onTick handling of
+-- R.debugShotRequested -- that copy lives AFTER the `if R.sandboxMode then ... return end` guard
+-- in rpg.lua's onTick, so it never ran while in native sandbox and scripts/_mcp_bridge.py's
+-- screenshot_proof() timed out waiting for R.debugShotDone. Same contract, reachable here.
+-- captureUI hardcoded 0 (matches rpg.lua's original): tpt.screenshot(captureUI, fileType) --
+-- captureUI=0 omits the native UI Components layer (menu palette, toolbar, HUD buttons)
+-- entirely, capturing only the sim-graphics layer (world + Lua onDraw overlays). That means
+-- THIS mode can never prove or disprove native-menu visibility -- see the R.debugShotRequestedUI
+-- variant below, added specifically because the investigation needed a real answer.
+hook(R.hooks.sandboxTick, function()
+  if not R.debugShotRequested then return end
+  local path = R.debugShotRequested; R.debugShotRequested = nil
+  local ok, data = pcall(tpt.screenshot, 0, 1)
+  if ok and data then local f = io.open(path, "wb"); if f then f:write(data); f:close() end end
+  R.debugShotDone = ok
+end)
+-- UI-INCLUSIVE variant (@menufix): captureUI=1, so the native element-menu palette and
+-- bottom toolbar are actually part of the captured pixels if the engine is drawing them.
+hook(R.hooks.sandboxTick, function()
+  if not R.debugShotRequestedUI then return end
+  local path = R.debugShotRequestedUI; R.debugShotRequestedUI = nil
+  local ok, data = pcall(tpt.screenshot, 1, 1)
+  if ok and data then local f = io.open(path, "wb"); if f then f:write(data); f:close() end end
+  R.debugShotDoneUI = ok
 end)
 
 -- ================================================================ key: F6 toggle, F8 feedback (mirrors rpg.lua's own non-sandbox flow, self-contained)
@@ -147,7 +187,15 @@ local function runSample()
 end
 
 -- ================================================================ panel layout + hit-testing (mouse-only, no typed fields -- see file header)
-local PX, PY, PW, PH = 4, 4, 210, 168
+-- PH was 168 (measured/fixed 2026-09-0X @sbtools): the outer panel hit-test below
+-- (`x >= PX and x < PX + PW and y >= PY and y < PY + PH`) is the ONLY thing that lets a click
+-- reach any button at all -- and the GENERATE SLICE button's own y-range (172..188, computed
+-- from the cascading layoutButtons() offsets below) fell entirely outside y < PY+PH=172. The
+-- world sampler's single trigger button was therefore unclickable by mouse from the moment it
+-- shipped -- exactly why its per-cell cost was still INFERRED, not measured: nobody, including
+-- live testing, could ever actually press it. 200 covers the real content height (188) plus
+-- bottom padding; verified against a lab instance that GENERATE SLICE now registers a click.
+local PX, PY, PW, PH = 4, 4, 210, 200
 local function btn(x, y, w, h, label) return { x = x, y = y, w = w, h = h, label = label } end
 local function layoutButtons()
   local y = PY + 62
@@ -206,7 +254,10 @@ hook(R.hooks.sandboxMouseMove, function(x, y, dx, dy) S.mx, S.my = x, y end)
 local function drawPanel()
   graphics.fillRect(PX, PY, PW, PH, 8, 10, 20, 225); graphics.drawRect(PX, PY, PW, PH, 120, 200, 255, 220)
   graphics.drawText(PX + 6, PY + 4, "SANDBOX TOOLKIT", 160, 220, 255, 255)
-  graphics.drawText(PX + PW - 60, PY + 4, "F6 closes", 150, 150, 165, 220)
+  -- Was "F6 closes" -- stale since the sandbox bar grew a real Tools button (rpg.lua's
+  -- R.SB_BTNS) that dispatches this same F6 key through the hook chain; F6 itself still
+  -- works for anyone who prefers it, but the button is the primary, always-visible path.
+  graphics.drawText(PX + PW - 74, PY + 4, "Tools/F6 closes", 150, 150, 165, 220)
   local okpc, pc = pcall(sim.partCount)
   graphics.drawText(PX + 6, PY + 16, string.format("FPS %d   Particles %d", floor(S.fpsSmoothed + 0.5), okpc and pc or -1), 200, 200, 210, 255)
   graphics.drawText(PX + 6, PY + 28, string.format("Brush: shape %d  r%d,%d   Tool: %s", S.brushShape or 0, S.brushX or 0, S.brushY or 0, S.selectedEl or "?"), 200, 200, 210, 255)

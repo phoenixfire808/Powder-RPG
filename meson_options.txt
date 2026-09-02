@@ -82,6 +82,12 @@ option(
 	description: 'Build the thumbnail renderer'
 )
 option(
+	'build_headless',
+	type: 'boolean',
+	value: false,
+	description: 'Build the headless blueprint evaluator'
+)
+option(
 	'build_font',
 	type: 'boolean',
 	value: false,

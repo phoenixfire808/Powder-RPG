@@ -602,6 +602,31 @@ if get_option('build_render')
 	clang_tidy_sources += render_files
 endif
 
+if get_option('build_headless')
+	headless_files = files(
+		'src/PowderToyHeadless.cpp',
+		'src/simulation/CustomElements.cpp',
+		'src/simulation/Editing.cpp',
+		'src/simulation/Snapshot.cpp',
+		'src/client/GameSave.cpp',
+		'src/graphics/Renderer.cpp',
+		'src/common/clipboard/Null.cpp',
+		'src/simulation/gravity/Null.cpp',
+	)
+	executable(
+		'powder_headless',
+		sources: headless_files,
+		include_directories: project_inc,
+		cpp_args: project_cpp_args,
+		link_args: project_link_args,
+		dependencies: project_deps + [ threads_dep, json_dep, sta_libs['common'], sta_libs['simulation'] ],
+		export_dynamic: project_export_dynamic,
+		link_depends: copied_dlls,
+		override_options: target_options,
+		win_subsystem: 'console',
+	)
+endif
+
 if get_option('build_font')
 	if host_platform in [ 'android', 'emscripten' ]
 		error('font does not target @0@'.format(host_platform))

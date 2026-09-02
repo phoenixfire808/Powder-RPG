@@ -282,6 +282,15 @@ String SimulationData::BasicParticleInfo(Particle const &sample_part) const
 	{
 		sampleInfo << "Molten " << ElementResolve(ctype, -1);
 	}
+	else if (type == PT_PWCR && IsElement(ctype))
+	{
+		// PWCR ("Powdered form of another material", element id 248) stores the real material in
+		// ctype exactly the way LAVA does, but only LAVA was ever given a readable name here --
+		// so powdered steel read as a bare "PWCR", which tells a player nothing.
+		// Reported directly, twice: "when I'm spawning my powders I don't want it to say PWCR,
+		// I want it to say what the material is."
+		sampleInfo << "Powdered " << ElementResolve(ctype, -1);
+	}
 	else if ((type == PT_PIPE || type == PT_PPIP) && IsElement(ctype))
 	{
 		if (ctype == PT_LAVA && IsElement(storedCtype))

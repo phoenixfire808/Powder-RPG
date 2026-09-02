@@ -3,7 +3,7 @@
 -- kinds[name] = { params = SPEC, make = function(params) return function(i,x,y,ss,nt) ... return bool end end }
 local kinds = PBX.state.behaviors.kinds
 local function pget(params, k, spec) local v = params and params[k]; if v == nil then return spec.default end; return v end
-local function elemId(name) local id = elem["DEFAULT_PT_"..name]; if id then return id end; for j=0,511 do local ok,n=pcall(elem.property,j,"Name"); if ok and n==name then return j end end; return nil end
+local function elemId(name) local id = elem["DEFAULT_PT_"..name]; if id then return id end; for j=0,(2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do local ok,n=pcall(elem.property,j,"Name"); if ok and n==name then return j end end; return nil end
 local function occupant(nx, ny) if nx<0 or ny<0 or nx>=612 or ny>=384 then return nil end; local ok,o=pcall(sim.pmap,nx,ny); if not ok or not o or o==0 then local ok2,p=pcall(sim.photons,nx,ny); if ok2 and p and p~=0 then return p end; return nil end; return o end
 local N8 = {{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}}
 

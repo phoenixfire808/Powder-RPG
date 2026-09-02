@@ -11,8 +11,22 @@
 
 local R = PBX.state.rpg
 local TAG = "machines2"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -398,35 +412,71 @@ local function readPressure(wx, wy)
   local ok, p = pcall(sim.pressure, pcx, pcy)
   return ok and p or nil
 end
+-- Automated relief valve, design-machine-systems.md S0 rec #5 / S2 chain 6 ("give PRESSVESSELKIT an
+-- automated shutoff"), closed 2026-09-0X (@sim). PSNS's own R.RECIPES desc already promised this
+-- ("wire a pressure vessel's shutoff to it", rpg.lua) but nothing here ever read one until now. A real
+-- PSNS is built into the shell wall, calibrated (via the exact same .temp property the automation.lua
+-- calibration tool already edits with a mouse scroll-wheel -- no new UI, no keyboard, reuses the existing
+-- tool) to trip RELIEF_MARGIN below the hard rupture limit. When it senses real pressure crossing that
+-- threshold it sparks its own contact stud (real PSNS.cpp physics, verified against engine source); this
+-- file watches that spark with R.auto.sparkNear (same point-check convention as every other m2 pad) and
+-- opens a real vent gap for VENT_OPEN_FRAMES ticks, self-sealing after, on a cooldown so it cannot flicker
+-- open/closed every tick. This does not GUARANTEE the vessel survives (a fast enough spike can still beat
+-- it to the hard limit -- physically honest, not a magic safety net), but it now has the safety pair every
+-- other catastrophic-failure machine in this file already needed.
+local RELIEF_MARGIN = 1.5
+local VENT_OPEN_FRAMES = 15
+local VENT_COOLDOWN = 90
 NAME2.pressvessel = "Pressure Vessel"
 MBOX2.pressvessel = { 0, -4, 9 }
-IDLE_HINT2.pressvessel = "Passive - rated to " .. PVESSEL_LIMIT .. " real pressure"
+IDLE_HINT2.pressvessel = "Passive - rated to " .. PVESSEL_LIMIT .. " real pressure, relief valve trips automatically near the limit"
 STATE_DESC2.pressvessel = function(m)
   if m.burst then return "RUPTURED" end
   local p = readPressure(m.cx, m.cy) or 0
-  return string.format("pressure %.1f / %.1f", p, PVESSEL_LIMIT)
+  return string.format("pressure %.1f / %.1f%s", p, PVESSEL_LIMIT, m.ventOpen and " - RELIEF VALVE VENTING" or "")
 end
 NEXT_DESC2.pressvessel = function(m)
   if m.burst then return "Rebuild it - the shell has vented" end
-  return "Keep real interior pressure under " .. PVESSEL_LIMIT
+  if m.ventOpen then return "Relief valve is venting excess pressure automatically - no action needed" end
+  return "Keep real interior pressure under " .. PVESSEL_LIMIT .. " - the built-in PSNS relief valve trips on its own near the limit (right-click it to recalibrate)"
 end
 local function buildPressVessel(mx, my)
   local wx, wy = mx + R.cam.x, my + R.cam.y; local gy = groundY(wx, wy) - 4
   ring(wx, gy, 4, STEELMAT, 1)
   clearBox(wx - 2, gy - 2, wx + 2, gy + 2)   -- sealed hollow interior
   setAt(wx, gy + 5, "PSCN")   -- inlet valve nub at the base, for filling with a real pressurised gas
-  R.machines2[#R.machines2 + 1] = { kind = "pressvessel", x = wx, y = gy, cx = wx, cy = gy, r = 4, burst = false }
-  R.say("Pressure vessel placed - real interior pressure over " .. PVESSEL_LIMIT .. " will genuinely rupture it")
+  -- relief valve: PSNS embedded in the west wall (reads this cell's real pressure, same 4px pressure-cell
+  -- granularity readPressure() already uses), default-calibrated to trip RELIEF_MARGIN under the hard limit;
+  -- a contact stud just outside the shell carries its spark where R.auto.sparkNear can see it; a dedicated
+  -- vent port on the north wall is what actually opens (kept physically separate from the sensor cell so the
+  -- sensor keeps reading real pressure while venting).
+  local sid = setAt(wx - 4, gy, "PSNS")
+  if sid then sim.partProperty(sid, "temp", 273.15 + math.max(0, PVESSEL_LIMIT - RELIEF_MARGIN)) end
+  setAt(wx - 5, gy, "PSCN")   -- relief sensor's spark contact, outside the shell
+  R.machines2[#R.machines2 + 1] = { kind = "pressvessel", x = wx, y = gy, cx = wx, cy = gy, r = 4, burst = false,
+    relief = { x = wx - 5, y = gy }, ventPort = { x = wx, y = gy - 4 }, ventOpen = false, ventTimer = 0, ventCooldown = 0 }
+  R.say("Pressure vessel placed - real interior pressure over " .. PVESSEL_LIMIT .. " will genuinely rupture it. Built-in PSNS relief valve arms automatically; right-click it to recalibrate")
 end
 local function updatePressVessel()
   for _, m in ipairs(R.machines2) do if m.kind == "pressvessel" and not m.burst then
     local p = readPressure(m.cx, m.cy)
     if p and p > PVESSEL_LIMIT then
       m.burst = true
+      if m.ventOpen then setAt(m.ventPort.x, m.ventPort.y, STEELMAT); m.ventOpen = false end
       -- real breach: open one side of the shell and vent real fire through the gap
       clearBox(m.cx + 3, m.cy - 1, m.cx + 4, m.cy + 1)
       setAt(m.cx + 5, m.cy, "FIRE")
       R.say("BANG - a pressure vessel just ruptured!")
+    else
+      m.ventCooldown = math.max(0, (m.ventCooldown or 0) - 1)
+      if m.ventOpen then
+        m.ventTimer = (m.ventTimer or 0) - 1
+        if m.ventTimer <= 0 then setAt(m.ventPort.x, m.ventPort.y, STEELMAT); m.ventOpen = false end
+      elseif m.ventCooldown <= 0 and R.auto and R.auto.sparkNear and m.relief and R.auto.sparkNear(m.relief.x, m.relief.y, 1) then
+        clearBox(m.ventPort.x, m.ventPort.y, m.ventPort.x, m.ventPort.y)
+        m.ventOpen = true; m.ventTimer = VENT_OPEN_FRAMES; m.ventCooldown = VENT_COOLDOWN
+        R.say("Pressure vessel relief valve venting")
+      end
     end
   end end
 end
@@ -1014,7 +1064,7 @@ end)
 -- ================================================================ crafting: R.RECIPES + R.ITEMS + BUILDERS + place
 R.ITEMS = R.ITEMS or {}
 R.ITEMS.FERTILISER = R.ITEMS.FERTILISER or { col = { 110, 80, 50 }, desc = "Ground plant matter + stone dust. Boosts crop growth." }
--- desc updated 2026-09-02: was "a crafting reagent for future ammo" -- items.lua's
+-- desc updated 2026-09-02 (@machines): was "a crafting reagent for future ammo" -- items.lua's
 -- KINETIC_AMMO table now actually loads this into any kinetic gun (musket/shotgun/nail gun/rail
 -- gun), so the promise is kept; the stale "future" wording would have told a player who already
 -- has the ammo system that this item still does nothing.
@@ -1071,8 +1121,8 @@ local BASE2_RECIPES = {
     desc = "A powered spinning drum mills real COAL into a bag of Gunpowder" },
   { out = "CHECKVALVEKIT", n = 1, need = need("METL", 4, "PSCN", 1), st = "workbench", txt = "Check valve",
     desc = "A real one-way gate: liquid flowing with it passes free, liquid trying to flow backward is stopped dead" },
-  { out = "PRESSVESSELKIT", n = 1, need = need("STEL", 6), st = "anvil", txt = "Pressure vessel",
-    desc = "A sealed steel shell that reads its own real interior pressure every tick - push it past " .. PVESSEL_LIMIT .. " and it genuinely ruptures" },
+  { out = "PRESSVESSELKIT", n = 1, need = need("STEL", 6, "PSNS", 1), st = "anvil", txt = "Pressure vessel",
+    desc = "A sealed steel shell that reads its own real interior pressure every tick - push it past " .. PVESSEL_LIMIT .. " and it genuinely ruptures. Ships with a built-in PSNS relief valve that vents automatically near the limit" },
   { out = "RESERVOIRKIT", n = 1, need = need("STEL", 8, "GLAS", 2), st = "anvil", txt = "Reservoir tank",
     desc = "Bulk liquid storage with a real sight-glass strip - see the fill level at a glance" },
   { out = "CONDENSERKIT", n = 1, need = need("STEL", 6, "GLAS", 2, "NAK", 1), st = "anvil", txt = "Steam condenser",

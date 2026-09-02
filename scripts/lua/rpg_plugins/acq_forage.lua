@@ -90,8 +90,22 @@
 
 local R = PBX.state.rpg
 local TAG = "acq_forage"
+-- FIXED 2026-09-02. This used to remove EVERY entry carrying this plugin's tag before appending,
+-- which meant a plugin's SECOND hook on a given list silently deleted its FIRST. @audit proved
+-- that killed the Replicator Core recovery feature outright -- it was registered, then destroyed
+-- by a later registration in the same file, and nobody could see why the feature did nothing.
+-- 29 plugins share this helper and several register 7-14 hooks, so an unknown number of features
+-- have been quietly dead. The reload cleanup it was trying to do is still needed, so it now
+-- happens ONCE per load, across every hook list, before any registration -- and hook() simply
+-- appends, so a file can register as many hooks as it likes.
+for _, __l in pairs(R.hooks or {}) do
+  if type(__l) == "table" then
+    for i = #__l, 1, -1 do
+      if type(__l[i]) == "table" and __l[i].tag == TAG then table.remove(__l, i) end
+    end
+  end
+end
 local function hook(list, fn)
-  for i = #list, 1, -1 do if type(list[i]) == "table" and list[i].tag == TAG then table.remove(list, i) end end
   list[#list + 1] = setmetatable({ tag = TAG }, { __call = function(_, ...) return fn(...) end })
 end
 
@@ -277,17 +291,17 @@ end
 -- this plugin does not touch it, per the convention documented at rpg.lua:800 and every acq_*
 -- sibling's own trailing comment this wave). One line per discrete change, player-facing language.
 -- ================================================================================================
--- "Foraging: harvesting wheat now has a chance to turn up wild yeast clinging to the
+-- "Foraging (@acq_forage): harvesting wheat now has a chance to turn up wild yeast clinging to the
 --  stalks, and mining gold in a forest canopy has a chance to turn up a wild honeycomb (Liquid Wax)
 --  -- the last stock ingredient in the beeswax/wax family that had no way to reach your inventory."
--- "Foraging: new buildable Proofing Box (Workbench: Glass + Wood) -- put a Yeast
+-- "Foraging (@acq_forage): new buildable Proofing Box (Workbench: Glass + Wood) -- put a Yeast
 --  culture inside and it multiplies on its own if you keep it warm, exactly like real yeast does;
 --  build it too close to a furnace or lava and the culture dies to Dead Yeast instead."
--- "Farming: Fertiliser -- both the machine-made kind and a new hand-made Composted
+-- "Farming (@acq_forage): Fertiliser -- both the machine-made kind and a new hand-made Composted
 --  Fertiliser (Dead Yeast + Sawdust + Water, craftable anywhere) -- actually does something now.
 --  Aim it at a planted farm plot and place it to speed that crop toward harvest. It had a real
 --  description promising this for a while with nothing behind it."
--- "Materials: Dead Yeast and Wax are now mineable wherever they turn up for real --
+-- "Materials (@acq_forage): Dead Yeast and Wax are now mineable wherever they turn up for real --
 --  Dead Yeast from overheated yeast, Wax from Liquid Wax cooling and hardening on its own."
 --
 -- R.PLUGINS: request "acq_forage" appended to rpg.lua:6140's literal list (alongside the other

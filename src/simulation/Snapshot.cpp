@@ -41,3 +41,25 @@ uint32_t Snapshot::Hash() const
 	// signs and Authors are excluded on purpose, as they aren't POD and don't have much effect on the simulation.
 	return hash;
 }
+
+std::vector<std::pair<const char *, uint32_t>> Snapshot::HashParts() const
+{
+	auto fnv = [](const void *data, size_t size) {
+		auto hash = UINT32_C(2166136261);
+		for (auto i = 0U; i < size; ++i)
+		{
+			hash ^= reinterpret_cast<const uint8_t *>(data)[i];
+			hash *= UINT32_C(16777619);
+		}
+		return hash;
+	};
+	std::vector<std::pair<const char *, uint32_t>> parts;
+#define HASHPART(v) parts.emplace_back(#v, fnv(v.data(), v.size() * sizeof(v[0])));
+	HASHPART(AirPressure) HASHPART(AirVelocityX) HASHPART(AirVelocityY) HASHPART(AmbientHeat) HASHPART(Particles)
+	HASHPART(GravMass) HASHPART(GravMask) HASHPART(GravForceX) HASHPART(GravForceY)
+	HASHPART(BlockMap) HASHPART(ElecMap) HASHPART(BlockAir) HASHPART(BlockAirH) HASHPART(FanVelocityX) HASHPART(FanVelocityY)
+	HASHPART(PortalParticles) HASHPART(WirelessData) HASHPART(stickmen)
+#undef HASHPART
+	parts.emplace_back("RngState", fnv(&RngState, sizeof(RngState)));
+	return parts;
+}

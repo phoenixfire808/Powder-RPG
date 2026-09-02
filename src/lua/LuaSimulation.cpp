@@ -2081,6 +2081,22 @@ static int hash(lua_State *L)
 	return 1;
 }
 
+static int hashParts(lua_State *L)
+{
+	auto *lsi = GetLSI();
+	lsi->AssertInterfaceEvent();
+	auto snap = lsi->sim->CreateSnapshot();
+	lua_newtable(L);
+	for (auto &[name, hash] : snap->HashParts())
+	{
+		lua_pushinteger(L, hash);
+		lua_setfield(L, -2, name);
+	}
+	lua_pushinteger(L, snap->FrameCount);
+	lua_setfield(L, -2, "FrameCount");
+	return 1;
+}
+
 static int ensureDeterminism(lua_State *L)
 {
 	auto *lsi = GetLSI();
@@ -2176,6 +2192,7 @@ void LuaSimulation::Open(lua_State *L)
 		LFUNC(temperatureScale),
 		LFUNC(randomSeed),
 		LFUNC(hash),
+		LFUNC(hashParts),
 		LFUNC(ensureDeterminism),
 		LFUNC(paused),
 		LFUNC(gravityMass),

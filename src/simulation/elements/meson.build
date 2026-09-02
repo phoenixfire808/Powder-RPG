@@ -213,6 +213,8 @@ simulation_elem_names = [
 	# Rare earth metals, real measured constants (2026-08-29). GADO is
 	# ferromagnetic below its real Curie point, ~293.4 K -- see GADO.cpp.
 	'LUTE', 'GADO',
+	# Realistic power elements ported from scripts/lua/power_kinds.lua (headless lane, 2026-09-01).
+	'TRBN', 'TEG', 'B4C', 'UO2', 'ELCD',
 ]
 
 simulation_elem_src = []
