@@ -157,7 +157,9 @@ local function isHideableCat(c) return isMachineCat(c) or MAT_SECTION_CATS[c] en
 local CC = nil
 local function classMap()
   local n = #(R.RECIPES or {})
-  if CC and CC.n == n then return CC end
+  local revision, lockedN = R.elementRevision, #(R.LOCKED_RECIPES or {})
+  if CC and CC.n == n and CC.revision == revision and CC.lockedN == lockedN then return CC end
+  SECTION_ID_CACHE = {}
   local cat, rec = {}, {}
   for _, rc in ipairs(R.RECIPES or {}) do if rc.out then rec[rc.out] = rc end end
   for code, it in pairs(R.ITEMS or {}) do
@@ -183,7 +185,7 @@ local function classMap()
   end
   local cnt = {}
   for _, c in pairs(cat) do cnt[c] = (cnt[c] or 0) + 1 end
-  CC = { n = n, cat = cat, rec = rec, cnt = cnt }
+  CC = { n = n, revision = revision, lockedN = lockedN, cat = cat, rec = rec, cnt = cnt }
   return CC
 end
 local function catOf(code) return classMap().cat[code] end
@@ -390,14 +392,16 @@ end
 -- src/simulation/ElementDefs.h), so every real element - stock or RPG-custom - is guaranteed to be findable
 -- and browsable even if nothing anywhere gives it to the player. Never a hand-typed 195-name list.
 local ALL_ELEM_CACHE = nil
+local ALL_ELEM_REV
 local function allElementCodes()
-  if ALL_ELEM_CACHE then return ALL_ELEM_CACHE end
+  if ALL_ELEM_CACHE and ALL_ELEM_REV == R.elementRevision then return ALL_ELEM_CACHE end
   local set = {}
   for tid = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do
     local ok, nm = pcall(elem.property, tid, "Name")
     if ok and type(nm) == "string" and nm ~= "" then set[nm] = true end
   end
   ALL_ELEM_CACHE = set
+  ALL_ELEM_REV = R.elementRevision
   return set
 end
 
@@ -456,7 +460,7 @@ end
 local ACQ_CACHE = nil
 local function buildAcquisitionIndex()
   local n = #(R.RECIPES or {})
-  if ACQ_CACHE and ACQ_CACHE.n == n then return ACQ_CACHE end
+  if ACQ_CACHE and ACQ_CACHE.n == n and ACQ_CACHE.revision == R.elementRevision then return ACQ_CACHE end
   local src = scanAcquisitionSources()
   local craftOut = {}
   for _, rc in ipairs(R.RECIPES or {}) do craftOut[rc.out] = true end
@@ -479,7 +483,7 @@ local function buildAcquisitionIndex()
       grantFiles = src.grants[code],
     }
   end
-  ACQ_CACHE = { n = n, idx = idx }
+  ACQ_CACHE = { n = n, revision = R.elementRevision, idx = idx }
   return ACQ_CACHE
 end
 local function acqInfo(id) return buildAcquisitionIndex().idx[id] end
@@ -580,9 +584,10 @@ local ENT_CACHE = {}
 local function cachedEntries(catId)
   local n = #(R.RECIPES or {})
   local c = ENT_CACHE[catId]
-  if c and c.n == n then return c.list end
+  local revision, lockedN = R.elementRevision, #(R.LOCKED_RECIPES or {})
+  if c and c.n == n and c.revision == revision and c.lockedN == lockedN then return c.list end
   local list = buildEntries(catId)
-  ENT_CACHE[catId] = { n = n, list = list }
+  ENT_CACHE[catId] = { n = n, revision = revision, lockedN = lockedN, list = list }
   return list
 end
 local function getEntries()
@@ -597,31 +602,44 @@ local function getEntries()
 end
 
 -- ================================================================ expensive-but-cached world sampling
+local WORLD_SAMPLE
 local function sampleLocation(code)
-  local c = G.locCache[code]; if c then return c end
-  local DEPTH = R.DEPTH or 1900
-  local xs = { 40, 700, 1400, -700 }
-  local minD, maxD, count, biomeCounts = nil, nil, 0, {}
-  for _, xo in ipairs(xs) do
-    local surf = R.surfaceAt(xo)
-    for wy = 4, DEPTH - 1, 6 do
-      local ok, el = pcall(R.gen, xo, wy)
-      if ok and el == code then
-        count = count + 1
-        local d = wy - surf
-        if d > 0 then if not minD or d < minD then minD = d end; if not maxD or d > maxD then maxD = d end end
-        local b = R.biomeAt(xo); biomeCounts[b] = (biomeCounts[b] or 0) + 1
-      end
+  if not WORLD_SAMPLE or WORLD_SAMPLE.seed ~= R.seed or WORLD_SAMPLE.gen ~= R.gen then
+    WORLD_SAMPLE = { seed = R.seed, gen = R.gen, x = 1, y = 4, rows = {}, done = false }
+    G.locCache = {}
+  end
+  if not WORLD_SAMPLE.done then return { pending = true } end
+  return G.locCache[code] or { found = false }
+end
+local function advanceWorldSample()
+  local s = WORLD_SAMPLE
+  if not s or s.done then return end
+  local xs, deadline = { 40, 700, 1400, -700 }, os.clock() + 0.002
+  -- The same sample grid serves EVERY material. Never regenerate a whole
+  -- world column synchronously from drawHUD when the player selects an ore.
+  for _ = 1, 8 do
+    local x = xs[s.x]
+    local ok, el = pcall(R.gen, x, s.y)
+    if ok and type(el) == "string" then
+      local row = s.rows[el] or { counts = {} }
+      s.rows[el] = row
+      local d, biome = s.y - R.surfaceAt(x), R.biomeAt(x)
+      if d > 0 then row.lo = math.min(row.lo or d, d); row.hi = math.max(row.hi or d, d) end
+      row.counts[biome] = (row.counts[biome] or 0) + 1
     end
+    s.y = s.y + 6
+    if s.y >= (R.DEPTH or 1900) then s.x, s.y = s.x + 1, 4 end
+    if s.x > #xs then
+      for code, row in pairs(s.rows) do
+        local best, count = nil, -1
+        for biome, n in pairs(row.counts) do if n > count then best, count = biome, n end end
+        G.locCache[code] = { found = row.lo ~= nil, minDepth = row.lo, maxDepth = row.hi, biome = best }
+      end
+      s.done = true
+      break
+    end
+    if os.clock() >= deadline then break end
   end
-  local result
-  if count == 0 or not minD then result = { found = false }
-  else
-    local bestB, bestN = nil, -1
-    for b, n in pairs(biomeCounts) do if n > bestN then bestB, bestN = b, n end end
-    result = { found = true, minDepth = minD, maxDepth = maxD, biome = bestB }
-  end
-  G.locCache[code] = result; return result
 end
 local function biomeChunks(biomeId)
   if not G.biomeCache then
@@ -713,7 +731,8 @@ end
 local function locationLines(id, lines)
   addLine(lines, T("", VALCOL)); addLine(lines, T("WHERE FOUND", HEADCOL))
   local loc = sampleLocation(id)
-  if not loc.found then addLine(lines, T("Not generated naturally in this world (crafted only, or too rare to sample).", DIMCOL))
+  if loc.pending then addLine(lines, T("Sampling this world's terrain...", DIMCOL))
+  elseif not loc.found then addLine(lines, T("Not generated naturally in this world (crafted only, or too rare to sample).", DIMCOL))
   else
     addLine(lines, T(string.format("Depth: %d-%dm underground", math.floor(loc.minDepth / 4), math.floor(loc.maxDepth / 4)), VALCOL))
     if loc.biome then addLine(lines, { T("Most common in: ", VALCOL), LK(BIOMES[loc.biome] and BIOMES[loc.biome].label or loc.biome, "biomes", loc.biome) }) end
@@ -1159,6 +1178,56 @@ local function buildPage(catId, id)
 end
 
 -- ================================================================ navigation
+local PAGE_CACHE
+local function layoutPage(lines)
+  local out = {}
+  for lineIndex, line in ipairs(lines) do
+    local row, used = {}, 0
+    local width = COL3W - SBW - 2 - (lineIndex == 1 and 32 or 0)
+    local function flush()
+      out[#out + 1] = row
+      row, used, width = {}, 0, COL3W - SBW - 2
+    end
+    for _, seg in ipairs(line) do
+      for token in seg.t:gmatch("%s*%S+") do
+        local w = graphics.textSize(token)
+        if used > 0 and used + w > width then flush(); token = token:gsub("^%s+", ""); w = graphics.textSize(token) end
+        -- Long unbroken codes/URLs must wrap too, not spill over the game UI.
+        while w > width do
+          local n = #token
+          repeat n = n - 1 until n <= 1 or graphics.textSize(token:sub(1, n)) <= width
+          local part = token:sub(1, n)
+          row[#row + 1] = { t = part, c = seg.c, link = seg.link, w = graphics.textSize(part) }
+          flush(); token = token:sub(n + 1); w = graphics.textSize(token)
+        end
+        if token ~= "" then row[#row + 1] = { t = token, c = seg.c, link = seg.link, w = w }; used = used + w end
+      end
+      -- Keep a separator between adjacent coloured/link segments when supplied.
+      local tail = seg.t:match("(%s+)$")
+      if tail and used + graphics.textSize(tail) <= width then
+        local w = graphics.textSize(tail)
+        row[#row + 1] = { t = tail, c = seg.c, link = seg.link, w = w }; used = used + w
+      end
+    end
+    out[#out + 1] = row
+  end
+  return out
+end
+local function cachedPage()
+  local now, c = os.clock(), PAGE_CACHE
+  local n = #(R.RECIPES or {})
+  if c and c.cat == G.cat and c.id == G.id and c.n == n
+      and c.revision == R.elementRevision and now < c.untilTime then return c.lines end
+  local ok, lines = pcall(buildPage, G.cat, G.id)
+  if not ok then lines = { { T("(error building this page: " .. tostring(lines) .. ")", { 255, 120, 120 }) } } end
+  lines = layoutPage(lines)
+  -- One bounded page. Live inventory, equipment and world counts still refresh
+  -- four times per second, without rebuilding every line on every draw.
+  PAGE_CACHE = { cat = G.cat, id = G.id, n = n, revision = R.elementRevision,
+    untilTime = now + (ok and 0.25 or 1), lines = lines }
+  return lines
+end
+function R.guidePageLines() return cachedPage() end
 local function navigate(catId, id, pushBack)
   if pushBack and G.cat and G.id then
     G.back[#G.back + 1] = { cat = G.cat, id = G.id }
@@ -1194,6 +1263,7 @@ end
 -- 3x-escalated prominence ask) makes it the actual first thing shown on a never-opened guide, not just
 -- first in a list you'd still have to click into.
 function R.openGuide(entryOrNil)
+  PAGE_CACHE = nil
   R.guideOpen = true
   G.searchFocused = false
   G.drag, G.dragMeta = nil, nil
@@ -1310,6 +1380,7 @@ hook(R.hooks.mousedown, function(x, y, button)
 end)
 hook(R.hooks.mouseup, function() G.drag, G.dragMeta = nil, nil end)
 hook(R.hooks.tick, function()
+  if R.guideOpen then advanceWorldSample() end
   if R.guideOpen then R.uiPanelOpen = true end   -- OR'd every frame; ui.lua sets its own state before this runs (loads earlier)
   if R.guideOpen and G.drag and G.dragMeta then
     local v = scrollbarSeek(G.dragMeta, R.mouse.y)
@@ -1326,6 +1397,8 @@ if R.hooks.wheel then   -- self-wires in automatically once core exposes a wheel
   end)
 end
 hook(R.hooks.newworld, function()
+  WORLD_SAMPLE = nil
+  PAGE_CACHE = nil
   R.closeGuide(); G.locCache = {}; G.biomeCache = nil; G.back = {}
 end)
 
@@ -1470,8 +1543,7 @@ hook(R.hooks.drawHUD, function()
     graphics.drawText(COL3X + 50, BY + 2, crumb:sub(1, crumbMax), 180, 180, 195, 255)
   end
 
-  local ok, pageLines = pcall(buildPage, G.cat, G.id)
-  if not ok then pageLines = { { T("(error building this page: " .. tostring(pageLines) .. ")", { 255, 120, 120 }) } } end
+  local pageLines = cachedPage()
   local pageY0 = BY + 15
   local lineH = 12
   local pageAreaW = COL3W - SBW - 2
@@ -1496,7 +1568,7 @@ hook(R.hooks.drawHUD, function()
       local cx = COL3X + ICONSZ + 6
       local ty = pageY0 + math.floor((ICONSZ - 9) / 2)
       for _, seg in ipairs(titleLine) do
-        local w = #seg.t * 6
+        local w = seg.w or graphics.textSize(seg.t)
         local col = seg.c or VALCOL
         graphics.drawText(cx, ty, seg.t, col[1], col[2], col[3], 255)
         cx = cx + w
@@ -1513,7 +1585,7 @@ hook(R.hooks.drawHUD, function()
       local y = pageY0 + (i - 1) * lineH
       local cx = COL3X
       for _, seg in ipairs(ln) do
-        local w = #seg.t * 6
+        local w = seg.w or graphics.textSize(seg.t)
         local col = seg.c or VALCOL
         local hoverLink = seg.link and hitRect({ cx, y - 1, cx + w, y + 10 }, mx, my)
         if hoverLink then col = { 210, 245, 255 } end

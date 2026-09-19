@@ -15,8 +15,24 @@ R.version = 4
 local W, H = 612, 384
 local DEPTH = 1900                   -- world bottom (bedrock from DEPTH-40)
 -- sea level y=200 inlined at its single use (200-locals budget)
-local function id(name) local i = elem["DEFAULT_PT_"..name]; if i then return i end; for j = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do local ok, n = pcall(elem.property, j, "Name"); if ok and n == name then return j end end; return nil end
 local idcache = {}
+local function id(name)
+  local i = elem["DEFAULT_PT_" .. name]
+  if i then return i end
+  -- The guide resolves the whole catalogue on first open. Scanning all 8192
+  -- slots for EACH name (including non-element inventory items) took seconds
+  -- and tripped the script watchdog. Build one name index per registry revision.
+  if not idcache.__indexed then
+    local names = {}
+    for j = 0, (2 ^ ((sim and sim.PMAPBITS) or 9)) - 1 do
+      local ok, n = pcall(elem.property, j, "Name")
+      if ok and type(n) == "string" and names[n] == nil then names[n] = j end
+    end
+    names.__indexed = true
+    idcache = names -- publish only a complete index, never a timed-out partial scan
+  end
+  return idcache[name] or nil
+end
 -- NEGATIVE-CACHE SELF-HEAL (2026-09-02). This cache used to store `false` for a missing
 -- element FOREVER. Custom elements cannot be registered at load time -- elem.allocate/element/
 -- property all assert unless called from a mutable-tools event (bridge_src/10_registry.lua:600),
@@ -27,9 +43,13 @@ local idcache = {}
 -- through to BRICK, so deep strata came out 44.66% BRCK / 41.71% ROCK -- the entire world's
 -- primary stone was brick. That is the "too much brick" complaint, and it was never a worldgen
 -- tuning problem.
--- Misses are still cached (a miss costs a 512-entry pcall scan, far too slow to repeat per
--- call), but R.clearIdCache() drops them so a later lookup can find newly-registered elements.
-R.clearIdCache = function() for k, v in pairs(idcache) do if v == false then idcache[k] = nil end end end
+-- Misses are still cached. R.clearIdCache() invalidates the complete name index
+-- after registry changes, so newly registered elements and reused slots are visible.
+-- The next custom lookup scans the slot table once, not once per catalogue entry.
+R.clearIdCache = function()
+  idcache = {}
+  R.elementRevision = (R.elementRevision or 0) + 1
+end
 local function eid(name) local v = idcache[name]; if v == nil then v = id(name) or false; idcache[name] = v end; return v or nil end
 local namecache = {}
 local function nameOf(t) local n = namecache[t]; if n then return n end; local ok, v = pcall(elem.property, t, "Name"); n = ok and v or tostring(t); namecache[t] = n; return n end
