@@ -558,7 +558,7 @@ end
 if PBX and PBX.MAX_CUSTOM_ELEMENTS and PBX.MAX_CUSTOM_ELEMENTS < 160 then
   PBX.MAX_CUSTOM_ELEMENTS = 160
 end
-R.VERSION = "1.18.0"
+R.VERSION = "1.18.1"
 R.O2_BREATH_R = 48       -- pixel radius: HUD circle + O2 particle sample (tune ventilation against this)
 R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 
@@ -574,6 +574,13 @@ R.O2_BREATH_CY = -8      -- sample center offset from feet (chest height)
 -- they all show up together next time, exactly like the GitHub one does
 -- across skipped releases.
 R.CHANGELOG = {
+  { ver = "1.18.1", notes = {
+    "Fixed the RPG Guide watchdog hang: opening the full catalogue no longer repeats a full element-registry scan for every entry.",
+    "Fixed guide detail pages doing world terrain generation during drawing. Terrain sampling is now shared and incremental so opening the Guide cannot freeze the simulation.",
+    "Fixed long Guide descriptions running past the detail panel. Text now wraps to the actual available width while keeping links and colors intact.",
+    "Guide pages and category data now use bounded caches that refresh when the material registry changes, so new materials remain visible without unbounded memory growth.",
+    "The Windows download includes the executable and runtime DLL dependencies together. Press L in-game to open the Guide; Esc or L closes it.",
+  } },
   { ver = "1.17.2", notes = {
     "Fixed: bug/suggestion reports (F8) and community stamp submissions (Y) went completely nowhere for every downloaded copy of the game -- they only ever saved to your own disk, and the game still told you 'Submitted, thanks!' either way. A downloaded copy has no way to carry the Discord link safely (it's a credential, not a password we can hand out), so submitting now opens a pre-filled GitHub issue in your browser instead -- no account needed to see it, one click to actually send it in. If it can't reach Discord or can't open your browser, it now says so plainly instead of pretending it worked.",
     "Fixed: even on a build with Discord configured, the webhook post was silently dropped by Discord itself -- it wants a real User-Agent header and wasn't getting one.",

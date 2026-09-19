@@ -444,3 +444,6 @@ team — see [powdertoy.co.uk](https://powdertoy.co.uk/) and the
 [official forum](https://powdertoy.co.uk/Discussions/Categories/Index.html) for the
 original game, online saves, and the wider community. Distributed, like the original,
 under the [GNU General Public License v3](LICENSE).
+## Windows quick start
+
+Download the `PowderRPG-v1.18.1-windows-x64.zip` asset, extract the entire folder, and run `PowderRPG.exe`. Keep the DLL files beside the executable. The RPG Guide opens with **L** and closes with **L** or **Esc**.
